@@ -1,20 +1,23 @@
 --[[
-    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V9 (Priority Pipeline Edition)
+    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V10 (Smart Zone Clean & Persistent Mutation)
     ========================================================================
-    ✅ 1. เรียงลำดับขั้นตอนการยิงคำสั่งตาม Priority ที่ระบุ 100%:
-          อันดับ 1: เก็บของ (Auto Take Chest)
-          อันดับ 2: ขายของ (Auto Sell ที่ร้าน SellStand)
-          อันดับ 3: อัปเกรดต้นไม้ (Zone Skill Tree & Core Upgrades)
-          อันดับ 4: ซื้อขวาน (Auto Buy Best Pickaxe) -> แล้ววาร์ปกลับแปลง
-          อันดับ 5: อัปเกรดสถิติ (Upgrade Stats เรียงตาม Base Damage Lv.1 มากที่สุด)
-          อันดับ 6: สุ่มการกลายพันธุ์ (Roll Mutation เรียงตาม Base Damage Lv.1 มากที่สุด + Auto-Lock)
-          อันดับ 7: อื่นๆ (Auto Mine ตีหิน, Auto Buy Zone, Auto Equip Best, Anti-AFK)
-    ✅ 2. ให้ความสำคัญจากค่าพลังโจมตีพื้นฐานเลเวล 1 (Base Damage Lv.1) ที่มากที่สุดเสมอ:
-          - คำนวณพลังโจมตีเลเวล 1 ผ่าน MineConfig.GetCharacterDamage(item, 1, "Normal") / TierDamage
-          - ตัวละครที่มีค่าพลังพื้นฐานสูงที่สุด (เช่น Demon Cyborg, Makine...) จะได้รับอัปเกรดและสุ่มบัพก่อนเสมอ
-    ✅ 3. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
-          - loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
-    ✅ 4. Auto-Save & Auto-Load Config สภาพเดิมทุกครั้ง
+    ✅ 1. ฟังก์ชันสุ่มบัพกลายพันธุ์ เปิดค้างได้ + หยุดยิงคำสั่งเมื่อได้บัพ:
+          - สวิตช์ Auto Mutation สามารถเปิดทิ้งไว้ได้ตลอดเวลา (ไม่ตัดสวิตช์ปิดเอง)
+          - ทำงานอัตโนมัติเมื่อพร้อม (มีเงิน + มีตัวละครที่ยังไม่ได้บัพ)
+          - เมื่อตัวละครที่เลือกได้บัพเป้าหมายครบหมดแล้ว จะหยุดยิงคำสั่งทันที (สแตนด์บาย 0% Remote Spam)
+          - เมื่อสวมใส่ตัวละครใหม่เข้ามา ระบบจะตรวจพบและเริ่มสุ่มให้ต่อเนื่องอัตโนมัติทันที
+    ✅ 2. ฟังก์ชันขายตัวละครในโซนเก่า และเก็บตัวละครโซนปัจจุบันไว้ทั้งหมด 100%:
+          - คัดแยกตัวละครอัตโนมัติผ่าน MineInventory.Collect & DropZone
+          - ตัวละครโซนปัจจุบัน (Current Zone) -> เก็บไว้ทั้งหมด 100% ไม่แตะต้อง
+          - ตัวละครที่สวมใส่อยู่บนแท่น (Equipped on Holders) -> ป้องกัน 100% ไม่ขายเด็ดขาด
+          - ตัวละครจากโซนเก่า (Old Zones) -> นำไปขายที่ร้านค้าเพื่อเปลี่ยนเป็นเงินสดมหาศาล
+          - มีปุ่ม [⚡ ขายตัวละครโซนเก่าทันที] ให้กดใช้งานได้ทุกเวลา
+    ✅ 3. เรียงลำดับขั้นตอนการยิงคำสั่งตาม Priority 1 ถึง 7:
+          1. เก็บของ -> 2. ขายของ (แร่ + ตัวละครโซนเก่า) -> 3. อัปเกรดต้นไม้ -> 4. ซื้อขวาน
+          5. อัปเกรดสถิติ (จัดตาม Base DMG Lv.1) -> 6. สุ่มการกลายพันธุ์ (Base DMG Lv.1) -> 7. อื่นๆ
+    ✅ 4. Auto-Save & Auto-Load การตั้งค่าลง AnimeMine_Config.json
+    ✅ 5. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
+          loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 ]]
 
 local Players = game:GetService("Players")
@@ -30,10 +33,11 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local GameState = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GameState"))
 local MineConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineConfig"))
+local MineInventory = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineInventory"))
 local Items = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Items"))
 
 -- ═══════════════════════════════════════════════
--- 🛡️ RATE LIMITER & HUMAN DELAY
+-- 🛡️ RATE LIMITER & HUMAN DELAY & HELPERS
 -- ═══════════════════════════════════════════════
 local function HumanWait(minSec, maxSec)
     minSec = minSec or 0.08
@@ -43,7 +47,13 @@ end
 
 local function FormatNumber(n)
     n = tonumber(n) or 0
-    if n >= 1e18 then
+    if n >= 1e27 then
+        return string.format("%.2fOc", n / 1e27)
+    elseif n >= 1e24 then
+        return string.format("%.2fSp", n / 1e24)
+    elseif n >= 1e21 then
+        return string.format("%.2fSx", n / 1e21)
+    elseif n >= 1e18 then
         return string.format("%.2fQi", n / 1e18)
     elseif n >= 1e15 then
         return string.format("%.2fQa", n / 1e15)
@@ -74,6 +84,34 @@ local function GetCharBaseDamage(charName)
     return 0
 end
 
+-- คัดเลือกคีย์ตัวละครเฉพาะในโซนเก่า (ไม่รวมโซนปัจจุบัน และไม่รวมตัวที่สวมใส่)
+local function GetOldZoneCharacterKeys(mg)
+    if not (MineInventory and MineInventory.Collect) then return {} end
+    local allItems = MineInventory.Collect(mg)
+    local curZone = mg and mg.CurrentZone or 1
+    local equippedNames = {}
+    for _, h in pairs(mg and mg.Holders or {}) do
+        if h and h.CharName then
+            equippedNames[h.CharName] = true
+        end
+    end
+
+    local keys = {}
+    for _, it in ipairs(allItems or {}) do
+        if it.Kind == "Character" then
+            local zone = it.Zone or (MineInventory.DropZoneOf and MineInventory.DropZoneOf(it))
+            local name = it.Name or (it.Item and it.Item.ItemName) or it.Key
+            -- เฉพาะตัวละครจากโซนเก่า และต้องไม่สวมใส่อยู่บนแท่น
+            if zone and zone < curZone and not equippedNames[name] then
+                if MineConfig.CanSellCharacter and MineConfig.CanSellCharacter(it.Item or it) then
+                    table.insert(keys, it.Key)
+                end
+            end
+        end
+    end
+    return keys
+end
+
 -- ═══════════════════════════════════════════════
 -- 🎯 CONFIG STATE & AUTO-SAVE SYSTEM
 -- ═══════════════════════════════════════════════
@@ -83,6 +121,7 @@ local Config = {
     AutoMine = true,
     AutoChest = true,
     AutoSell = true,
+    AutoSellOldChars = true, -- ขายตัวละครโซนเก่าอัตโนมัติ
     AutoBuyBestPickaxe = true,
     AutoBuyZone = true,
     AutoUpgradeTree = true,
@@ -110,7 +149,10 @@ local Config = {
         ["Rainbow"] = true,
         ["Inferno"] = true,
         ["Unreal"] = true,
-        ["Paradox"] = true
+        ["Paradox"] = true,
+        ["Nightmare"] = true,
+        ["Frozen"] = true,
+        ["Unleashed"] = true
     },
     AntiAFK = true
 }
@@ -135,6 +177,7 @@ local function SaveConfig()
                 AutoMine = Config.AutoMine,
                 AutoChest = Config.AutoChest,
                 AutoSell = Config.AutoSell,
+                AutoSellOldChars = Config.AutoSellOldChars,
                 AutoBuyBestPickaxe = Config.AutoBuyBestPickaxe,
                 AutoBuyZone = Config.AutoBuyZone,
                 AutoUpgradeTree = Config.AutoUpgradeTree,
@@ -193,13 +236,13 @@ end
 -- ═══════════════════════════════════════════════
 -- 🎨 UI SYSTEM
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9"}) do
+for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10"}) do
     local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV9"
+ScreenGui.Name = "AnimeMineAutoFarmV10"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -219,13 +262,14 @@ local Theme = {
     ChipActive = Color3.fromRGB(142, 68, 173),
     ChipInactive = Color3.fromRGB(36, 36, 52),
     ChipLocked = Color3.fromRGB(39, 174, 96),
-    BadgeBG = Color3.fromRGB(38, 32, 60)
+    BadgeBG = Color3.fromRGB(38, 32, 60),
+    SpecialBtn = Color3.fromRGB(230, 126, 34)
 }
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 370, 0, 600)
-MainFrame.Position = UDim2.new(0, 20, 0.5, -300)
+MainFrame.Size = UDim2.new(0, 370, 0, 620)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -310)
 MainFrame.BackgroundColor3 = Theme.Background
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
@@ -263,7 +307,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 175, 1, 0)
 Title.Position = UDim2.new(0, 14, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V9"
+Title.Text = "⛏️ Auto Farm Suite V10"
 Title.TextColor3 = Theme.Text
 Title.TextSize = 15
 Title.Font = Enum.Font.GothamBold
@@ -436,6 +480,59 @@ local function AddToggle(key, name, desc, order)
         UpdateVisual(Config[key])
         SaveConfig()
     end)
+    return Frame
+end
+
+local function AddActionButton(name, desc, btnText, btnColor, callback, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 44)
+    Frame.BackgroundColor3 = Theme.Button
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order
+    Frame.Parent = Scroll
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 8)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -125, 0, 18)
+    tLbl.Position = UDim2.new(0, 12, 0, 5)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = name
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 11
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local dLbl = Instance.new("TextLabel")
+    dLbl.Size = UDim2.new(1, -125, 0, 14)
+    dLbl.Position = UDim2.new(0, 12, 0, 23)
+    dLbl.BackgroundTransparency = 1
+    dLbl.Text = desc
+    dLbl.TextColor3 = Theme.SubText
+    dLbl.TextSize = 10
+    dLbl.Font = Enum.Font.Gotham
+    dLbl.TextXAlignment = Enum.TextXAlignment.Left
+    dLbl.Parent = Frame
+
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(0, 105, 0, 26)
+    Btn.Position = UDim2.new(1, -117, 0.5, -13)
+    Btn.BackgroundColor3 = btnColor or Theme.BadgeBG
+    Btn.Text = btnText
+    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Btn.TextSize = 10
+    Btn.Font = Enum.Font.GothamBold
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Frame
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = Btn
+
+    Btn.MouseButton1Click:Connect(callback)
     return Frame
 end
 
@@ -689,7 +786,7 @@ local function AddMultiSlotSelector(order)
             end
         end
 
-        StatusSubLabel.Text = string.format("เลือกทั้งหมด: %d แท่น | ล็อคแล้ว: %d | รอดำเนินการ: %d (สุ่มตัว Base DMG สูงสุดก่อน)", totalSelected, lockedCount, math.max(0, totalSelected - lockedCount))
+        StatusSubLabel.Text = string.format("เลือกทั้งหมด: %d แท่น | ล็อคแล้ว: %d | รอดำเนินการ: %d (เปิดค้างได้ สุ่มตัว Base DMG สูงสุดก่อน)", totalSelected, lockedCount, math.max(0, totalSelected - lockedCount))
     end
 
     for _, sName in ipairs(availableSlots) do
@@ -813,10 +910,38 @@ end
 -- ═══════════════════════════════════════════════
 AddCategory("📦 1. เก็บของ & 💰 2. ขายของ", 1)
 AddToggle("AutoChest", "1. Auto Take Chest (เก็บของ)", "ดูดแร่จากหีบเข้ากระเป๋าเมื่อหินแตก", 2)
-AddToggle("AutoSell", "2. Auto Sell (ขายของ)", "เมื่อมีแร่ วาร์ปไปขายที่ SellStand รับเงินสด", 3)
+AddToggle("AutoSell", "2. Auto Sell Ores (ขายแร่)", "เมื่อมีแร่ วาร์ปไปขายที่ SellStand รับเงินสด", 3)
+AddToggle("AutoSellOldChars", "3. Auto Sell Old Zone Chars", "ขายตัวละครโซนเก่าทิ้งอัตโนมัติ (เก็บตัวละครโซนปัจจุบันไว้ 100%)", 4)
+AddActionButton("⚡ ขายตัวละครโซนเก่าทันที", "วาร์ปไปขายตัวละครในคลังจากโซนเก่าทั้งหมดรอบเดียว", "ขายทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local d2 = GameState.GetData2()
+        local mg = d2 and d2.MineGame
+        local oldKeys = GetOldZoneCharacterKeys(mg)
+        if #oldKeys == 0 then
+            UpdateStatus("ℹ️ ไม่มีตัวละครโซนเก่าให้ขาย")
+            return
+        end
+        local char = LocalPlayer.Character
+        local sellStand = workspace:FindFirstChild("SellStand")
+        local myPlot = GetMyPlot()
+        local returnPlot = (myPlot and myPlot:FindFirstChild("PlotSpawn") and (myPlot.PlotSpawn.CFrame + Vector3.new(0, 3, 0))) or (myPlot and (myPlot:GetPivot() + Vector3.new(0, 4, 0)))
+        if char and sellStand then
+            UpdateStatus(string.format("💰 ขายตัวละครโซนเก่า (%d ชุด)...", #oldKeys))
+            char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
+            HumanWait(0.35, 0.5)
+            GameState.SendEvent("MineSellItems", oldKeys)
+            HumanWait(0.35, 0.5)
+            if returnPlot then
+                char:PivotTo(returnPlot)
+                HumanWait(0.2, 0.3)
+            end
+            UpdateStatus(string.format("✅ ขายตัวละครโซนเก่า %d ชุดสำเร็จ!", #oldKeys))
+        end
+    end)
+end, 5)
 
 AddCategory("🌳 3. อัปเกรดต้นไม้ & แกนหลัก", 10)
-AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด", 11)
+AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", 11)
 AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", 12)
 
 AddCategory("🪓 4. ซื้อขวานร้านค้า", 20)
@@ -828,8 +953,8 @@ AddLevelCapCustomInput("🎯 เป้าหมาย Damage (1-100):", "TargetL
 AddLevelCapCustomInput("🎯 เป้าหมาย Speed (1-17):", "TargetLevelSpeed", 1, 17, 1, 33)
 AddLevelCapCustomInput("🎯 เป้าหมาย MineSpeed (1-16):", "TargetLevelMineSpeed", 1, 16, 1, 34)
 
-AddCategory("🧬 6. สุ่มการกลายพันธุ์ (เรียงตาม Base DMG Lv.1)", 40)
-AddToggle("AutoMutation", "Auto Mutation Roll", "สุ่มบัพตัวละครที่มีค่าพลังพื้นฐานมากที่สุดก่อน และล็อคเมื่อได้", 41)
+AddCategory("🧬 6. สุ่มการกลายพันธุ์ (เปิดค้างได้ + ล็อคอัตโนมัติ)", 40)
+AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ (ไม่ปิดสวิตช์)", 41)
 AddMultiSlotSelector(42)
 AddMultiMutationSelector(43)
 
@@ -872,7 +997,7 @@ MinBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     MinBtn.Text = isMinimized and "+" or "—"
     TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
-        Size = isMinimized and UDim2.new(0, 370, 0, 50) or UDim2.new(0, 370, 0, 600)
+        Size = isMinimized and UDim2.new(0, 370, 0, 50) or UDim2.new(0, 370, 0, 620)
     }):Play()
 end)
 
@@ -913,28 +1038,48 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- ลำดับที่ 2: ขายของ (Auto Sell ที่ร้านค้า SellStand)
+        -- ขายแร่ในกระเป๋า + ขายตัวละครในโซนเก่าทิ้ง (เก็บตัวละครโซนปัจจุบันไว้ทั้งหมด 100%)
         -- -------------------------------------------------------------
         d2 = GameState.GetData2()
         mg = d2 and d2.MineGame
         local ores = mg and mg.Ores
         local hasOres = ores and next(ores) ~= nil
+        local oldCharKeys = Config.AutoSellOldChars and GetOldZoneCharacterKeys(mg) or {}
+        local hasOldChars = #oldCharKeys > 0
+        local shouldSell = hasOres or hasOldChars
         local didTravel = false
         local returnPlotCFrame = (myPlot and myPlot:FindFirstChild("PlotSpawn") and (myPlot.PlotSpawn.CFrame + Vector3.new(0, 3, 0))) or (myPlot and (myPlot:GetPivot() + Vector3.new(0, 4, 0)))
 
-        if Config.AutoSell and hasOres and char then
+        if (Config.AutoSell or Config.AutoSellOldChars) and shouldSell and char then
             local sellStand = workspace:FindFirstChild("SellStand")
             if sellStand then
                 didTravel = true
-                UpdateStatus("💰 วาร์ปไปร้านขายแร่...")
+                local sellStatusText = "💰 วาร์ปไปร้านขายแร่"
+                if hasOldChars then
+                    sellStatusText = sellStatusText .. string.format(" + ขายตัวละครโซนเก่า (%d ชุด)...", #oldCharKeys)
+                else
+                    sellStatusText = sellStatusText .. "..."
+                end
+                UpdateStatus(sellStatusText)
                 char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
                 HumanWait(0.35, 0.5)
 
-                local oreKeys = {}
-                for k in pairs(ores) do
-                    table.insert(oreKeys, k)
+                local sellKeys = {}
+                if Config.AutoSell and hasOres then
+                    for k in pairs(ores) do
+                        table.insert(sellKeys, k)
+                    end
                 end
-                GameState.SendEvent("MineSellItems", oreKeys)
-                HumanWait(0.35, 0.5)
+                if Config.AutoSellOldChars and hasOldChars then
+                    for _, k in ipairs(oldCharKeys) do
+                        table.insert(sellKeys, k)
+                    end
+                end
+
+                if #sellKeys > 0 then
+                    GameState.SendEvent("MineSellItems", sellKeys)
+                    HumanWait(0.35, 0.5)
+                end
 
                 d = GameState:GetData()
                 myMoney = d and tonumber(d.Money) or 0
@@ -949,7 +1094,7 @@ task.spawn(function()
         mg = d2 and d2.MineGame
         myMoney = d and tonumber(d.Money) or 0
 
-        -- 3.1 สกิลต้นไม้ประจำโซน (Batch Upgrade สูงสุด 5 โหนดต่อรอบเพื่อความเร็ว)
+        -- 3.1 สกิลต้นไม้ประจำโซน (Batch Upgrade สูงสุด 5 โหนดต่อรอบ)
         if Config.AutoUpgradeTree and mg then
             local curZone = mg.CurrentZone or 1
             local zoneKey = "Z" .. tostring(curZone)
@@ -1116,6 +1261,7 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- ลำดับที่ 6: สุ่มการกลายพันธุ์ (จัดลำดับจากค่าพลังโจมตีพื้นฐาน Lv.1 มากที่สุดเสมอ)
+        -- เปิดค้างไว้ได้ตลอดเวลา ทำงานเมื่อพร้อม ถ้าได้บัพที่เลือกแล้วจะหยุดยิงคำสั่ง (สแตนด์บาย ไม่ปิดสวิตช์)
         -- -------------------------------------------------------------
         if Config.AutoMutation and mg and mg.Holders then
             local pendingSlots = {}
@@ -1146,16 +1292,10 @@ task.spawn(function()
             table.sort(pendingSlots, function(a, b) return a.baseDmg > b.baseDmg end)
 
             if totalSelected == 0 then
-                -- ยังไม่ได้เลือกแท่น
+                -- ยังไม่ได้เลือกแท่นใดๆ
             elseif #pendingSlots == 0 then
-                -- ทุกตัวที่เลือกได้บัพเป้าหมายครบทั้งหมดแล้ว! ล็อคและปิดระบบ
-                if ToggleControls["AutoMutation"] then
-                    ToggleControls["AutoMutation"].Set(false)
-                else
-                    Config.AutoMutation = false
-                    SaveConfig()
-                end
-                UpdateStatus(string.format("🎉 ครบทุกตัวแล้ว! (ล็อค %d/%d)", lockedCount, totalSelected))
+                -- ทุกตัวที่เลือกได้บัพเป้าหมายครบหมดแล้ว! หยุดยิงคำสั่ง สแตนด์บายรอ (ไม่ปิดสวิตช์!)
+                UpdateStatus(string.format("🎉 ได้บัพครบแล้ว (%d/%d) [สแตนด์บาย]", lockedCount, totalSelected))
             else
                 -- หยิบตัวที่มีพลังโจมตีพื้นฐานเลเวล 1 สูงสุดก่อน
                 local currentTarget = pendingSlots[1]
@@ -1181,6 +1321,8 @@ task.spawn(function()
                             break
                         end
                     end
+                else
+                    UpdateStatus("⏳ รอเงินเพื่อสุ่มบัพ...")
                 end
             end
         end
@@ -1278,4 +1420,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("✅ [AnimeMineAutoFarmV9] โหลดสำเร็จ - เรียงลำดับคำสั่ง 1-7 & ให้ความสำคัญ Base DMG Lv.1 สูงสุด!")
+print("✅ [AnimeMineAutoFarmV10] โหลดสำเร็จ - Smart Zone Clean & Persistent Mutation พร้อมทำงาน!")
