@@ -1109,15 +1109,14 @@ task.spawn(function()
                     local isOpen = MineConfig.IsSkillNodeOpen(zSkills, node)
                     local isMaxed = MineConfig.IsSkillNodeMaxed(zSkills, node)
                     local curLvl = zSkills[node.Family] or 0
-                    local cost = MineConfig.GetSkillCost(zoneKey, node, curLvl + 1)
+                    local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
 
                     if isOpen and not isMaxed and cost and myMoney >= cost then
                         UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id))
                         GameState.SendEvent("MineBuySkill", zoneKey, node.Family, node.Id)
                         myMoney = myMoney - cost
-                        zSkills[node.Family] = (zSkills[node.Family] or 0) + 1
                         upgradedCount = upgradedCount + 1
-                        HumanWait(0.1, 0.16)
+                        HumanWait(0.12, 0.18)
                         if upgradedCount >= 5 then break end
                     end
                 end
