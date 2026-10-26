@@ -918,12 +918,13 @@ task.spawn(function()
         mg = d2 and d2.MineGame
         local ores = mg and mg.Ores
         local hasOres = ores and next(ores) ~= nil
-        local savedPlotPos = nil
+        local didTravel = false
+        local returnPlotCFrame = (myPlot and myPlot:FindFirstChild("PlotSpawn") and (myPlot.PlotSpawn.CFrame + Vector3.new(0, 3, 0))) or (myPlot and (myPlot:GetPivot() + Vector3.new(0, 4, 0)))
 
         if Config.AutoSell and hasOres and hrp then
             local sellStand = workspace:FindFirstChild("SellStand")
             if sellStand then
-                savedPlotPos = hrp.CFrame
+                didTravel = true
                 UpdateStatus("💰 วาร์ปไปร้านขายแร่...")
                 hrp.CFrame = sellStand:GetPivot() + Vector3.new(0, 3, 5)
                 HumanWait(0.35, 0.5)
@@ -1021,6 +1022,7 @@ task.spawn(function()
                 end
 
                 if bestIdx and not ownedPicks[MineConfig.Pickaxes[bestIdx].Name] then
+                    didTravel = true
                     UpdateStatus("🪓 ซื้อขวาน " .. MineConfig.Pickaxes[bestIdx].Name)
                     hrp.CFrame = ps:GetPivot() + Vector3.new(0, 3, 5)
                     HumanWait(0.3, 0.5)
@@ -1031,8 +1033,8 @@ task.spawn(function()
         end
 
         -- หากมีการวาร์ปออกไป ให้วาร์ปกลับแปลง
-        if savedPlotPos and hrp then
-            hrp.CFrame = savedPlotPos
+        if didTravel and hrp and returnPlotCFrame then
+            hrp.CFrame = returnPlotCFrame
             HumanWait(0.25, 0.4)
             UpdateStatus("🏠 กลับถึงแปลงขุด")
         end
