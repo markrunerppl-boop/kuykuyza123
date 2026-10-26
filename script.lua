@@ -921,12 +921,12 @@ task.spawn(function()
         local didTravel = false
         local returnPlotCFrame = (myPlot and myPlot:FindFirstChild("PlotSpawn") and (myPlot.PlotSpawn.CFrame + Vector3.new(0, 3, 0))) or (myPlot and (myPlot:GetPivot() + Vector3.new(0, 4, 0)))
 
-        if Config.AutoSell and hasOres and hrp then
+        if Config.AutoSell and hasOres and char then
             local sellStand = workspace:FindFirstChild("SellStand")
             if sellStand then
                 didTravel = true
                 UpdateStatus("💰 วาร์ปไปร้านขายแร่...")
-                hrp.CFrame = sellStand:GetPivot() + Vector3.new(0, 3, 5)
+                char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
                 HumanWait(0.35, 0.5)
 
                 local oreKeys = {}
@@ -949,7 +949,7 @@ task.spawn(function()
         mg = d2 and d2.MineGame
         myMoney = d and tonumber(d.Money) or 0
 
-        -- 3.1 สกิลต้นไม้ประจำโซน
+        -- 3.1 สกิลต้นไม้ประจำโซน (Batch Upgrade สูงสุด 5 โหนดต่อรอบเพื่อความเร็ว)
         if Config.AutoUpgradeTree and mg then
             local curZone = mg.CurrentZone or 1
             local zoneKey = "Z" .. tostring(curZone)
@@ -959,6 +959,7 @@ task.spawn(function()
 
             local nodes = MineConfig.GetSkillNodes and MineConfig.GetSkillNodes(zoneKey)
             if nodes then
+                local upgradedCount = 0
                 for _, node in ipairs(nodes) do
                     local isOpen = MineConfig.IsSkillNodeOpen(zSkills, node)
                     local isMaxed = MineConfig.IsSkillNodeMaxed(zSkills, node)
@@ -969,8 +970,10 @@ task.spawn(function()
                         UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id))
                         GameState.SendEvent("MineBuySkill", zoneKey, node.Family, node.Id)
                         myMoney = myMoney - cost
-                        HumanWait(0.18, 0.3)
-                        break
+                        zSkills[node.Family] = (zSkills[node.Family] or 0) + 1
+                        upgradedCount = upgradedCount + 1
+                        HumanWait(0.1, 0.16)
+                        if upgradedCount >= 5 then break end
                     end
                 end
             end
@@ -1000,7 +1003,7 @@ task.spawn(function()
         -- -------------------------------------------------------------
         -- ลำดับที่ 4: ซื้อขวาน (Auto Buy Best Pickaxe)
         -- -------------------------------------------------------------
-        if Config.AutoBuyBestPickaxe and hrp then
+        if Config.AutoBuyBestPickaxe and char then
             d2 = GameState.GetData2()
             mg = d2 and d2.MineGame
             d = GameState:GetData()
@@ -1024,7 +1027,7 @@ task.spawn(function()
                 if bestIdx and not ownedPicks[MineConfig.Pickaxes[bestIdx].Name] then
                     didTravel = true
                     UpdateStatus("🪓 ซื้อขวาน " .. MineConfig.Pickaxes[bestIdx].Name)
-                    hrp.CFrame = ps:GetPivot() + Vector3.new(0, 3, 5)
+                    char:PivotTo(ps:GetPivot() + Vector3.new(0, 3, 5))
                     HumanWait(0.3, 0.5)
                     GameState.SendEvent("MineBuyPickaxe", bestIdx)
                     HumanWait(0.4, 0.6)
@@ -1033,8 +1036,8 @@ task.spawn(function()
         end
 
         -- หากมีการวาร์ปออกไป ให้วาร์ปกลับแปลง
-        if didTravel and hrp and returnPlotCFrame then
-            hrp.CFrame = returnPlotCFrame
+        if didTravel and char and returnPlotCFrame then
+            char:PivotTo(returnPlotCFrame)
             HumanWait(0.25, 0.4)
             UpdateStatus("🏠 กลับถึงแปลงขุด")
         end
@@ -1235,6 +1238,21 @@ task.spawn(function()
                             end
                         end
                     end
+                end
+            end
+
+            -- ตรวจสอบปลดล็อกโซนโดยตรงเมื่อวิจัยครบ 100% และเงินพอ
+            local nextZoneIdx = (mg and mg.CurrentZone or 1) + 1
+            local nextZoneKey = "Z" .. nextZoneIdx
+            local nextZoneDef = MineConfig.Zones and MineConfig.Zones[nextZoneKey]
+            if nextZoneDef then
+                local unlockCost = tonumber(nextZoneDef.UnlockCost) or 0
+                local gate = MineConfig.ZoneResearchGateFor and MineConfig.ZoneResearchGateFor(nextZoneKey)
+                local isResearchDone = gate and MineConfig.IsZoneResearchComplete and MineConfig.IsZoneResearchComplete(mg.Skills or {}, gate)
+                if isResearchDone and unlockCost > 0 and myMoney >= unlockCost then
+                    UpdateStatus("🗺️ ปลดล็อกโซน: " .. (nextZoneDef.DisplayName or nextZoneKey))
+                    GameState.SendEvent("MineSelectZone", nextZoneKey)
+                    HumanWait(0.4, 0.6)
                 end
             end
         end
