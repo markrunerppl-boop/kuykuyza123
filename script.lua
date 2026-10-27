@@ -34,6 +34,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local GameState = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GameState"))
 local MineConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineConfig"))
 local MineInventory = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineInventory"))
+local MineStock = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineStock"))
 local Items = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Items"))
 
 -- ═══════════════════════════════════════════════
@@ -1145,36 +1146,95 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- ลำดับที่ 4: ซื้อขวาน (Auto Buy Best Pickaxe)
+        -- ลำดับที่ 4: ซื้อขวานที่ดีที่สุดและออโต้สวมใส่ (Auto Buy & Equip Best Pickaxes)
         -- -------------------------------------------------------------
-        if Config.AutoBuyBestPickaxe and char then
+        if Config.AutoBuyBestPickaxe and mg then
+            d = GameState:GetData()
             d2 = GameState.GetData2()
             mg = d2 and d2.MineGame
-            d = GameState:GetData()
             myMoney = d and tonumber(d.Money) or 0
-            local ps = workspace:FindFirstChild("PickaxesStand")
 
-            if ps and MineConfig.Pickaxes then
-                local ownedPicks = mg and mg.Pickaxes or {}
-                local bestIdx = nil
-                local bestCost = 0
+            -- รวบรวมคนงานทั้งหมดและจัดลำดับตามค่า Base Damage Lv.1 (ตัวแรงสุดได้รับขวานดีสุด)
+            local sortedHolders = {}
+            for slotKey, h in pairs(mg.Holders or {}) do
+                if h and h.CharName then
+                    table.insert(sortedHolders, {
+                        slot = slotKey,
+                        charName = h.CharName,
+                        baseDmg = GetCharBaseDamage(h.CharName),
+                        currentPick = h.Pickaxe
+                    })
+                end
+            end
+            table.sort(sortedHolders, function(a, b) return a.baseDmg > b.baseDmg end)
+
+            local minerCount = #sortedHolders
+            if minerCount > 0 and MineConfig.Pickaxes then
+                -- 4.1 ค้นหาขวานที่ดีที่สุดในร้านค้าที่ปลดล็อกแล้ว มีสต็อก และมีเงินพอซื้อ
+                local bestPick = nil
+                local bestPickIdx = nil
+                local bestMult = -1
 
                 for idx, pick in ipairs(MineConfig.Pickaxes) do
-                    local cost = tonumber(pick.Cost) or 0
-                    local isZoneUnlocked = not pick.ZoneReq or (mg and (mg.UnlockedZones or {})[pick.ZoneReq])
-                    if isZoneUnlocked and myMoney >= cost and cost > bestCost then
-                        bestIdx = idx
-                        bestCost = cost
+                    if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly then
+                        local cost = tonumber(pick.Cost) or (1 / 0)
+                        local mult = tonumber(pick.Multiplier) or 1
+                        local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
+                        local stock = MineStock.GetRemaining and MineStock.GetRemaining(d2, pick.Name) or 0
+
+                        if isZoneUnlocked and myMoney >= cost and stock > 0 then
+                            if mult > bestMult then
+                                bestMult = mult
+                                bestPick = pick
+                                bestPickIdx = idx
+                            end
+                        end
                     end
                 end
 
-                if bestIdx and not ownedPicks[MineConfig.Pickaxes[bestIdx].Name] then
-                    didTravel = true
-                    UpdateStatus("🪓 ซื้อขวาน " .. MineConfig.Pickaxes[bestIdx].Name)
-                    char:PivotTo(ps:GetPivot() + Vector3.new(0, 3, 5))
-                    HumanWait(0.3, 0.5)
-                    GameState.SendEvent("MineBuyPickaxe", bestIdx)
-                    HumanWait(0.4, 0.6)
+                -- หากพบขวานที่ดีที่สุด: ถ้าคนงานทั้งหมดยังมีขวานนี้น้อยกว่าจำนวนคนงาน ให้ซื้อเพิ่ม
+                if bestPick and bestPickIdx then
+                    local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[bestPick.Name]) or 0
+                    if ownedCount < minerCount then
+                        UpdateStatus("🪓 ซื้อขวาน: " .. bestPick.Name .. " (" .. (ownedCount + 1) .. "/" .. minerCount .. ")")
+                        GameState.SendEvent("MineBuyPickaxe", bestPickIdx)
+                        myMoney = myMoney - (tonumber(bestPick.Cost) or 0)
+                        HumanWait(0.2, 0.35)
+                    end
+                end
+
+                -- 4.2 จัดสรรและสวมใส่ขวานที่ดีที่สุดให้คนงานทั้งหมดโดยอัตโนมัติ
+                d2 = GameState.GetData2()
+                mg = d2 and d2.MineGame
+
+                local availablePicks = {}
+                for pName, count in pairs(mg and mg.Pickaxes or {}) do
+                    local countNum = tonumber(count) or 0
+                    local pDef = nil
+                    for _, p in ipairs(MineConfig.Pickaxes) do
+                        if p.Name == pName then pDef = p break end
+                    end
+                    if pDef and countNum > 0 then
+                        for i = 1, countNum do
+                            table.insert(availablePicks, {
+                                name = pName,
+                                mult = tonumber(pDef.Multiplier) or 1
+                            })
+                        end
+                    end
+                end
+                table.sort(availablePicks, function(a, b) return a.mult > b.mult end)
+
+                -- สวมใส่ให้คนงานตามลำดับความแรงของตัวละคร
+                for i, h in ipairs(sortedHolders) do
+                    local target = availablePicks[i]
+                    if target then
+                        local cur = mg.Holders[h.slot] and mg.Holders[h.slot].Pickaxe
+                        if cur ~= target.name then
+                            GameState.SendEvent("MineEquipPickaxe", h.slot, target.name)
+                            HumanWait(0.08, 0.12)
+                        end
+                    end
                 end
             end
         end
