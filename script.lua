@@ -1101,8 +1101,6 @@ task.spawn(function()
             local zoneKey = "Z" .. tostring(curZone)
             local zSkills = (mg.Skills and mg.Skills[zoneKey]) or {}
 
-            GameState.SendEvent("MineSkillTreeSection", zoneKey)
-
             local nodes = MineConfig.GetSkillNodes and MineConfig.GetSkillNodes(zoneKey)
             if nodes then
                 local upgradedCount = 0
@@ -1112,10 +1110,11 @@ task.spawn(function()
                     local curLvl = zSkills[node.Family] or 0
                     local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
 
-                    if isOpen and not isMaxed and cost and myMoney >= cost then
+                    local curMoney = tonumber(GameState:GetData().Money) or 0
+                    if isOpen and not isMaxed and cost and curMoney >= cost then
+                        GameState.SendEvent("MineSkillTreeSection", zoneKey)
                         UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id))
                         GameState.SendEvent("MineBuySkill", zoneKey, node.Family, node.Id)
-                        myMoney = myMoney - cost
                         upgradedCount = upgradedCount + 1
                         HumanWait(0.12, 0.18)
                         if upgradedCount >= 5 then break end
@@ -1133,10 +1132,10 @@ task.spawn(function()
                     local upDef = MineConfig.CoreUpgradeById and MineConfig.CoreUpgradeById[cNode.Family]
                     if upDef and upDef.Cost and upDef.Event then
                         local cost = upDef.Cost(mg[upDef.Field])
-                        if cost and myMoney >= cost then
+                        local curMoney = tonumber(GameState:GetData().Money) or 0
+                        if cost and curMoney >= cost then
                             UpdateStatus("⚙️ อัปแกนหลัก: " .. (cNode.Name or cNode.Id))
                             GameState.SendEvent(upDef.Event)
-                            myMoney = myMoney - cost
                             HumanWait(0.2, 0.35)
                             break
                         end
@@ -1281,10 +1280,10 @@ task.spawn(function()
                     local targetLvl = math.min(Config.TargetLevelDamage, MineConfig.CharMaxLevel or 100)
                     if curLvl < targetLvl then
                         local cost = MineConfig.GetCharacterUpgradeCost(curLvl, item)
-                        if cost and myMoney >= cost then
+                        local curMoney = tonumber(GameState:GetData().Money) or 0
+                        if cost and curMoney >= cost then
                             UpdateStatus(string.format("⚔️ อัป DMG %s [%s]", slotKey, FormatNumber(charInfo.baseDmg)))
                             GameState.SendEvent("MineUpgradeCharacter", slotKey, "Damage")
-                            myMoney = myMoney - cost
                             HumanWait(0.08, 0.15)
                         end
                     end
@@ -1294,10 +1293,10 @@ task.spawn(function()
                     local targetSpd = math.min(Config.TargetLevelSpeed, MineConfig.CharSpeedMaxLevel or 17)
                     if curSpd < targetSpd then
                         local cost = MineConfig.GetCharacterSpeedUpgradeCost(curSpd, item)
-                        if cost and myMoney >= cost then
+                        local curMoney = tonumber(GameState:GetData().Money) or 0
+                        if cost and curMoney >= cost then
                             UpdateStatus("⚡ อัป Speed " .. slotKey)
                             GameState.SendEvent("MineUpgradeCharacter", slotKey, "Speed")
-                            myMoney = myMoney - cost
                             HumanWait(0.08, 0.15)
                         end
                     end
@@ -1307,10 +1306,10 @@ task.spawn(function()
                     local targetMineSpd = math.min(Config.TargetLevelMineSpeed, MineConfig.CharMineSpeedMaxLevel or 16)
                     if curMineSpd < targetMineSpd then
                         local cost = MineConfig.GetCharacterMineSpeedUpgradeCost(curMineSpd, item)
-                        if cost and myMoney >= cost then
+                        local curMoney = tonumber(GameState:GetData().Money) or 0
+                        if cost and curMoney >= cost then
                             UpdateStatus("⛏️ อัป MineSpeed " .. slotKey)
                             GameState.SendEvent("MineUpgradeCharacter", slotKey, "MineSpeed")
-                            myMoney = myMoney - cost
                             HumanWait(0.08, 0.15)
                         end
                     end
@@ -1359,16 +1358,19 @@ task.spawn(function()
                 -- หยิบตัวที่มีพลังโจมตีพื้นฐานเลเวล 1 สูงสุดก่อน
                 local currentTarget = pendingSlots[1]
                 local item = Items.GetItemData(currentTarget.name)
-                local mutCost = item and MineConfig.GetMutationRollCost(item, d2)
+                -- ใช้ mg (d2.MineGame ที่มีตาราง .Skills) เพื่อคำนวณ MutationDensityCostMult ให้ตรงกับ Server จริง 100%
+                local mutCost = item and MineConfig.GetMutationRollCost(item, mg)
+                local curMoney = tonumber(GameState:GetData().Money) or 0
 
-                if mutCost and myMoney >= mutCost then
-                    -- สุ่มแบบ burst 2-3 ครั้ง
+                if mutCost and curMoney >= mutCost then
+                    -- ตรวจสอบเงินสดล่าสุดก่อนยิงคำสั่งสุ่มทุกครั้ง ป้องกัน Server แจ้งเตือนเงินไม่พอ 100%
                     for r = 1, 3 do
-                        if not Config.AutoMutation or myMoney < mutCost then break end
+                        curMoney = tonumber(GameState:GetData().Money) or 0
+                        if not Config.AutoMutation or curMoney < mutCost then break end
+
                         UpdateStatus(string.format("🧬 สุ่ม %s [Base: %s]", currentTarget.slot, FormatNumber(currentTarget.baseDmg)))
                         GameState.SendEvent("MineRollMutation", currentTarget.slot)
-                        myMoney = myMoney - mutCost
-                        HumanWait(0.16, 0.22)
+                        HumanWait(0.22, 0.3)
 
                         local postD2 = GameState.GetData2()
                         local postH = postD2 and postD2.MineGame and postD2.MineGame.Holders and postD2.MineGame.Holders[currentTarget.slot]
@@ -1381,7 +1383,12 @@ task.spawn(function()
                         end
                     end
                 else
-                    UpdateStatus("⏳ รอเงินเพื่อสุ่มบัพ...")
+                    local needMore = (mutCost and curMoney) and (mutCost - curMoney) or 0
+                    if needMore > 0 then
+                        UpdateStatus(string.format("⏳ รอเงินสุ่มบัพ (ขาดอีก %s)", FormatNumber(needMore)))
+                    else
+                        UpdateStatus("⏳ รอเงินเพื่อสุ่มบัพ...")
+                    end
                 end
             end
         end
@@ -1450,7 +1457,8 @@ task.spawn(function()
                 local unlockCost = tonumber(nextZoneDef.UnlockCost) or 0
                 local gate = MineConfig.ZoneResearchGateFor and MineConfig.ZoneResearchGateFor(nextZoneKey)
                 local isResearchDone = gate and MineConfig.IsZoneResearchComplete and MineConfig.IsZoneResearchComplete(mg.Skills or {}, gate)
-                if isResearchDone and unlockCost > 0 and myMoney >= unlockCost then
+                local curMoney = tonumber(GameState:GetData().Money) or 0
+                if isResearchDone and unlockCost > 0 and curMoney >= unlockCost then
                     UpdateStatus("🗺️ ปลดล็อกโซน: " .. (nextZoneDef.DisplayName or nextZoneKey))
                     GameState.SendEvent("MineSelectZone", nextZoneKey)
                     HumanWait(0.4, 0.6)
