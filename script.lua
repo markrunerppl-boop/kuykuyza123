@@ -1292,9 +1292,9 @@ task.spawn(function()
                 local h = charInfo.holder
                 local item = Items.GetItemData(h.CharName)
                 if item then
-                    -- 1. Damage Upgrade Check
+                    -- 1. Damage Upgrade Check (รองรับ 1-200)
                     local curLvl = h.CharLevel or 1
-                    local targetLvl = math.min(Config.TargetLevelDamage, MineConfig.CharMaxLevel or 200)
+                    local targetLvl = math.clamp(tonumber(Config.TargetLevelDamage) or 200, 1, 200)
                     if curLvl < targetLvl then
                         local cost = MineConfig.GetCharacterUpgradeCost(curLvl, item)
                         local curMoney = tonumber(GameState:GetData().Money) or 0
