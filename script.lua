@@ -1,22 +1,24 @@
 --[[
-    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V10 (Smart Zone Clean & Persistent Mutation)
+    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V11 (All-in-One Safe Pipeline)
     ========================================================================
-    ✅ 1. ฟังก์ชันสุ่มบัพกลายพันธุ์ เปิดค้างได้ + หยุดยิงคำสั่งเมื่อได้บัพ:
-          - สวิตช์ Auto Mutation สามารถเปิดทิ้งไว้ได้ตลอดเวลา (ไม่ตัดสวิตช์ปิดเอง)
-          - ทำงานอัตโนมัติเมื่อพร้อม (มีเงิน + มีตัวละครที่ยังไม่ได้บัพ)
-          - เมื่อตัวละครที่เลือกได้บัพเป้าหมายครบหมดแล้ว จะหยุดยิงคำสั่งทันที (สแตนด์บาย 0% Remote Spam)
-          - เมื่อสวมใส่ตัวละครใหม่เข้ามา ระบบจะตรวจพบและเริ่มสุ่มให้ต่อเนื่องอัตโนมัติทันที
-    ✅ 2. ฟังก์ชันขายตัวละครในโซนเก่า และเก็บตัวละครโซนปัจจุบันไว้ทั้งหมด 100%:
-          - คัดแยกตัวละครอัตโนมัติผ่าน MineInventory.Collect & DropZone
-          - ตัวละครโซนปัจจุบัน (Current Zone) -> เก็บไว้ทั้งหมด 100% ไม่แตะต้อง
-          - ตัวละครที่สวมใส่อยู่บนแท่น (Equipped on Holders) -> ป้องกัน 100% ไม่ขายเด็ดขาด
-          - ตัวละครจากโซนเก่า (Old Zones) -> นำไปขายที่ร้านค้าเพื่อเปลี่ยนเป็นเงินสดมหาศาล
-          - มีปุ่ม [⚡ ขายตัวละครโซนเก่าทันที] ให้กดใช้งานได้ทุกเวลา
-    ✅ 3. เรียงลำดับขั้นตอนการยิงคำสั่งตาม Priority 1 ถึง 7:
-          1. เก็บของ -> 2. ขายของ (แร่ + ตัวละครโซนเก่า) -> 3. อัปเกรดต้นไม้ -> 4. ซื้อขวาน
-          5. อัปเกรดสถิติ (จัดตาม Base DMG Lv.1) -> 6. สุ่มการกลายพันธุ์ (Base DMG Lv.1) -> 7. อื่นๆ
-    ✅ 4. Auto-Save & Auto-Load การตั้งค่าลง AnimeMine_Config.json
-    ✅ 5. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
+    ✅ 1. อัพระดับ Damage สถิติให้ตันแบบระบุตัวเลขได้:
+          - กำหนดเลเวลเป้าหมายได้อิสระ (1-100) หรือกดปุ่ม [ตัน] เพื่อตั้งค่าเลเวล 100 ทันที
+          - ป้องกันการอัปเกินค่า MaxLevel และตรวจเช็คเงินสดทุกครั้งก่อนยิงคำสั่ง
+    ✅ 2. เพิ่มฟังก์ชันสุ่มลูกเต๋าเวทมนต์ (Auto Roll Enchanted Dice):
+          - ตรวจสอบการปลดล็อกแท่น Enchant และจำนวนลูกเต๋า (DiceCount > 0) ก่อนยิงคำสั่ง
+          - รองรับทั้ง EnchantDice ปกติ และ HalloweenDice อัตโนมัติ (สแตนด์บาย 0% Spam เมื่อหมด)
+    ✅ 3. เพิ่มฟังก์ชันสุ่มม้วนอัญเชิญ (Auto Roll Summon Scrolls):
+          - ตรวจสอบการปลดล็อกศาลเจ้า Summon และจำนวนม้วนอัญเชิญ (ScrollCount > 0) ก่อนยิงคำสั่ง
+          - สุ่มครั้งละสูงสุด 10 ม้วนตามจำนวนที่มีจริง (สแตนด์บาย 0% Spam เมื่อหมด)
+    ✅ 4. Pre-flight Checks เคร่งครัดทุกฟังก์ชัน 100%:
+          - ตรวจสอบยอดเงินคงเหลือและสต็อกจริงแบบ Real-time ก่อนยิงทุก Remote Event
+          - หมดปัญหาข้อความเตือน "เงินไม่พอ" หรือยิงคำสั่งซ้ำซ้อน
+    ✅ 5. ทุกฟังก์ชันสามารถเปิดพร้อมกันได้ 100% เรียงตามลำดับ Priority 1 -> 9:
+          1. เก็บของ -> 2. ขายของ (แร่ + โซนเก่า) -> 3. ต้นไม้ & แกนหลัก -> 4. ซื้อขวาน
+          5. สถิติตัวละคร (จัดตาม Base DMG) -> 6. สุ่มการกลายพันธุ์ (เปิดค้างได้)
+          7. สุ่มลูกเต๋าเวทมนต์ -> 8. สุ่มม้วนอัญเชิญ -> 9. อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่, Anti-AFK)
+    ✅ 6. Auto-Save & Auto-Load ลง AnimeMine_Config.json
+    ✅ 7. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
           loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 ]]
 
@@ -36,6 +38,8 @@ local MineConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChil
 local MineInventory = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineInventory"))
 local MineStock = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineStock"))
 local Items = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Items"))
+local MineEnchantCatalog = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineEnchantCatalog"))
+local MineSummonCatalog = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineSummonCatalog"))
 
 -- ═══════════════════════════════════════════════
 -- 🛡️ RATE LIMITER & HUMAN DELAY & HELPERS
@@ -130,6 +134,8 @@ local Config = {
     AutoEquipBest = true,
     AutoUpgradeAllChars = true,
     AutoMutation = false,
+    AutoRollDice = false,       -- สุ่มลูกเต๋าเวทมนต์อัตโนมัติ
+    AutoSummonScrolls = false,  -- สุ่มม้วนอัญเชิญอัตโนมัติ
 
     MutationSlots = {
         ["M1"] = true,
@@ -186,6 +192,8 @@ local function SaveConfig()
                 AutoEquipBest = Config.AutoEquipBest,
                 AutoUpgradeAllChars = Config.AutoUpgradeAllChars,
                 AutoMutation = Config.AutoMutation,
+                AutoRollDice = Config.AutoRollDice,
+                AutoSummonScrolls = Config.AutoSummonScrolls,
                 MutationSlots = Config.MutationSlots,
                 TargetLevelDamage = Config.TargetLevelDamage,
                 TargetLevelSpeed = Config.TargetLevelSpeed,
@@ -237,13 +245,13 @@ end
 -- ═══════════════════════════════════════════════
 -- 🎨 UI SYSTEM
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10"}) do
+for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11"}) do
     local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV10"
+ScreenGui.Name = "AnimeMineAutoFarmV11"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -308,7 +316,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 175, 1, 0)
 Title.Position = UDim2.new(0, 14, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V10"
+Title.Text = "⛏️ Auto Farm Suite V11"
 Title.TextColor3 = Theme.Text
 Title.TextSize = 15
 Title.Font = Enum.Font.GothamBold
@@ -647,7 +655,7 @@ local function AddLevelCapCustomInput(title, configKey, minVal, maxVal, step, or
     local MaxBtn = Instance.new("TextButton")
     MaxBtn.Size = UDim2.new(0, 42, 0, 26)
     MaxBtn.BackgroundColor3 = Theme.ChipActive
-    MaxBtn.Text = "MAX"
+    MaxBtn.Text = "ตัน"
     MaxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     MaxBtn.TextSize = 10
     MaxBtn.Font = Enum.Font.GothamBold
@@ -950,20 +958,24 @@ AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวา�
 
 AddCategory("👥 5. อัปเกรดสถิติ (เรียงตาม Base DMG Lv.1)", 30)
 AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", 31)
-AddLevelCapCustomInput("🎯 เป้าหมาย Damage (1-100):", "TargetLevelDamage", 1, 100, 5, 32)
-AddLevelCapCustomInput("🎯 เป้าหมาย Speed (1-17):", "TargetLevelSpeed", 1, 17, 1, 33)
-AddLevelCapCustomInput("🎯 เป้าหมาย MineSpeed (1-16):", "TargetLevelMineSpeed", 1, 16, 1, 34)
+AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-100 / ตัน):", "TargetLevelDamage", 1, 100, 5, 32)
+AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, 33)
+AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, 34)
 
 AddCategory("🧬 6. สุ่มการกลายพันธุ์ (เปิดค้างได้ + ล็อคอัตโนมัติ)", 40)
 AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ (ไม่ปิดสวิตช์)", 41)
 AddMultiSlotSelector(42)
 AddMultiMutationSelector(43)
 
-AddCategory("⛏️ 7. อื่นๆ (ตีหิน, โซนใหม่, สวมใส่, Anti-AFK)", 50)
-AddToggle("AutoMine", "Auto Mine (ตีหินในแปลง)", "ค้นหาและตีหินในแปลงของตัวเองอย่างเป็นระเบียบ", 51)
-AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 52)
-AddToggle("AutoEquipBest", "Auto Equip Best", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วงไม่ส่งซ้ำ)", 53)
-AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 54)
+AddCategory("🎲 7. ลูกเต๋าเวทมนต์ & ม้วนอัญเชิญ", 50)
+AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อลูกเต๋าหมด)", 51)
+AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", 52)
+
+AddCategory("⛏️ 8. อื่นๆ (ตีหิน, โซนใหม่, สวมใส่, Anti-AFK)", 60)
+AddToggle("AutoMine", "Auto Mine (ตีหินในแปลง)", "ค้นหาและตีหินในแปลงของตัวเองอย่างเป็นระเบียบ", 61)
+AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 62)
+AddToggle("AutoEquipBest", "Auto Equip Best", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วงไม่ส่งซ้ำ)", 63)
+AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 64)
 
 -- ═══════════════════════════════════════════════
 -- 🖱️ DRAGGING & MINIMIZE & HOTKEY
@@ -1194,10 +1206,12 @@ task.spawn(function()
                 -- หากพบขวานที่ดีที่สุด: ถ้าคนงานทั้งหมดยังมีขวานนี้น้อยกว่าจำนวนคนงาน ให้ซื้อเพิ่ม
                 if bestPick and bestPickIdx then
                     local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[bestPick.Name]) or 0
-                    if ownedCount < minerCount then
+                    local curMoney = tonumber(GameState:GetData().Money) or 0
+                    local cost = tonumber(bestPick.Cost) or (1 / 0)
+                    if ownedCount < minerCount and curMoney >= cost then
                         UpdateStatus("🪓 ซื้อขวาน: " .. bestPick.Name .. " (" .. (ownedCount + 1) .. "/" .. minerCount .. ")")
                         GameState.SendEvent("MineBuyPickaxe", bestPickIdx)
-                        myMoney = myMoney - (tonumber(bestPick.Cost) or 0)
+                        myMoney = myMoney - cost
                         HumanWait(0.2, 0.35)
                     end
                 end
@@ -1394,7 +1408,48 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- ลำดับที่ 7: อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่ตัวดีที่สุด)
+        -- ลำดับที่ 7: สุ่มลูกเต๋าเวทมนต์ (Auto Roll Enchanted & Halloween Dice)
+        -- ตรวจสอบเงื่อนไขอย่างเคร่งครัด: ต้องปลดล็อกแท่น และมีลูกเต๋า > 0 ก่อนยิงคำสั่ง
+        -- -------------------------------------------------------------
+        if Config.AutoRollDice and mg then
+            local isEnchantUnlocked = MineEnchantCatalog and MineEnchantCatalog.Unlocked and MineEnchantCatalog.Unlocked(mg)
+            if isEnchantUnlocked then
+                local hwDice = (mg and mg.HalloweenDice) or 0
+                local normalDice = (MineConfig.GetEnchantDiceCount and MineConfig.GetEnchantDiceCount(mg)) or (mg and mg.EnchantDice) or 0
+
+                if hwDice > 0 then
+                    local rollCount = math.clamp(hwDice, 1, 5)
+                    UpdateStatus(string.format("🎲 ทอยลูกเต๋า Halloween (%d ลูก)...", rollCount))
+                    GameState.SendEvent("MineRollEnchant", rollCount, "Halloween")
+                    HumanWait(0.3, 0.45)
+                elseif normalDice > 0 then
+                    local rollCount = math.clamp(normalDice, 1, 5)
+                    UpdateStatus(string.format("🎲 ทอยลูกเต๋า Enchant (%d ลูก)...", rollCount))
+                    GameState.SendEvent("MineRollEnchant", rollCount, nil)
+                    HumanWait(0.3, 0.45)
+                end
+            end
+        end
+
+        -- -------------------------------------------------------------
+        -- ลำดับที่ 8: สุ่มม้วนอัญเชิญ (Auto Roll Summon Scrolls)
+        -- ตรวจสอบเงื่อนไขอย่างเคร่งครัด: ต้องปลดล็อกศาลเจ้า และมีม้วน > 0 ก่อนยิงคำสั่ง
+        -- -------------------------------------------------------------
+        if Config.AutoSummonScrolls and mg then
+            local isSummonUnlocked = MineSummonCatalog and MineSummonCatalog.Unlocked and MineSummonCatalog.Unlocked(mg)
+            if isSummonUnlocked then
+                local scrollCount = (MineConfig.GetSummonScrollCount and MineConfig.GetSummonScrollCount(mg)) or (mg and mg.SummonScrolls) or 0
+                if scrollCount > 0 then
+                    local rollCount = math.clamp(scrollCount, 1, 10)
+                    UpdateStatus(string.format("📜 สุ่มม้วนอัญเชิญ (%d ม้วน)...", rollCount))
+                    GameState.SendEvent("MineSummon", rollCount)
+                    HumanWait(0.3, 0.45)
+                end
+            end
+        end
+
+        -- -------------------------------------------------------------
+        -- ลำดับที่ 9: อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่ตัวดีที่สุด)
         -- -------------------------------------------------------------
         -- 7.1 ตีหินในแปลง
         if Config.AutoMine and myPlot and myPlot:FindFirstChild("Nodes") then
@@ -1487,4 +1542,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("✅ [AnimeMineAutoFarmV10] โหลดสำเร็จ - Smart Zone Clean & Persistent Mutation พร้อมทำงาน!")
+print("✅ [AnimeMineAutoFarmV11] โหลดสำเร็จ - All-in-One Safe Pipeline พร้อมทำงาน!")
