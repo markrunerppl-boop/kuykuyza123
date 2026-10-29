@@ -2,7 +2,7 @@
     ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V11 (All-in-One Safe Pipeline)
     ========================================================================
     ✅ 1. อัพระดับ Damage สถิติให้ตันแบบระบุตัวเลขได้:
-          - กำหนดเลเวลเป้าหมายได้อิสระ (1-100) หรือกดปุ่ม [ตัน] เพื่อตั้งค่าเลเวล 100 ทันที
+          - กำหนดเลเวลเป้าหมายได้อิสระ (1-200) หรือกดปุ่ม [ตัน] เพื่อตั้งค่าเลเวล 200 ทันที
           - ป้องกันการอัปเกินค่า MaxLevel และตรวจเช็คเงินสดทุกครั้งก่อนยิงคำสั่ง
     ✅ 2. เพิ่มฟังก์ชันสุ่มลูกเต๋าเวทมนต์ (Auto Roll Enchanted Dice):
           - ตรวจสอบการปลดล็อกแท่น Enchant และจำนวนลูกเต๋า (DiceCount > 0) ก่อนยิงคำสั่ง
@@ -148,7 +148,7 @@ local Config = {
         ["M8"] = true
     },
 
-    TargetLevelDamage = 100,
+    TargetLevelDamage = 200,
     TargetLevelSpeed = 17,
     TargetLevelMineSpeed = 16,
 
@@ -954,11 +954,11 @@ AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "�
 AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", 12)
 
 AddCategory("🪓 4. ซื้อขวานร้านค้า", 20)
-AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวานขั้นที่แพงและดีที่สุดในโซนที่ปลดล็อก", 21)
+AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวานขั้นที่แพงและดีที่สุดเมื่อพร้อม (ไม่จำกัดจำนวน)", 21)
 
 AddCategory("👥 5. อัปเกรดสถิติ (เรียงตาม Base DMG Lv.1)", 30)
 AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", 31)
-AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-100 / ตัน):", "TargetLevelDamage", 1, 100, 5, 32)
+AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, 32)
 AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, 33)
 AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, 34)
 
@@ -1158,6 +1158,7 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- ลำดับที่ 4: ซื้อขวานที่ดีที่สุดและออโต้สวมใส่ (Auto Buy & Equip Best Pickaxes)
+        -- ซื้อขวานที่ดีที่สุดเมื่อพร้อมโดยไม่จำกัดจำนวน
         -- -------------------------------------------------------------
         if Config.AutoBuyBestPickaxe and mg then
             d = GameState:GetData()
@@ -1165,23 +1166,8 @@ task.spawn(function()
             mg = d2 and d2.MineGame
             myMoney = d and tonumber(d.Money) or 0
 
-            -- รวบรวมคนงานทั้งหมดและจัดลำดับตามค่า Base Damage Lv.1 (ตัวแรงสุดได้รับขวานดีสุด)
-            local sortedHolders = {}
-            for slotKey, h in pairs(mg.Holders or {}) do
-                if h and h.CharName then
-                    table.insert(sortedHolders, {
-                        slot = slotKey,
-                        charName = h.CharName,
-                        baseDmg = GetCharBaseDamage(h.CharName),
-                        currentPick = h.Pickaxe
-                    })
-                end
-            end
-            table.sort(sortedHolders, function(a, b) return a.baseDmg > b.baseDmg end)
-
-            local minerCount = #sortedHolders
-            if minerCount > 0 and MineConfig.Pickaxes then
-                -- 4.1 ค้นหาขวานที่ดีที่สุดในร้านค้าที่ปลดล็อกแล้ว มีสต็อก และมีเงินพอซื้อ
+            -- 4.1 ค้นหาขวานที่ดีที่สุดในร้านค้าที่ปลดล็อกแล้ว มีสต็อก และมีเงินพอซื้อ
+            if MineConfig.Pickaxes then
                 local bestPick = nil
                 local bestPickIdx = nil
                 local bestMult = -1
@@ -1203,20 +1189,37 @@ task.spawn(function()
                     end
                 end
 
-                -- หากพบขวานที่ดีที่สุด: ถ้าคนงานทั้งหมดยังมีขวานนี้น้อยกว่าจำนวนคนงาน ให้ซื้อเพิ่ม
+                -- ซื้อขวานที่ดีที่สุดทันทีเมื่อพร้อม (ไม่จำกัดจำนวน)
                 if bestPick and bestPickIdx then
-                    local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[bestPick.Name]) or 0
                     local curMoney = tonumber(GameState:GetData().Money) or 0
                     local cost = tonumber(bestPick.Cost) or (1 / 0)
-                    if ownedCount < minerCount and curMoney >= cost then
-                        UpdateStatus("🪓 ซื้อขวาน: " .. bestPick.Name .. " (" .. (ownedCount + 1) .. "/" .. minerCount .. ")")
+                    local stock = MineStock.GetRemaining and MineStock.GetRemaining(d2, bestPick.Name) or 0
+                    local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[bestPick.Name]) or 0
+
+                    if curMoney >= cost and stock > 0 then
+                        UpdateStatus(string.format("🪓 ซื้อขวาน: %s (มีแล้ว %d ชิ้น)", bestPick.Name, ownedCount))
                         GameState.SendEvent("MineBuyPickaxe", bestPickIdx)
                         myMoney = myMoney - cost
                         HumanWait(0.2, 0.35)
                     end
                 end
+            end
 
-                -- 4.2 จัดสรรและสวมใส่ขวานที่ดีที่สุดให้คนงานทั้งหมดโดยอัตโนมัติ
+            -- 4.2 จัดสรรและสวมใส่ขวานที่ดีที่สุดให้คนงานทั้งหมดโดยอัตโนมัติ
+            local sortedHolders = {}
+            for slotKey, h in pairs(mg.Holders or {}) do
+                if h and h.CharName then
+                    table.insert(sortedHolders, {
+                        slot = slotKey,
+                        charName = h.CharName,
+                        baseDmg = GetCharBaseDamage(h.CharName),
+                        currentPick = h.Pickaxe
+                    })
+                end
+            end
+            table.sort(sortedHolders, function(a, b) return a.baseDmg > b.baseDmg end)
+
+            if #sortedHolders > 0 and MineConfig.Pickaxes then
                 d2 = GameState.GetData2()
                 mg = d2 and d2.MineGame
 
@@ -1291,7 +1294,7 @@ task.spawn(function()
                 if item then
                     -- 1. Damage Upgrade Check
                     local curLvl = h.CharLevel or 1
-                    local targetLvl = math.min(Config.TargetLevelDamage, MineConfig.CharMaxLevel or 100)
+                    local targetLvl = math.min(Config.TargetLevelDamage, MineConfig.CharMaxLevel or 200)
                     if curLvl < targetLvl then
                         local cost = MineConfig.GetCharacterUpgradeCost(curLvl, item)
                         local curMoney = tonumber(GameState:GetData().Money) or 0
