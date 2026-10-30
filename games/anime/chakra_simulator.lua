@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Native Input Hooks | Auto Clear Stages 1-15 | Smart Retreat & Cashout
-    Version: 8.5.1
+    Architecture: Native Input Hooks | Auto Clear Stages 1-15 | Instant Fast Loop
+    Version: 8.6.0 (High Performance Instant Stage Looper)
     ========================================================================
 --]]
 
@@ -72,16 +72,14 @@ local Config = {
         AutoClaimAll = true,       -- เคลมของขวัญและเควสต์
     },
     Delays = {
-        FastLoop = 0.05,
+        FastLoop = 0.04,
         SlowLoop = 3.0,
         SkillECooldown = 3.5,
         SkillRCooldown = 6.0,
     },
     Stages = {
-        MaxCombatTime = 12,            -- สู้มอนสเตอร์เกิน 12 วินาที ถือว่าสู้ไม่ไหว
-        HealthRetreatThreshold = 0.35, -- เลือดต่ำกว่า 35% ให้รีบถอยไปเก็บถ้วยทันที
-        MinHealthToEnterStage1 = 0.65, -- ต้องมีเลือดอย่างน้อย 65% ที่ Hub ก่อนเริ่มรอบใหม่
-        RestartDelay = 1.0,            -- หน่วงเวลาขั้นต่ำที่ Hub
+        MaxCombatTime = 10,            -- สู้มอนสเตอร์เกิน 10 วินาที ถือว่าสู้ไม่ไหว
+        HealthRetreatThreshold = 0.30, -- เลือดต่ำกว่า 30% ให้รีบถอยไปเก็บถ้วยทันที
     }
 }
 
@@ -90,7 +88,6 @@ local State = {
     CurrentStage = 1,
     LastStage = 0,
     StageStartTime = tick(),
-    RetreatCooldownUntil = 0,
     StatusText = "พร้อมทำงาน",
 }
 
@@ -134,7 +131,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & RETREAT ENGINE
+-- 4. SMART STAGE RUNNER & RETREAT ENGINE (INSTANT & SEAMLESS)
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -160,7 +157,7 @@ local function RetreatAndClaimTrophies(retreatStage)
     if not root then return end
 
     if retreatStage and retreatStage >= 1 then
-        State.StatusText = "⚠️ สู้ไม่ไหว! กำลังถอยไปเก็บถ้วย Stage " .. retreatStage .. "..."
+        State.StatusText = "🏆 เก็บถ้วยด่าน " .. retreatStage .. " แล้วเริ่มรอบใหม่ทันที!"
         local padPos = nil
         if World and World.padPosition then
             pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
@@ -169,25 +166,25 @@ local function RetreatAndClaimTrophies(retreatStage)
             padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
         end
 
-        -- วาร์ปไปเหยียบ PadGold ของด่านที่ผ่านแล้ว
+        -- วาร์ปไปเหยียบแท่นถ้วยทอง PadGold
         root.CFrame = CFrame.new(padPos + Vector3.new(0, 2.0, 0))
         root.AssemblyLinearVelocity = Vector3.zero
-        task.wait(0.2)
+        task.wait(0.12)
 
-        -- ยิงคำสั่งเก็บถ้วยรางวัลเข้าเซิร์ฟเวอร์
+        -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
         pcall(function()
             PadRemote:FireServer(retreatStage, "gold")
         end)
-        task.wait(0.3)
-    else
-        State.StatusText = "⚠️ สู้ Stage 1 ไม่ไหว! วาร์ปกลับ Hub พักฟื้น..."
+        task.wait(0.15)
     end
 
-    -- วาร์ปกลับจุด Hub Spawn
-    TeleportToHub()
-    State.LastStage = 0
-    State.RetreatCooldownUntil = tick() + Config.Stages.RestartDelay
-    State.StatusText = "พักฟื้นที่ Hub ฟื้นเลือดก่อนเริ่มรอบใหม่..."
+    -- เริ่มรอบใหม่ทันทีโดยไม่ต้องยืนรอรีเจนเลือดที่ Hub!
+    root.CFrame = CFrame.new(0, 3.5, -45)
+    root.AssemblyLinearVelocity = Vector3.zero
+    State.CurrentStage = 1
+    State.LastStage = 1
+    State.StageStartTime = tick()
+    State.StatusText = "🚀 เริ่มรอบใหม่ทันที (Stage 1)"
 end
 
 local function ProcessStageRunner()
@@ -201,31 +198,14 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าอยู่นอกสเตจ หรืออยู่ที่ Hub
+    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่ที่ Hub ให้พุ่งเข้า Stage 1 ทันทีแบบไม่ต้องรอ
     if not inStages or runStage == 0 then
-        -- ถ้าเลือดยังไม่ถึงเกณฑ์ ให้พักฟื้นและฝึกจักระรอที่ Hub
-        if hpPercent < Config.Stages.MinHealthToEnterStage1 then
-            State.StatusText = string.format("🏠 พักฟื้นเลือดที่ Hub (HP: %d%% / %d%%)...", 
-                math.floor(hpPercent * 100), math.floor(Config.Stages.MinHealthToEnterStage1 * 100))
-            if Input and Input.autoClick then
-                pcall(Input.autoClick)
-            else
-                pcall(function() TrainRemote:FireServer() end)
-            end
-            return
-        end
-
-        if State.RetreatCooldownUntil and tick() < State.RetreatCooldownUntil then
-            return
-        end
-
-        State.StatusText = "🚀 เริ่มรอบใหม่ เข้าสู่ Stage 1..."
-        root.CFrame = CFrame.new(0, 3.5, GetStageCenterZ(1))
+        State.StatusText = "🚀 เข้าสู่ Stage 1..."
+        root.CFrame = CFrame.new(0, 3.5, -45)
         root.AssemblyLinearVelocity = Vector3.zero
         State.CurrentStage = 1
         State.LastStage = 1
         State.StageStartTime = tick()
-        task.wait(0.3)
         return
     end
 
@@ -282,13 +262,12 @@ local function ProcessStageRunner()
             return
         end
 
-        -- เคลียร์แล้ว เดินหน้าเข้าสู่ด่านถัดไปทันที
+        -- เคลียร์แล้ว เดินหน้าเข้าสู่ด่านถัดไปทันทีแบบไร้ดีเลย์
         local nextStage = runStage + 1
         root.CFrame = CFrame.new(0, 3.5, GetStageCenterZ(nextStage))
         root.AssemblyLinearVelocity = Vector3.zero
         State.LastStage = nextStage
         State.StageStartTime = tick()
-        task.wait(0.2)
     end
 end
 
@@ -511,7 +490,8 @@ TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.5)"
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.6)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -573,6 +553,7 @@ StatusBoxStroke.Color = Color3.fromRGB(45, 52, 75)
 StatusBoxStroke.Parent = StatusBox
 
 local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
 StatusLabel.Size = UDim2.new(1, -12, 1, 0)
 StatusLabel.Position = UDim2.new(0, 6, 0, 0)
 StatusLabel.BackgroundTransparency = 1
@@ -588,7 +569,7 @@ task.spawn(function()
         pcall(function()
             StatusLabel.Text = "📌 " .. State.StatusText
         end)
-        task.wait(0.2)
+        task.wait(0.15)
     end
 end)
 
@@ -656,7 +637,7 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & เก็บถ้วย)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ไหลลื่นรวดเร็ว)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
@@ -671,7 +652,7 @@ AddButton("🚀 วาร์ปเข้าสู่ด่าน Stage 1 ทั�
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root then
-        root.CFrame = CFrame.new(0, 3.5, GetStageCenterZ(1))
+        root.CFrame = CFrame.new(0, 3.5, -45)
         root.AssemblyLinearVelocity = Vector3.zero
         State.LastStage = 1
         State.StageStartTime = tick()
