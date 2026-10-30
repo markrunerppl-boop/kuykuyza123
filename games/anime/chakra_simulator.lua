@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.8.0 (Update 2 & 3 Support: World 5, Kurama Boss, Pet Fuser & Code Automation)
+    Version: 9.8.1 (Safe Kiting & Anti-Death Edition)
     ========================================================================
 --]]
 
@@ -266,7 +266,25 @@ local function StartStageOneProperly()
     pcall(function()
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not root then return end
+
+        -- เช็คสถานะล้ม/ตาย ให้ยิงปลดล็อคเกิดใหม่ทันที
+        local isDowned = LocalPlayer:GetAttribute("Downed") == true
+        if isDowned or (hum and hum.Health <= 0) then
+            State.StatusText = "🩹 กำลังแก้สถานะล้ม/ตาย (Respawn)..."
+            local rev = Remotes and Remotes:FindFirstChild("Revive")
+            if rev then pcall(function() rev:FireServer("no") end) end
+            task.wait(0.5)
+            return
+        end
+
+        -- รอให้เลือดฟื้นฟูอย่างน้อย 70% ก่อนก้าวเข้าด่าน เพื่อไม่ให้โดนตีตายซ้ำ
+        if hum and hum.Health < hum.MaxHealth * 0.70 then
+            State.StatusText = string.format("❤️ กำลังรอฟื้นฟูเลือด... (%d/%d)", math.floor(hum.Health), math.floor(hum.MaxHealth))
+            task.wait(0.4)
+            return
+        end
 
         -- อยู่โลกไหน ให้ลงด่านโลกนั้นเสมอ ไม่มีการสลับกลับโลกเก่าเด็ดขาด
         local curWorld = GetCurrentWorld()
@@ -359,7 +377,19 @@ local function ProcessStageRunner()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum or hum.Health <= 0 then return end
+    if not root or not hum then return end
+
+    -- ฟื้นชีพทันทีเมื่อเลือดหมดหรือติดสถานะ Downed
+    local isDowned = LocalPlayer:GetAttribute("Downed") == true
+    if hum.Health <= 0 or isDowned then
+        State.StatusText = "🩹 กำลังกดยืนยันเกิดใหม่ (Respawn / Un-Downed)..."
+        local rev = Remotes and Remotes:FindFirstChild("Revive")
+        if rev then
+            pcall(function() rev:FireServer("no") end)
+        end
+        task.wait(0.5)
+        return
+    end
 
     local inStages = LocalPlayer:GetAttribute("InStages")
     local runStage = LocalPlayer:GetAttribute("RunStage") or 0
@@ -381,21 +411,33 @@ local function ProcessStageRunner()
     end
 
     local timeInCombat = tick() - State.StageStartTime
-    local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว / ใกล้ตาย" (ทำงานทุกด่านที่ผ่านด่าน 1 มาแล้ว และมีแท่นทองด่านก่อนหน้าให้เก็บถ้วย)
-    if Config.Automation.AutoRetreat and runStage > 1 and runCleared >= 1 then
-        -- 1. วิกฤตฉุกเฉิน: เลือดต่ำกว่า 20% หรือโดน Downed ให้ถอยไปเก็บถ้วยทันทีแบบไม่มีเงื่อนไข
-        local isEmergency = (hpPercent <= 0.20) or isDowned
-        -- 2. สู้ไม่ไหว: เลือดลดต่ำกว่า 45% หลังจากเข้าสู้ไปแล้วเกิน 0.8 วินาที
-        local isLowHpInCombat = (hpPercent <= Config.Stages.HealthRetreatThreshold) and (timeInCombat >= 0.8)
-        -- 3. ตีนานเกินไป: ตีมอนเกินเวลาที่กำหนด (8 วิ) ถือว่าสู้ไม่ทัน
-        local isTimeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว / ใกล้ตาย"
+    if Config.Automation.AutoRetreat then
+        if runStage > 1 and runCleared >= 1 then
+            -- 1. วิกฤตฉุกเฉิน: เลือดต่ำกว่า 25% หรือโดน Downed ให้ถอยไปเก็บถ้วยทันทีแบบไม่มีเงื่อนไข
+            local isEmergency = (hpPercent <= 0.25) or isDowned
+            -- 2. สู้ไม่ไหว: เลือดลดต่ำกว่า 45% หลังจากเข้าสู้ไปแล้วเกิน 0.8 วินาที
+            local isLowHpInCombat = (hpPercent <= Config.Stages.HealthRetreatThreshold) and (timeInCombat >= 0.8)
+            -- 3. ตีนานเกินไป: ตีมอนเกินเวลาที่กำหนด (8 วิ) ถือว่าสู้ไม่ทัน
+            local isTimeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
 
-        if isEmergency or isLowHpInCombat or isTimeCrit then
-            local retreatTarget = runCleared
-            RetreatAndClaimTrophies(retreatTarget)
-            return
+            if isEmergency or isLowHpInCombat or isTimeCrit then
+                RetreatAndClaimTrophies(runCleared)
+                return
+            end
+        elseif runStage == 1 then
+            -- กรณีอยู่ใน Stage 1 แล้วสู้ไม่ไหว เลือดต่ำกว่า 40% ให้ถอยกลับไปจุดเซฟฮับเพื่อฟื้นเลือด
+            local isEmergency = (hpPercent <= 0.40) or isDowned or (timeInCombat >= Config.Stages.MaxCombatTime)
+            if isEmergency then
+                State.StatusText = "⚠️ เลือดต่ำใน Stage 1 กำลังถอยไปจุดปลอดภัยฟื้นฟู..."
+                local curWorld = GetCurrentWorld()
+                local originX = GetWorldOrigin(curWorld).X
+                root.CFrame = CFrame.new(originX, 4, 46)
+                root.AssemblyLinearVelocity = Vector3.zero
+                task.wait(1.5)
+                return
+            end
         end
     end
 
@@ -406,15 +448,23 @@ local function ProcessStageRunner()
     if enemyCount > 0 then
         local nearest = enemyList[1]
 
-        -- ประชิดมอนสเตอร์ที่ระดับพื้น Y = 3.5 ในระยะ 5 studs
-        local combatPos = nearest.pos + Vector3.new(0, 0.5, 5)
-        if (root.Position - combatPos).Magnitude > 8 then
-            root.CFrame = CFrame.new(combatPos)
-            root.AssemblyLinearVelocity = Vector3.zero
+        -- รักษาระยะห่างปลอดภัย 15 studs (Safe Kiting Distance) ไม่ให้มอนสเตอร์เข้าประชิดตีโดน
+        local toPlayer = (root.Position - nearest.pos)
+        local dir = Vector3.new(toPlayer.X, 0, toPlayer.Z)
+        if dir.Magnitude < 0.1 then
+            dir = Vector3.new(0, 0, 1)
+        else
+            dir = dir.Unit
         end
+        local safeDistance = 15
+        local safeHeight = 4.0
+        local combatPos = nearest.pos + (dir * safeDistance) + Vector3.new(0, safeHeight, 0)
 
-        State.StatusText = string.format("⚔️ Stage %d | มอนในด่าน %d ตัว | เวลา: %.1fs | HP: %d%%", 
-            runStage, enemyCount, timeInCombat, math.floor(hpPercent * 100))
+        root.CFrame = CFrame.new(combatPos, nearest.pos)
+        root.AssemblyLinearVelocity = Vector3.zero
+
+        State.StatusText = string.format("⚔️ Stage %d (ระยะปลอดภัย 15st) | มอน %d ตัว | HP: %d%%", 
+            runStage, enemyCount, math.floor(hpPercent * 100))
 
         ExecuteAttack(nearest)
         ExecuteSkill("E", nearest)
@@ -769,7 +819,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Update 2 & 3 Support v9.8.0)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Anti-Death & Safe Kiting v9.8.1)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
