@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Non-Blocking Safe Architecture | Safe Height Combat | 100% Guaranteed Trophy Cashout
-    Version: 8.9.0 (Anti-Burst Safe Retreat Edition)
+    Architecture: Non-Blocking Safe Architecture | Clear Visual Pad Standoff | Safe Flight Combat
+    Version: 9.0.0 (Ultimate Trophy Cashout & Clear Visuals Edition)
     ========================================================================
 --]]
 
@@ -64,7 +64,6 @@ local Config = {
         AutoSkillR = true,         -- สกิล R (Kamui)
         AutoStages = true,         -- ระบบลงด่านสเตจอัตโนมัติ (Stage 1-15)
         AutoRetreat = true,        -- ถอยไปเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว
-        AutoFullHpRespawn = true,  -- ฟื้นเลือดเต็ม 100% ปลอดภัย ไร้อาการค้าง
         AutoPops = true,           -- กดคูณจักระรูปไฟ
         AutoRebirth = true,        -- เกิดใหม่อัตโนมัติ
         AutoEquipBestAura = true,  -- ใส่ออร่าที่ดีที่สุด
@@ -80,8 +79,9 @@ local Config = {
     },
     Stages = {
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
-        HealthRetreatThreshold = 0.50, -- เลือดเหลือต่ำกว่า 50% ให้รีบถอยทันที (ป้องกันโดนรุมตีวันช็อตตายคาที่)
-        SafeAltitude = 7.5,            -- ลอยตัวสูงกว่ามอนสเตอร์ 7.5 studs เพื่อหลบการโจมตีระยะประชิด
+        HealthRetreatThreshold = 0.60, -- เลือดต่ำกว่า 60% ให้ถอยทันที ปลอดภัยแน่นอน
+        SafeAltitude = 8.0,            -- ลอยตัวสูง 8 studs เหนือหัวมอนสเตอร์เพื่อหลบการโจมตี 100%
+        PadDwellTime = 0.8,            -- ยืนโชว์บนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
     }
 }
 
@@ -134,7 +134,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & RETREAT ENGINE (SAFE BUFFER & NON-BLOCKING)
+-- 4. SMART STAGE RUNNER & VISUAL RETREAT ENGINE
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -144,32 +144,13 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
-local function SafeHealToFullHP()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Health < hum.MaxHealth * 0.75 then
-        State.StatusText = "💖 ฟื้นฟูเลือดเต็ม 100%..."
-        hum.Health = 0
-        local expire = tick() + 2.5
-        while tick() < expire do
-            local c = LocalPlayer.Character
-            local h = c and c:FindFirstChildOfClass("Humanoid")
-            local r = c and c:FindFirstChild("HumanoidRootPart")
-            if c and h and r and h.Health >= h.MaxHealth * 0.8 then
-                break
-            end
-            task.wait(0.15)
-        end
-    end
-end
-
 local function StartStageOneProperly()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    State.StatusText = "🚀 กำลังเข้าสู่ Stage 1..."
-    -- เดินผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
+    State.StatusText = "🚀 เริ่มต้นรอบใหม่ เข้าสู่ Stage 1..."
+    -- ก้าวผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
     root.CFrame = CFrame.new(0, 3.5, -20)
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.12)
@@ -177,7 +158,7 @@ local function StartStageOneProperly()
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.18)
 
-    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 พร้อมระยะปลอดภัย
+    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 พร้อมระยะลอยตัวปลอดภัย
     root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, -75)
     root.AssemblyLinearVelocity = Vector3.zero
     State.CurrentStage = 1
@@ -194,15 +175,13 @@ local function RetreatAndClaimTrophies(retreatStage)
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-        -- ถ้าเลือดหมดหรือตัวละครตายแล้ว จะไม่สามารถเก็บถ้วยบนแท่นได้
         if hum and hum.Health <= 0 then
-            SafeHealToFullHP()
             StartStageOneProperly()
             return
         end
 
         if root and retreatStage and retreatStage >= 1 then
-            State.StatusText = string.format("🏆 สู้ไม่ไหว! กำลังถอยเก็บถ้วย Stage %d...", retreatStage)
+            State.StatusText = string.format("🏆 กำลังเหยียบแท่นทองด่านที่ผ่าน (Stage %d)...", retreatStage)
             local padPos = nil
             if World and World.padPosition then
                 pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
@@ -211,24 +190,20 @@ local function RetreatAndClaimTrophies(retreatStage)
                 padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
             end
 
-            -- วาร์ปไปเหยียบแท่นรับถ้วย PadGold
-            root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.5, 0))
+            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย PadGold ให้เห็นชัดๆ
+            root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.2, 0))
             root.AssemblyLinearVelocity = Vector3.zero
-            task.wait(0.2)
-
+            
             -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
             pcall(function()
                 PadRemote:FireServer(retreatStage, "gold")
             end)
-            task.wait(0.5)
+            
+            -- ยืนอยู่บนแท่นให้เห็นการรับถ้วยรางวัลชัดเจน
+            task.wait(Config.Stages.PadDwellTime)
         end
 
-        -- ฟื้นฟูเลือดให้เต็ม 100% ทันที
-        if Config.Automation.AutoFullHpRespawn then
-            SafeHealToFullHP()
-        end
-
-        -- เริ่มรอบใหม่ที่ Stage 1
+        -- วาร์ปกลับไปเริ่มลูปใหม่ที่ Stage 1 ทันที โดยไม่ฆ่าตัวละคร
         StartStageOneProperly()
     end)
 
@@ -248,11 +223,8 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน ให้เข้า Stage 1
+    -- ถ้าไม่ได้อยู่ในด่าน ให้เริ่ม Stage 1
     if not inStages or runStage == 0 then
-        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.75 then
-            SafeHealToFullHP()
-        end
         StartStageOneProperly()
         return
     end
@@ -268,7 +240,7 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 50% หรือ ตีมอนนานเกิน 8 วินาที)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 60% หรือ ตีมอนเกิน 8 วินาที)
     if Config.Automation.AutoRetreat then
         local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
         local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
@@ -286,11 +258,10 @@ local function ProcessStageRunner()
 
     if enemyCount > 0 then
         local nearest = enemyList[1]
-        local dist = (root.Position - nearest.pos).Magnitude
 
-        -- บินอยู่เหนือหัวมอนสเตอร์ (Safe Altitude) โจมตีลงมา มอนสเตอร์จะตีไม่ถึง!
+        -- ลอยตัวเหนือหัวมอนสเตอร์อย่างปลอดภัย (มอนสเตอร์ฟันไม่ถึง)
         local safePos = nearest.pos + Vector3.new(0, Config.Stages.SafeAltitude, 2)
-        if (root.Position - safePos).Magnitude > 12 then
+        if (root.Position - safePos).Magnitude > 10 then
             root.CFrame = CFrame.new(safePos)
             root.AssemblyLinearVelocity = Vector3.zero
         end
@@ -311,7 +282,7 @@ local function ProcessStageRunner()
             return
         end
 
-        -- เคลียร์แล้ว พุ่งข้ามเข้าสู่ด่านถัดไปทันที
+        -- เคลียร์แล้ว พุ่งลอยตัวเข้าสู่ด่านถัดไปทันที
         local nextStage = runStage + 1
         root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(nextStage))
         root.AssemblyLinearVelocity = Vector3.zero
@@ -543,7 +514,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.9)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.0)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -689,15 +660,12 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ปลอดภัย 100%)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & เห็นแท่นชัดเจน)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
 AddToggle("ถอยเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว (Smart Retreat)", Config.Automation.AutoRetreat, function(v) 
     Config.Automation.AutoRetreat = v 
-end)
-AddToggle("รีเซ็ตเลือดเต็ม 100% ทันทีก่อนเริ่มรอบใหม่", Config.Automation.AutoFullHpRespawn, function(v) 
-    Config.Automation.AutoFullHpRespawn = v 
 end)
 AddButton("🏆 ถอยไปเก็บถ้วยด่านก่อนหน้าทันที (Retreat & Claim)", Color3.fromRGB(160, 100, 30), function()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
