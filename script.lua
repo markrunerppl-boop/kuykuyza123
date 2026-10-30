@@ -2,11 +2,12 @@
     ========================================================================
     [KUYKUY HUB - UNIVERSAL MODULAR LOADER]
     Repository: markrunerppl-boop/kuykuyza123
-    Architecture: PlaceId Routing | Safe Execution | Category Organization
+    Architecture: PlaceId & GameId Routing | Safe Execution | Category Organization
     ========================================================================
 --]]
 
 local PlaceId = game.PlaceId
+local GameId = game.GameId
 local BaseUrl = "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/"
 
 -- ฟังก์ชันแจ้งเตือน (Roblox Notification + F9 Console)
@@ -23,43 +24,76 @@ end
 
 -- ========================================================================
 -- 📌 ฐานข้อมูลรายชื่อแมพ (GAME REGISTRY)
--- วิธีเพิ่มแมพใหม่: ใส่ PlaceId, ชื่อเกม, หมวดหมู่ และ Path ไฟล์ตามตัวอย่าง
+-- วิธีเพิ่มแมพใหม่: ใส่ PlaceId หรือ GameId, ชื่อเกม, หมวดหมู่ และ Path ไฟล์
 -- ========================================================================
 local SupportedGames = {
 
     -- --------------------------------------------------------------------
     -- 🥊 1. หมวด ANIME GAMES (เกมอนิเมะ)
     -- --------------------------------------------------------------------
+    -- แมพ: Chakra Training Simulator
     [97617452700163] = {
         Name = "Chakra Training Simulator",
         Category = "Anime",
         Path = "anime/chakra_simulator.lua"
     },
-    -- แมพอื่นๆ ในอนาคต
-    -- [PlaceId] = {
-    --     Name = "เหมืองอนิเมะของฉัน (Anime Mine)",
-    --     Category = "Anime",
-    --     Path = "anime/anime_mine.lua"
-    -- },
+
+    -- แมพ: เหมืองอนิเมะของฉัน (My Anime Mine)
+    [79389059854988] = {
+        Name = "เหมืองอนิเมะของฉัน (Anime Mine)",
+        Category = "Anime",
+        Path = "anime/anime_mine.lua"
+    },
+
+    -- แมพ: Blox Fruits (ตัวอย่าง)
+    [2753915549] = {
+        Name = "Blox Fruits (Sea 1)",
+        Category = "Anime",
+        Path = "anime/blox_fruits.lua"
+    },
+    [4442272183] = {
+        Name = "Blox Fruits (Sea 2)",
+        Category = "Anime",
+        Path = "anime/blox_fruits.lua"
+    },
+    [7449423635] = {
+        Name = "Blox Fruits (Sea 3)",
+        Category = "Anime",
+        Path = "anime/blox_fruits.lua"
+    },
 
     -- --------------------------------------------------------------------
     -- 🏋️ 2. หมวด SIMULATOR (เกมจำลอง/ฟาร์มพลัง)
     -- --------------------------------------------------------------------
-    -- [PlaceId] = {
-    --     Name = "ชื่อเกม Simulator",
-    --     Category = "Simulator",
-    --     Path = "simulator/example.lua"
-    -- },
+    [13127800756] = {
+        Name = "Arm Wrestle Simulator",
+        Category = "Simulator",
+        Path = "simulator/arm_wrestle.lua"
+    },
+    [8737899170] = {
+        Name = "Pet Simulator 99",
+        Category = "Simulator",
+        Path = "simulator/pet_simulator.lua"
+    },
 
     -- --------------------------------------------------------------------
     -- 🌐 3. หมวด GENERAL / OTHER (เกมอื่นๆ)
     -- --------------------------------------------------------------------
 }
 
+-- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/วาป
+local SupportedUniverses = {
+    [10740316645] = {
+        Name = "เหมืองอนิเมะของฉัน (Anime Mine)",
+        Category = "Anime",
+        Path = "anime/anime_mine.lua"
+    }
+}
+
 -- ========================================================================
 -- 🚀 LOADER ENGINE (ดาวน์โหลดและสั่งรัน)
 -- ========================================================================
-local gameInfo = SupportedGames[PlaceId]
+local gameInfo = SupportedGames[PlaceId] or SupportedUniverses[GameId]
 
 if gameInfo then
     Log("KuyKuy Hub", string.format("ตรวจพบ: %s [%s]", gameInfo.Name, gameInfo.Category), 3)
@@ -78,7 +112,7 @@ if gameInfo then
         end)
 
         if runSuccess then
-            Log("KuyKuy Hub", "โหลดสคริปต์สำเร็จ! ขอให้สนุกกับการเล่น", 3)
+            Log("KuyKuy Hub", "โหลดสคริปต์ " .. gameInfo.Name .. " สำเร็จ!", 3)
         else
             Log("Runtime Error", "เกิดข้อผิดพลาดในการรันสคริปต์: " .. tostring(runError), 7)
             warn("[KuyKuy Hub Error]:", runError)
@@ -88,6 +122,6 @@ if gameInfo then
     end
 else
     -- กรณีเข้าแมพที่ยังไม่ได้ใส่ในลิสต์
-    Log("Unsupported Map", "แมพนี้ยังไม่รองรับในระบบ\nPlaceId: " .. tostring(PlaceId), 5)
-    warn("[KuyKuy Hub] PlaceId not found:", PlaceId)
+    Log("Unsupported Map", string.format("แมพนี้ยังไม่รองรับในระบบ\nPlaceId: %s | GameId: %s", tostring(PlaceId), tostring(GameId)), 5)
+    warn("[KuyKuy Hub] Unknown Game -> PlaceId:", PlaceId, "GameId:", GameId)
 end
