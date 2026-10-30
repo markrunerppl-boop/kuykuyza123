@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.9.0 (Auto Boss Rejoin, Best Chakra Training & Persistent Config)
+    Version: 9.9.1 (Kurama Zero-Damage Dodge, Post-Boss Best Training & Pet Fuser Fix)
     ========================================================================
 --]]
 
@@ -84,7 +84,7 @@ local Config = {
     Tag = "ChakraQA",
     Automation = {
         AutoTrain = true,          -- ฝึกจักระ
-        AutoBestTrain = false,     -- ซ้อมจักระที่จุดที่ดีที่สุดของโลกอัตโนมัติ (มินิเกม/แท่นฝึก)
+        AutoBestTrain = true,      -- ซ้อมจักระที่จุดที่ดีที่สุดของโลกอัตโนมัติ (หลังจบศึกบอส / ช่วงรอบอส)
         AutoAttack = true,         -- โจมตีฟันดาบ/หมัด (มีแอนิเมชันเต็มรูปแบบ)
         AutoSkillE = true,         -- สกิล E
         AutoSkillR = true,         -- สกิล R (Kamui)
@@ -98,7 +98,7 @@ local Config = {
         AutoClaimAll = true,       -- เคลมของขวัญและเควสต์
         AutoRedeemCodes = true,    -- แลกโค้ดอัตโนมัติ (Update Codes)
         AutoFusePets = true,       -- รวมสัตว์เลี้ยง 4 ตัวเป็นระดับสูง (Update 3 Fusing)
-        AutoBoss = false,          -- ร่วมตีบอสคุรามะอัตโนมัติ (Update 2 Boss)
+        AutoBoss = true,           -- ร่วมตีบอสคุรามะอัตโนมัติ (Update 2 Boss & หลบการโจมตี 100%)
     },
     Delays = {
         FastLoop = 0.04,
@@ -107,7 +107,7 @@ local Config = {
         SkillRCooldown = 6.0,
     },
     Stages = {
-        TargetWorld = nil,             -- โลกเป้าหมาย (ถ้าไม่ระบุ จะฟาร์มโลกที่ตัวละครยืนอยู่ปัจจุบันตลอดไป)
+        TargetWorld = 5,               -- โลกเป้าหมาย (ค่าเริ่มต้นโลก 5: Cosmic Void)
         AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
         PadType = "purple",            -- ประเภทแท่น ("purple" = แท่นคูณ 3, "gold" = แท่นทองปกติ)
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
@@ -213,19 +213,22 @@ end
 
 -- 4. SMART STAGE RUNNER WITH MULTI-WORLD 1-4 SUPPORT
 local function GetCurrentWorld()
+    if Config.Stages.TargetWorld and Config.Stages.TargetWorld >= 1 and Config.Stages.TargetWorld <= 5 then
+        return Config.Stages.TargetWorld
+    end
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root and World and World.worldAt then
         local w = World.worldAt(root.Position)
         if w and w >= 1 and w <= 5 then return w end
     end
-    local attrW = LocalPlayer:GetAttribute("World")
-    if attrW and attrW >= 1 and attrW <= 5 then return attrW end
     if StateMod and StateMod.number then
         local stW = StateMod.number("World")
         if stW and stW >= 1 and stW <= 5 then return stW end
     end
-    return 1
+    local attrW = LocalPlayer:GetAttribute("World")
+    if attrW and attrW >= 1 and attrW <= 5 then return attrW end
+    return 5
 end
 
 local function GetWorldOrigin(worldId)
@@ -687,18 +690,27 @@ local function DoAutoFusePets()
     local petTiers = StateMod.petTiers and StateMod.petTiers() or {}
     local groups = FuseLogic.groups and FuseLogic.groups(pets, petTiers) or {}
 
+    local didFuse = false
     for _, group in ipairs(groups) do
-        if #group >= 4 then
-            local uids = {group[1], group[2], group[3], group[4]}
-            pcall(function()
-                FuseFunc:InvokeServer("fuse", uids)
+        local uids = group.uids or group
+        if #uids >= 4 then
+            local fuseList = {tostring(uids[1]), tostring(uids[2]), tostring(uids[3]), tostring(uids[4])}
+            local ok, res = pcall(function()
+                return FuseFunc:InvokeServer("fuse", fuseList)
             end)
-            task.wait(0.4)
+            if ok and res then
+                didFuse = true
+            end
+            task.wait(0.35)
         end
+    end
+    if didFuse then
+        task.wait(0.2)
+        pcall(DoEquipBestPets)
     end
 end
 
--- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2 - พร้อมระบบตายแล้วจอยเข้าใหม่ทันที)
+-- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2 - ระบบหลบการโจมตี 100% ไร้ดาเมจ และตายแล้วจอยเข้าใหม่ทันที)
 local function ProcessBossCombat()
     local phase = Workspace:GetAttribute("BossPhase")
     local hp = Workspace:GetAttribute("BossHp") or 0
@@ -729,7 +741,7 @@ local function ProcessBossCombat()
     local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
 
     if inFight then
-        if dist > 150 then
+        if dist > 140 then
             -- ยังไม่ได้เข้าอารีน่าบอส หรือเพิ่งเกิดใหม่นอกอารีน่า: ทำการวาร์ปเข้าร่วมสู้บอสทันที
             State.StatusText = "🦊 กำลังเข้าร่วมศึกตีบอสคุรามะ (Kurama Boss)..."
             if BossRemote then
@@ -743,32 +755,44 @@ local function ProcessBossCombat()
             end
             task.wait(0.5)
         else
-            -- อยู่ในอารีน่าบอสแล้ว: จัดตำแหน่งปลอดภัย และเล็งเป้าหมายโจมตีบอส
-            local bossLookPos = bossCentre + Vector3.new(0, 15, 0)
-            local safeCombatPos = bossCentre + Vector3.new(0, 12, 55)
-            if (root.Position - safeCombatPos).Magnitude > 20 then
-                root.CFrame = CFrame.new(safeCombatPos, bossLookPos)
-                root.AssemblyLinearVelocity = Vector3.zero
-            end
+            -- อยู่ในอารีน่าบอสแล้ว: บินโคจรหลบการโจมตีบอส 100% (Zero-Damage Sweet Spot)
+            -- บอสโจมตี: กรงเล็บ 56 studs, กวาดหาง 22-72 studs, คำราม 50 studs, ท่าทุบพื้น/ฝนจิ้งจอกระดับพื้น
+            -- ตำแหน่งปลอดภัยสมบูรณ์แบบ: รัศมี 76.5 studs ลอยสูง Y=18 studs พร้อมบินวนหลบระเบิดพื้น
+            local orbitAngle = (tick() * 0.45) % (math.pi * 2)
+            local safeRadius = 76.5
+            local safeCombatPos = bossCentre + Vector3.new(math.cos(orbitAngle) * safeRadius, 18, math.sin(orbitAngle) * safeRadius)
+            local bossLookPos = bossCentre + Vector3.new(0, 16, 0)
 
-            State.StatusText = string.format("🦊⚔️ กำลังรุมโจมตีบอสคุรามะ! HP: %.1f%%", hp * 100)
+            root.CFrame = CFrame.new(safeCombatPos, bossLookPos)
+            root.AssemblyLinearVelocity = Vector3.zero
+
+            State.StatusText = string.format("🦊⚔️ ตีบอสคุรามะ (บินหลบไร้ดาเมจ 76 studs) HP: %.1f%%", hp * 100)
+
+            local BossLogic = nil
+            pcall(function() BossLogic = require(ReplicatedStorage.Shared.Logic.Boss) end)
+            local aimPos = (BossLogic and BossLogic.aimPoint and BossLogic.aimPoint(root.Position.X, root.Position.Z)) or bossLookPos
+            local foeId = (BossLogic and BossLogic.FOE_ID) or 2000000000
+
             local bossTarget = {
                 boss = true,
-                id = "kyubi",
-                pos = bossLookPos
+                id = foeId,
+                pos = aimPos
             }
             ExecuteAttack(bossTarget)
             ExecuteSkill("E", bossTarget)
             ExecuteSkill("R", bossTarget)
         end
     else
-        -- บอสจบลงหรือยังไม่เริ่ม ถ้าตัวยังอยู่ในอารีน่า ให้กลับออกมา
-        if dist <= 150 then
+        -- บอสจบลงหรือยังไม่เริ่ม ถ้าตัวยังอยู่ในอารีน่า ให้กลับออกมาแล้ววาร์ปไปซ้อมจักระทันที
+        if dist <= 140 then
             State.StatusText = "🚪 บอสจบแล้ว กำลังออกจากอารีน่าบอส..."
             if BossRemote then
                 pcall(function() BossRemote:FireServer("leave") end)
             end
-            task.wait(0.5)
+            task.wait(0.4)
+            if Config.Automation.AutoBestTrain then
+                pcall(TeleportToBestTrainingSpot)
+            end
         end
     end
 end
@@ -826,50 +850,63 @@ local function GetBestTrainingSpot(worldId)
 end
 
 local function TeleportToBestTrainingSpot()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    -- ถ้าตัวยังอยู่ในอารีน่าบอส ให้ส่งคำขอออกจากห้องบอสก่อน
+    local bossCentre = Vector3.new(-3000, 0, 300)
+    local inBossDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
+    if inBossDist <= 150 and BossRemote then
+        pcall(function() BossRemote:FireServer("leave") end)
+    end
+
     local curWorld = GetCurrentWorld()
     local best = GetBestTrainingSpot(curWorld)
     if not best then return false end
 
     local originX = GetWorldOrigin(curWorld).X
-    local spotPos = Vector3.new(originX + best.offset.X, 3.5, best.offset.Z)
+    local spotPos = Vector3.new(originX + best.offset.X, 4.5, best.offset.Z)
 
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        root.CFrame = CFrame.new(spotPos)
-        root.AssemblyLinearVelocity = Vector3.zero
-        State.StatusText = string.format("🧘 วาร์ปไปจุดซ้อม %s (คูณ %.1e x) เรียบร้อย", best.spot.name, best.spot.mult or 1)
-        return true
-    end
-    return false
+    root.CFrame = CFrame.new(spotPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    State.StatusText = string.format("🧘 วาร์ปไปจุดซ้อม %s (คูณ %.1e x) เรียบร้อย", best.spot.name, best.spot.mult or 1)
+    return true
 end
 
 local function ProcessBestTraining()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    -- ถ้าตัวยังอยู่ในอารีน่าบอส ให้ส่งคำขอออกจากห้องบอสก่อน
+    local bossCentre = Vector3.new(-3000, 0, 300)
+    local inBossDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
+    if inBossDist <= 150 and BossRemote then
+        pcall(function() BossRemote:FireServer("leave") end)
+    end
+
     local curWorld = GetCurrentWorld()
     local best = GetBestTrainingSpot(curWorld)
     if not best then return end
 
     local originX = GetWorldOrigin(curWorld).X
-    local spotPos = Vector3.new(originX + best.offset.X, 3.5, best.offset.Z)
+    local spotPos = Vector3.new(originX + best.offset.X, 4.5, best.offset.Z)
 
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        -- ยืนประจำตำแหน่งจุดซ้อมที่ดีที่สุด
-        if (root.Position - spotPos).Magnitude > 5 then
-            root.CFrame = CFrame.new(spotPos)
-            root.AssemblyLinearVelocity = Vector3.zero
-        end
+    -- ยืนประจำตำแหน่งจุดซ้อมที่ดีที่สุด
+    if (root.Position - spotPos).Magnitude > 6 then
+        root.CFrame = CFrame.new(spotPos)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end
 
-        local multVal = StateMod and StateMod.number and StateMod.number("TrainMult") or (best.spot.mult or 1)
-        State.StatusText = string.format("🧘 กำลังซ้อมจักระที่ %s (คูณ %.1e x)", best.spot.name, multVal)
+    local multVal = StateMod and StateMod.number and StateMod.number("TrainMult") or (best.spot.mult or 1)
+    State.StatusText = string.format("🧘 กำลังซ้อมจักระที่ %s (คูณ %.1e x)", best.spot.name, multVal)
 
-        -- ซ้อมจักระรวดเร็ว
-        if Input and Input.autoClick then
-            Input.autoClick()
-        else
-            TrainRemote:FireServer()
-        end
+    -- ซ้อมจักระรวดเร็ว
+    if Input and Input.autoClick then
+        Input.autoClick()
+    else
+        TrainRemote:FireServer()
     end
 end
 
@@ -1279,6 +1316,39 @@ AddToggle("เกิดใหม่อัตโนมัติ (Auto Rebirth)", 
 AddButton("🌀 สั่งเกิดใหม่ทันที (Rebirth Now)", Color3.fromRGB(150, 40, 150), function() pcall(DoRebirth) end)
 
 AddSection("💫 6. BEST GEAR & PET FUSER (ออร่า, ดวงตา & รวมสัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
+local PetFuseStatusLabel = Instance.new("TextLabel")
+PetFuseStatusLabel.Size = UDim2.new(1, 0, 0, 20)
+PetFuseStatusLabel.BackgroundTransparency = 1
+PetFuseStatusLabel.Font = Enum.Font.GothamMedium
+PetFuseStatusLabel.TextSize = 10
+PetFuseStatusLabel.TextColor3 = Color3.fromRGB(160, 230, 255)
+PetFuseStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+PetFuseStatusLabel.Text = "🐾 กำลังตรวจสอบสัตว์เลี้ยง..."
+PetFuseStatusLabel.Parent = Content
+
+task.spawn(function()
+    while State.Running do
+        pcall(function()
+            local fuseLogicMod = ReplicatedStorage.Shared.Logic:FindFirstChild("Fuse")
+            if fuseLogicMod and StateMod then
+                local FuseLogic = require(fuseLogicMod)
+                local pets = StateMod.pets and StateMod.pets() or {}
+                local petTiers = StateMod.petTiers and StateMod.petTiers() or {}
+                local groups = FuseLogic.groups and FuseLogic.groups(pets, petTiers) or {}
+                local readyCount = 0
+                for _, g in ipairs(groups) do
+                    local uids = g.uids or g
+                    if #uids >= 4 then
+                        readyCount = readyCount + 1
+                    end
+                end
+                PetFuseStatusLabel.Text = string.format("🐾 สัตว์เลี้ยงพร้อมหลอม: %d กลุ่ม (ต้องการซ้ำ 4 ตัว)", readyCount)
+            end
+        end)
+        task.wait(2.5)
+    end
+end)
+
 AddToggle("ใส่ออร่าที่ดีที่สุด ออโต้ (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
 AddButton("✨ ใส่ออร่าที่ดีที่สุดทันที (Equip Best Aura)", Color3.fromRGB(40, 120, 180), function() pcall(DoEquipBestAura) end)
 AddToggle("ใส่ดวงตาที่ดีที่สุด ออโต้ (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
@@ -1292,6 +1362,28 @@ AddToggle("รับภารกิจ & รางวัลเวลารอ �
 AddToggle("แลกโค้ดทั้งหมดอัตโนมัติ (Auto Redeem Codes)", Config.Automation.AutoRedeemCodes, function(v) Config.Automation.AutoRedeemCodes = v end)
 AddButton("🎁 แลกโค้ดทั้งหมดทันที (7 โค้ดฟรี: AWAKEN, UPDATE2, KURUMA...)", Color3.fromRGB(180, 110, 30), function() 
     task.spawn(DoRedeemAllCodes) 
+end)
+
+AddSection("⚙️ 8. SYSTEM & SETTINGS", Color3.fromRGB(200, 200, 200))
+AddButton("🔄 คืนค่าเริ่มต้นทั้งหมด (Reset Config Defaults)", Color3.fromRGB(130, 45, 45), function()
+    Config.Automation.AutoBoss = true
+    Config.Automation.AutoBestTrain = true
+    Config.Automation.AutoStages = true
+    Config.Automation.AutoFusePets = true
+    Config.Automation.AutoTrain = true
+    Config.Automation.AutoAttack = true
+    Config.Automation.AutoSkillE = true
+    Config.Automation.AutoSkillR = true
+    Config.Automation.AutoRebirth = true
+    Config.Automation.AutoEquipBestAura = true
+    Config.Automation.AutoEquipBestEye = true
+    Config.Automation.AutoEquipBestPets = true
+    Config.Automation.AutoClaimAll = true
+    Config.Automation.AutoPops = true
+    Config.Stages.PadType = "purple"
+    Config.Stages.TargetWorld = 5
+    SaveConfig()
+    State.StatusText = "🔄 คืนค่าเริ่มต้นเรียบร้อย!"
 end)
 
 _G.ChakraQACleanup = function()
