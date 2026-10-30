@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.6.0 (Universal Smart Retreat & Low-HP Pad Claim Edition)
+    Version: 9.7.0 (Pad x3 Multiplier Edition)
     ========================================================================
 --]]
 
@@ -100,9 +100,10 @@ local Config = {
     Stages = {
         TargetWorld = nil,             -- โลกเป้าหมาย (ถ้าไม่ระบุ จะฟาร์มโลกที่ตัวละครยืนอยู่ปัจจุบันตลอดไป)
         AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
+        PadType = "purple",            -- ประเภทแท่น ("purple" = แท่นคูณ 3, "gold" = แท่นทองปกติ)
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
         HealthRetreatThreshold = 0.45, -- เลือดต่ำกว่า 45% ให้ถอยไปเก็บถ้วยทันที ป้องกันโดนบอสตีตาย
-        PadDwellTime = 0.8,            -- ยืนบนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
+        PadDwellTime = 0.8,            -- ยืนบนแท่น 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
         FloorY = 3.5,                  -- ระดับความสูงมาตรฐานที่ระบบทริกเกอร์ของเกมจับได้ 100%
     }
 }
@@ -302,31 +303,36 @@ local function RetreatAndClaimTrophies(retreatStage)
         end
 
         if root and retreatStage and retreatStage >= 1 then
-            State.StatusText = string.format("🏆 กำลังเหยียบแท่นทองด่านที่ผ่าน (โลก %d | Stage %d)...", curWorld, retreatStage)
+            local padType = Config.Stages.PadType or "purple"
+            local isPurple = padType == "purple"
+            local padName = isPurple and "แท่นม่วง x3 (คูณ 3)" or "แท่นทอง"
+            State.StatusText = string.format("🏆 เหยียบ%s ด่านที่ผ่าน (โลก %d | Stage %d)...", padName, curWorld, retreatStage)
+
             local padPos = nil
             if World and World.padPosition then
                 pcall(function()
-                    local localPad = World.padPosition(retreatStage, "gold")
+                    local localPad = World.padPosition(retreatStage, padType)
                     if localPad then
                         padPos = Vector3.new(originX + localPad.X, localPad.Y, localPad.Z)
                     end
                 end)
             end
             if not padPos then
-                padPos = Vector3.new(originX + 20, 0.6, -111 - (retreatStage - 1) * 90)
+                local padOffsetX = isPurple and -20 or 20
+                padPos = Vector3.new(originX + padOffsetX, 0.6, -111 - (retreatStage - 1) * 90)
             end
 
-            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย PadGold ที่ระดับพื้น
+            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย (PadPurple หรือ PadGold) ที่ระดับพื้น
             root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.2, 0))
             root.AssemblyLinearVelocity = Vector3.zero
             
             -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
             pcall(function()
-                PadRemote:FireServer(retreatStage, "gold")
+                PadRemote:FireServer(retreatStage, padType)
             end)
             task.wait(0.15)
             pcall(function()
-                PadRemote:FireServer(retreatStage, "gold")
+                PadRemote:FireServer(retreatStage, padType)
             end)
             
             -- ยืนอยู่บนแท่นให้เห็นการรับถ้วยรางวัลชัดเจน
@@ -807,6 +813,9 @@ AddToggle("ลงด่านสเตจฟาร์มมอนอัตโน
 end)
 AddToggle("ถอยเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว (Smart Retreat)", Config.Automation.AutoRetreat, function(v) 
     Config.Automation.AutoRetreat = v 
+end)
+AddToggle("ยืนแท่นคูณ 3 อัตโนมัติ (Pad x3 Multiplier)", Config.Stages.PadType == "purple", function(v)
+    Config.Stages.PadType = v and "purple" or "gold"
 end)
 
 -- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 4
