@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.7.0 (Pad x3 Multiplier Edition)
+    Version: 9.8.0 (Update 2 & 3 Support: World 5, Kurama Boss, Pet Fuser & Code Automation)
     ========================================================================
 --]]
 
@@ -66,12 +66,17 @@ local UnlockEyeRemote = Remotes and (Remotes:FindFirstChild("UnlockEye") or Remo
 local EquipRemote = Remotes and (Remotes:FindFirstChild("Equip") or Remotes:WaitForChild("Equip", 3))
 local PadRemote = Remotes and (Remotes:FindFirstChild("Pad") or Remotes:WaitForChild("Pad", 3))
 local TeleportRemote = Remotes and (Remotes:FindFirstChild("Teleport") or Remotes:WaitForChild("Teleport", 3))
+local FuseFunc = Remotes and (Remotes:FindFirstChild("Fuse") or Remotes:WaitForChild("Fuse", 3))
+local RedeemCodeFunc = Remotes and (Remotes:FindFirstChild("RedeemCode") or Remotes:WaitForChild("RedeemCode", 3))
+local BossRemote = Remotes and (Remotes:FindFirstChild("Boss") or Remotes:WaitForChild("Boss", 3))
+local BossShopFunc = Remotes and (Remotes:FindFirstChild("BossShop") or Remotes:WaitForChild("BossShop", 3))
 
 local WorldsInfo = {
     [1] = {name = "Shinobi Lands", color = Color3.fromRGB(69, 200, 255), desc = "โลก 1: ดินแดนนินจา"},
     [2] = {name = "Celestial Realm", color = Color3.fromRGB(180, 92, 255), desc = "โลก 2: แดนสวรรค์"},
     [3] = {name = "Blood Moon", color = Color3.fromRGB(255, 46, 77), desc = "โลก 3: พระจันทร์เลือด"},
     [4] = {name = "Frozen Abyss", color = Color3.fromRGB(63, 184, 255), desc = "โลก 4: แดนเยือกแข็ง"},
+    [5] = {name = "Cosmic Void", color = Color3.fromRGB(155, 92, 255), desc = "โลก 5: มิติคอสมิก"},
 }
 
 -- 2. CONFIGURATION
@@ -90,6 +95,9 @@ local Config = {
         AutoEquipBestEye = true,   -- ใส่ดวงตาที่ดีที่สุด
         AutoEquipBestPets = true,  -- ใส่สัตว์เลี้ยงที่ดีที่สุด
         AutoClaimAll = true,       -- เคลมของขวัญและเควสต์
+        AutoRedeemCodes = true,    -- แลกโค้ดอัตโนมัติ (Update Codes)
+        AutoFusePets = true,       -- รวมสัตว์เลี้ยง 4 ตัวเป็นระดับสูง (Update 3 Fusing)
+        AutoBoss = false,          -- ร่วมตีบอสคุรามะอัตโนมัติ (Update 2 Boss)
     },
     Delays = {
         FastLoop = 0.04,
@@ -187,7 +195,7 @@ local function GetWorldOrigin(worldId)
 end
 
 local function TeleportToWorld(targetWorldId)
-    if not targetWorldId or targetWorldId < 1 or targetWorldId > 4 then return false end
+    if not targetWorldId or targetWorldId < 1 or targetWorldId > 5 then return false end
     local curWorld = GetCurrentWorld()
     if curWorld == targetWorldId then return true end
 
@@ -515,16 +523,16 @@ local function DoEquipBestEye()
     local totalWins = StateMod.number("TotalWins") or 0
     local myEyes = StateMod.eyes and StateMod.eyes() or {}
     local currentEye = StateMod.string("Eye")
-    local currentWorld = StateMod.number("World", 1) or 1
 
     local bestEye = nil
     for _, eye in ipairs(Eyes.list or {}) do
         local isUnlocked = myEyes[eye.id] ~= nil
-        local worldOk = (eye.world or 1) <= currentWorld
-        local canUnlock = worldOk and (totalWins >= (eye.wins or 0)) and not eye.pass and not eye.boss and not eye.exclusive
+        local canUnlock = (totalWins >= (eye.wins or 0)) and not eye.pass and not eye.boss and not eye.exclusive
 
         if isUnlocked or canUnlock then
-            bestEye = eye
+            if not bestEye or (eye.mult or 0) > (bestEye.mult or 0) then
+                bestEye = eye
+            end
         end
     end
 
@@ -557,6 +565,96 @@ local function DoClaimAll()
     end
 end
 
+-- แลกโค้ดทั้งหมดอัตโนมัติ (Update 1 & Update 2 Codes)
+local lastCodeRedeemTick = 0
+local function DoRedeemAllCodes()
+    local codesMod = ReplicatedStorage.Shared.Config:FindFirstChild("Codes")
+    if not codesMod or not RedeemCodeFunc then return end
+    local okC, Codes = pcall(require, codesMod)
+    if not okC or not Codes or not Codes.list then return end
+
+    for _, c in ipairs(Codes.list) do
+        pcall(function()
+            RedeemCodeFunc:InvokeServer(c.code)
+        end)
+        task.wait(1.2)
+    end
+end
+
+-- หลอมรวมสัตว์เลี้ยง 4 ตัวเป็นระดับสูงอัตโนมัติ (Update 3 Pet Fusing: Void, Rainbow, Corrupted)
+local function DoAutoFusePets()
+    local fuseLogicMod = ReplicatedStorage.Shared.Logic:FindFirstChild("Fuse")
+    if not fuseLogicMod or not FuseFunc or not StateMod then return end
+    local okF, FuseLogic = pcall(require, fuseLogicMod)
+    if not okF or not FuseLogic then return end
+
+    local pets = StateMod.pets and StateMod.pets() or {}
+    local petTiers = StateMod.petTiers and StateMod.petTiers() or {}
+    local groups = FuseLogic.groups and FuseLogic.groups(pets, petTiers) or {}
+
+    for _, group in ipairs(groups) do
+        if #group >= 4 then
+            local uids = {group[1], group[2], group[3], group[4]}
+            pcall(function()
+                FuseFunc:InvokeServer("fuse", uids)
+            end)
+            task.wait(0.4)
+        end
+    end
+end
+
+-- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2)
+local function ProcessBossCombat()
+    local phase = Workspace:GetAttribute("BossPhase")
+    local hp = Workspace:GetAttribute("BossHp") or 0
+    local inFight = (phase == "fight" and hp > 0)
+    local bossCentre = Vector3.new(-3000, 0, 300)
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
+
+    if inFight then
+        if dist > 150 then
+            -- ยังไม่ได้เข้าอารีน่าบอส: ทำการวาร์ปเข้าร่วม
+            State.StatusText = "🦊 กำลังเข้าร่วมศึกตีบอสคุรามะ (Kurama Boss)..."
+            if BossRemote then
+                pcall(function() BossRemote:FireServer("join") end)
+            end
+            local bp = Workspace:FindFirstChild("BossPortals")
+            local portal = bp and bp:FindFirstChildWhichIsA("Model") or (bp and bp:FindFirstChild("Portal5"))
+            local prompt = portal and portal:FindFirstChild("JoinPrompt", true)
+            if prompt and prompt.Enabled and fireproximityprompt then
+                pcall(function() fireproximityprompt(prompt) end)
+            end
+            task.wait(0.5)
+        else
+            -- อยู่ในอารีน่าบอสแล้ว: โจมตีและปล่อยสกิลใส่บอส
+            State.StatusText = string.format("🦊⚔️ กำลังรุมตีบอสคุรามะ! HP: %.1f%%", hp * 100)
+            local aimPos = bossCentre + Vector3.new(0, 15, 0)
+            local bossTarget = {
+                boss = true,
+                id = "kyubi",
+                pos = aimPos
+            }
+            ExecuteAttack(bossTarget)
+            ExecuteSkill("E", bossTarget)
+            ExecuteSkill("R", bossTarget)
+        end
+    else
+        -- บอสจบลงหรือยังไม่เริ่ม ถ้าตัวยังอยู่ในอารีน่า ให้กลับออกมา
+        if dist <= 150 then
+            State.StatusText = "🚪 บอสจบแล้ว กำลังออกจากอารีน่าบอส..."
+            if BossRemote then
+                pcall(function() BossRemote:FireServer("leave") end)
+            end
+            task.wait(0.5)
+        end
+    end
+end
+
 -- 7. THREAD WORKERS
 -- Fast Worker Loop
 task.spawn(function()
@@ -564,7 +662,10 @@ task.spawn(function()
     local lastSkillR = 0
 
     while State.Running do
-        if Config.Automation.AutoStages then
+        local bossPhase = Workspace:GetAttribute("BossPhase")
+        if Config.Automation.AutoBoss and bossPhase == "fight" then
+            pcall(ProcessBossCombat)
+        elseif Config.Automation.AutoStages then
             pcall(ProcessStageRunner)
         else
             if Config.Automation.AutoTrain then
@@ -618,6 +719,13 @@ task.spawn(function()
         if Config.Automation.AutoClaimAll then
             pcall(DoClaimAll)
         end
+        if Config.Automation.AutoFusePets then
+            pcall(DoAutoFusePets)
+        end
+        if Config.Automation.AutoRedeemCodes and (tick() - lastCodeRedeemTick >= 60) then
+            lastCodeRedeemTick = tick()
+            task.spawn(DoRedeemAllCodes)
+        end
 
         task.wait(Config.Delays.SlowLoop)
     end
@@ -661,7 +769,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.2)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Update 2 & 3 Support v9.8.0)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -698,7 +806,7 @@ Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 3
 Content.ScrollBarImageColor3 = Color3.fromRGB(70, 75, 100)
-Content.CanvasSize = UDim2.new(0, 0, 0, 820)
+Content.CanvasSize = UDim2.new(0, 0, 0, 1350)
 Content.Parent = MainFrame
 
 local Layout = Instance.new("UIListLayout")
@@ -807,7 +915,7 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("🌍 1. AUTO STAGES (เลือกระดับโลก 1-4 & ฟาร์มอัตโนมัติ)", Color3.fromRGB(255, 75, 75))
+AddSection("🌍 1. AUTO STAGES (เลือกระดับโลก 1-5 & ฟาร์มอัตโนมัติ)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
@@ -818,7 +926,7 @@ AddToggle("ยืนแท่นคูณ 3 อัตโนมัติ (Pad x3 
     Config.Stages.PadType = v and "purple" or "gold"
 end)
 
--- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 4
+-- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 5
 local WorldStatusLabel = Instance.new("TextLabel")
 WorldStatusLabel.Size = UDim2.new(1, 0, 0, 22)
 WorldStatusLabel.BackgroundTransparency = 1
@@ -842,8 +950,8 @@ task.spawn(function()
     end
 end)
 
--- ปุ่มเลือกโลกทั้ง 4 โลก (Shinobi Lands, Celestial Realm, Blood Moon, Frozen Abyss)
-for wId = 1, 4 do
+-- ปุ่มเลือกโลกทั้ง 5 โลก (Shinobi Lands, Celestial Realm, Blood Moon, Frozen Abyss, Cosmic Void)
+for wId = 1, 5 do
     local info = WorldsInfo[wId]
     local btnName = string.format("🗺️ เลือกระดับโลก %d: %s", wId, info.name)
     AddButton(btnName, info.color, function()
@@ -869,25 +977,77 @@ AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง 
     if root then root.CFrame = CFrame.new(originX, 4, 46) end
 end)
 
-AddSection("⚡ 2. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
+-- KURAMA BOSS SECTION
+AddSection("🦊 2. KURAMA BOSS EVENT (บอสคุรามะ - อัพเดทใหม่!)", Color3.fromRGB(255, 125, 40))
+local BossStatusLabel = Instance.new("TextLabel")
+BossStatusLabel.Size = UDim2.new(1, 0, 0, 22)
+BossStatusLabel.BackgroundTransparency = 1
+BossStatusLabel.Font = Enum.Font.GothamMedium
+BossStatusLabel.TextSize = 10
+BossStatusLabel.TextColor3 = Color3.fromRGB(255, 180, 80)
+BossStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+BossStatusLabel.Text = "🦊 กำลังเช็คสถานะบอสคุรามะ..."
+BossStatusLabel.Parent = Content
+
+task.spawn(function()
+    while State.Running do
+        pcall(function()
+            local phase = Workspace:GetAttribute("BossPhase") or "wait"
+            local hp = Workspace:GetAttribute("BossHp") or 0
+            local coins = LocalPlayer:GetAttribute("KuramaCoins") or 0
+            local phaseText = (phase == "fight" and string.format("กำลังสู้! (HP: %.0f%%)", hp * 100))
+                or (phase == "coming" and "กำลังเกิด...")
+                or (phase == "over" and "จบศึกแล้ว")
+                or "รอรอบถัดไป"
+            BossStatusLabel.Text = string.format("🦊 บอส: %s | เหรียญคุรามะ: %d 🪙", phaseText, coins)
+        end)
+        task.wait(0.5)
+    end
+end)
+
+AddToggle("ร่วมตีบอสคุรามะอัตโนมัติ (Auto Kurama Boss)", Config.Automation.AutoBoss, function(v)
+    Config.Automation.AutoBoss = v
+end)
+AddButton("🦊 วาร์ปเข้าร่วมสู้บอสทันที (Join Boss)", Color3.fromRGB(180, 60, 20), function()
+    if BossRemote then pcall(function() BossRemote:FireServer("join") end) end
+end)
+AddButton("🚪 ออกจากห้องบอส (Leave Boss Arena)", Color3.fromRGB(60, 60, 80), function()
+    if BossRemote then pcall(function() BossRemote:FireServer("leave") end) end
+end)
+AddButton("🛍️ ซื้อของ Boss Shop (Fox Fire / Grand Prize)", Color3.fromRGB(150, 90, 20), function()
+    local shopItems = {"fox_fire", "chakra_cloak", "kanjogan", "tailed_cloak", "fuma_mangekyo", "bijuu_mode", "kurenai_mangekyo", "grand_prize"}
+    for _, item in ipairs(shopItems) do
+        if BossShopFunc then
+            pcall(function() BossShopFunc:InvokeServer("buy", item) end)
+        end
+    end
+end)
+
+AddSection("⚡ 3. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
 AddToggle("Auto Attack (M1 โจมตี/แอนิเมชันเต็ม)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
 AddToggle("Auto Skill E (สกิลปล่อยพลัง)", Config.Automation.AutoSkillE, function(v) Config.Automation.AutoSkillE = v end)
 AddToggle("Auto Skill R (คามุย Kamui)", Config.Automation.AutoSkillR, function(v) Config.Automation.AutoSkillR = v end)
 AddToggle("Auto Train (ฝึกจักระรวดเร็ว)", Config.Automation.AutoTrain, function(v) Config.Automation.AutoTrain = v end)
 
-AddSection("🌀 3. PROGRESSION & REBIRTH", Color3.fromRGB(255, 100, 255))
+AddSection("🌀 4. PROGRESSION & REBIRTH", Color3.fromRGB(255, 100, 255))
 AddToggle("เกิดใหม่อัตโนมัติ (Auto Rebirth)", Config.Automation.AutoRebirth, function(v) Config.Automation.AutoRebirth = v end)
 AddButton("🌀 สั่งเกิดใหม่ทันที (Rebirth Now)", Color3.fromRGB(150, 40, 150), function() pcall(DoRebirth) end)
 
-AddSection("💫 4. BEST GEAR (ออร่า & ดวงตา & สัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
+AddSection("💫 5. BEST GEAR & PET FUSER (ออร่า, ดวงตา & รวมสัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
 AddToggle("ใส่ออร่าที่ดีที่สุด ออโต้ (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
 AddButton("✨ ใส่ออร่าที่ดีที่สุดทันที (Equip Best Aura)", Color3.fromRGB(40, 120, 180), function() pcall(DoEquipBestAura) end)
 AddToggle("ใส่ดวงตาที่ดีที่สุด ออโต้ (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
 AddToggle("ใส่สัตว์เลี้ยงที่ดีที่สุด ออโต้ (Best Pets)", Config.Automation.AutoEquipBestPets, function(v) Config.Automation.AutoEquipBestPets = v end)
+AddToggle("หลอมรวมสัตว์เลี้ยง 4 ตัวออโต้ (Auto Fuse Pets)", Config.Automation.AutoFusePets, function(v) Config.Automation.AutoFusePets = v end)
+AddButton("🧬 หลอมรวมสัตว์เลี้ยงทันที (Fuse Pets Now)", Color3.fromRGB(40, 140, 90), function() pcall(DoAutoFusePets) end)
 
-AddSection("🔥 5. MULTIPLIER & REWARDS", Color3.fromRGB(255, 215, 0))
+AddSection("🔥 6. MULTIPLIER, CODES & REWARDS", Color3.fromRGB(255, 215, 0))
 AddToggle("กดคูณจักระออโต้ (Pops Multipliers)", Config.Automation.AutoPops, function(v) Config.Automation.AutoPops = v end)
 AddToggle("รับภารกิจ & รางวัลเวลารอ ออโต้", Config.Automation.AutoClaimAll, function(v) Config.Automation.AutoClaimAll = v end)
+AddToggle("แลกโค้ดทั้งหมดอัตโนมัติ (Auto Redeem Codes)", Config.Automation.AutoRedeemCodes, function(v) Config.Automation.AutoRedeemCodes = v end)
+AddButton("🎁 แลกโค้ดทั้งหมดทันที (7 โค้ดฟรี: AWAKEN, UPDATE2, KURUMA...)", Color3.fromRGB(180, 110, 30), function() 
+    task.spawn(DoRedeemAllCodes) 
+end)
 
 _G.ChakraQACleanup = function()
     State.Running = false
