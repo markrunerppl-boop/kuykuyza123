@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.8.1 (Safe Kiting & Anti-Death Edition)
+    Version: 9.9.0 (Auto Boss Rejoin, Best Chakra Training & Persistent Config)
     ========================================================================
 --]]
 
@@ -84,6 +84,7 @@ local Config = {
     Tag = "ChakraQA",
     Automation = {
         AutoTrain = true,          -- ฝึกจักระ
+        AutoBestTrain = false,     -- ซ้อมจักระที่จุดที่ดีที่สุดของโลกอัตโนมัติ (มินิเกม/แท่นฝึก)
         AutoAttack = true,         -- โจมตีฟันดาบ/หมัด (มีแอนิเมชันเต็มรูปแบบ)
         AutoSkillE = true,         -- สกิล E
         AutoSkillR = true,         -- สกิล R (Kamui)
@@ -115,6 +116,50 @@ local Config = {
         FloorY = 3.5,                  -- ระดับความสูงมาตรฐานที่ระบบทริกเกอร์ของเกมจับได้ 100%
     }
 }
+
+-- 2.1 CONFIG PERSISTENCE (บันทึกและโหลดการตั้งค่าอัตโนมัติทุกครั้ง)
+local CONFIG_FILE = "ChakraQA_Config.json"
+local HttpService = game:GetService("HttpService")
+
+local function SaveConfig()
+    if writefile then
+        pcall(function()
+            local saveTable = {
+                Automation = Config.Automation,
+                Stages = Config.Stages
+            }
+            writefile(CONFIG_FILE, HttpService:JSONEncode(saveTable))
+        end)
+    end
+end
+
+local function LoadConfig()
+    if isfile and readfile and isfile(CONFIG_FILE) then
+        pcall(function()
+            local content = readfile(CONFIG_FILE)
+            local data = HttpService:JSONDecode(content)
+            if type(data) == "table" then
+                if type(data.Automation) == "table" then
+                    for k, v in pairs(data.Automation) do
+                        Config.Automation[k] = v
+                    end
+                end
+                if type(data.Stages) == "table" then
+                    for k, v in pairs(data.Stages) do
+                        Config.Stages[k] = v
+                    end
+                end
+            end
+        end)
+    end
+end
+
+-- โหลดการตั้งค่าเดิมทันที (ถ้ายังไม่มีไฟล์ ให้บันทึกค่าเริ่มต้น)
+if isfile and isfile(CONFIG_FILE) then
+    LoadConfig()
+else
+    SaveConfig()
+end
 
 local State = {
     Running = true,
@@ -653,7 +698,7 @@ local function DoAutoFusePets()
     end
 end
 
--- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2)
+-- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2 - พร้อมระบบตายแล้วจอยเข้าใหม่ทันที)
 local function ProcessBossCombat()
     local phase = Workspace:GetAttribute("BossPhase")
     local hp = Workspace:GetAttribute("BossHp") or 0
@@ -662,32 +707,55 @@ local function ProcessBossCombat()
 
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local isDowned = LocalPlayer:GetAttribute("Downed") == true
+
+    -- ถ้าล้ม/ตายในศึกบอส: กดยืนยันเกิดใหม่ทันที แล้วยิง Rejoin เข้าศึกบอสต่อทันที!
+    if isDowned or (hum and hum.Health <= 0) then
+        State.StatusText = "🩹 ตายในศึกบอส! กำลังเกิดใหม่และกลับเข้าสู้บอสต่อทันที..."
+        local rev = Remotes and Remotes:FindFirstChild("Revive")
+        if rev then
+            pcall(function() rev:FireServer("no") end)
+        end
+        task.wait(0.35)
+        if inFight and BossRemote then
+            pcall(function() BossRemote:FireServer("join") end)
+        end
+        return
+    end
+
     if not root then return end
 
     local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
 
     if inFight then
         if dist > 150 then
-            -- ยังไม่ได้เข้าอารีน่าบอส: ทำการวาร์ปเข้าร่วม
+            -- ยังไม่ได้เข้าอารีน่าบอส หรือเพิ่งเกิดใหม่นอกอารีน่า: ทำการวาร์ปเข้าร่วมสู้บอสทันที
             State.StatusText = "🦊 กำลังเข้าร่วมศึกตีบอสคุรามะ (Kurama Boss)..."
             if BossRemote then
                 pcall(function() BossRemote:FireServer("join") end)
             end
             local bp = Workspace:FindFirstChild("BossPortals")
-            local portal = bp and bp:FindFirstChildWhichIsA("Model") or (bp and bp:FindFirstChild("Portal5"))
+            local portal = bp and (bp:FindFirstChild("Portal5") or bp:FindFirstChildWhichIsA("Model"))
             local prompt = portal and portal:FindFirstChild("JoinPrompt", true)
             if prompt and prompt.Enabled and fireproximityprompt then
                 pcall(function() fireproximityprompt(prompt) end)
             end
             task.wait(0.5)
         else
-            -- อยู่ในอารีน่าบอสแล้ว: โจมตีและปล่อยสกิลใส่บอส
-            State.StatusText = string.format("🦊⚔️ กำลังรุมตีบอสคุรามะ! HP: %.1f%%", hp * 100)
-            local aimPos = bossCentre + Vector3.new(0, 15, 0)
+            -- อยู่ในอารีน่าบอสแล้ว: จัดตำแหน่งปลอดภัย และเล็งเป้าหมายโจมตีบอส
+            local bossLookPos = bossCentre + Vector3.new(0, 15, 0)
+            local safeCombatPos = bossCentre + Vector3.new(0, 12, 55)
+            if (root.Position - safeCombatPos).Magnitude > 20 then
+                root.CFrame = CFrame.new(safeCombatPos, bossLookPos)
+                root.AssemblyLinearVelocity = Vector3.zero
+            end
+
+            State.StatusText = string.format("🦊⚔️ กำลังรุมโจมตีบอสคุรามะ! HP: %.1f%%", hp * 100)
             local bossTarget = {
                 boss = true,
                 id = "kyubi",
-                pos = aimPos
+                pos = bossLookPos
             }
             ExecuteAttack(bossTarget)
             ExecuteSkill("E", bossTarget)
@@ -705,6 +773,115 @@ local function ProcessBossCombat()
     end
 end
 
+-- ระบบค้นหาและวาร์ปไปจุดซ้อมที่ดีที่สุดของโลก (Best Training Spot)
+local function GetBestTrainingSpot(worldId)
+    local w = worldId or GetCurrentWorld()
+    local Plots = nil
+    pcall(function() Plots = require(ReplicatedStorage.Shared.Config.Plots) end)
+    local WorldConfig = nil
+    pcall(function() WorldConfig = require(ReplicatedStorage.Shared.Config.World) end)
+    
+    if not Plots or not WorldConfig or not WorldConfig.TRAINING then return nil end
+    local spots = Plots.forWorld(w)
+    if not spots then return nil end
+
+    local rebirths = 0
+    if StateMod and StateMod.number then
+        rebirths = StateMod.number("Rebirths") or 0
+    end
+    if rebirths == 0 then
+        rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
+    end
+
+    local bestSpot = nil
+    local bestIdx = 1
+
+    for idx, spot in ipairs(spots) do
+        local passOk = true
+        if spot.pass then
+            passOk = LocalPlayer:GetAttribute("Pass_" .. spot.pass) == true
+        end
+        local rebirthOk = rebirths >= (spot.rebirths or 0)
+        if passOk and rebirthOk then
+            if not bestSpot or (spot.mult or 0) > (bestSpot.mult or 0) then
+                bestSpot = spot
+                bestIdx = idx
+            end
+        end
+    end
+
+    if bestSpot and WorldConfig.TRAINING[bestIdx] then
+        local rawOffset = WorldConfig.TRAINING[bestIdx]
+        local parts = string.split(rawOffset, ",")
+        local ox = tonumber(parts[1]) or 0
+        local oy = tonumber(parts[2]) or 0
+        local oz = tonumber(parts[3]) or 0
+        return {
+            spot = bestSpot,
+            index = bestIdx,
+            offset = Vector3.new(ox, oy, oz)
+        }
+    end
+    return nil
+end
+
+local function TeleportToBestTrainingSpot()
+    local curWorld = GetCurrentWorld()
+    local best = GetBestTrainingSpot(curWorld)
+    if not best then return false end
+
+    local originX = GetWorldOrigin(curWorld).X
+    local spotPos = Vector3.new(originX + best.offset.X, 3.5, best.offset.Z)
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.CFrame = CFrame.new(spotPos)
+        root.AssemblyLinearVelocity = Vector3.zero
+        State.StatusText = string.format("🧘 วาร์ปไปจุดซ้อม %s (คูณ %.1e x) เรียบร้อย", best.spot.name, best.spot.mult or 1)
+        return true
+    end
+    return false
+end
+
+local function ProcessBestTraining()
+    local curWorld = GetCurrentWorld()
+    local best = GetBestTrainingSpot(curWorld)
+    if not best then return end
+
+    local originX = GetWorldOrigin(curWorld).X
+    local spotPos = Vector3.new(originX + best.offset.X, 3.5, best.offset.Z)
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then
+        -- ยืนประจำตำแหน่งจุดซ้อมที่ดีที่สุด
+        if (root.Position - spotPos).Magnitude > 5 then
+            root.CFrame = CFrame.new(spotPos)
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+
+        local multVal = StateMod and StateMod.number and StateMod.number("TrainMult") or (best.spot.mult or 1)
+        State.StatusText = string.format("🧘 กำลังซ้อมจักระที่ %s (คูณ %.1e x)", best.spot.name, multVal)
+
+        -- ซ้อมจักระรวดเร็ว
+        if Input and Input.autoClick then
+            Input.autoClick()
+        else
+            TrainRemote:FireServer()
+        end
+    end
+end
+
+local function DoPlayArcadeSnake()
+    local ArcadeStart = Remotes and Remotes:FindFirstChild("ArcadeStart")
+    if ArcadeStart then
+        pcall(function()
+            ArcadeStart:InvokeServer("snake")
+        end)
+    end
+end
+
 -- 7. THREAD WORKERS
 -- Fast Worker Loop
 task.spawn(function()
@@ -713,8 +890,10 @@ task.spawn(function()
 
     while State.Running do
         local bossPhase = Workspace:GetAttribute("BossPhase")
-        if Config.Automation.AutoBoss and bossPhase == "fight" then
+        if Config.Automation.AutoBoss and (bossPhase == "fight" or bossPhase == "coming") then
             pcall(ProcessBossCombat)
+        elseif Config.Automation.AutoBestTrain then
+            pcall(ProcessBestTraining)
         elseif Config.Automation.AutoStages then
             pcall(ProcessStageRunner)
         else
@@ -819,7 +998,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Anti-Death & Safe Kiting v9.8.1)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Auto Boss, Best Train & SaveConfig v9.9.0)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -856,7 +1035,7 @@ Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 3
 Content.ScrollBarImageColor3 = Color3.fromRGB(70, 75, 100)
-Content.CanvasSize = UDim2.new(0, 0, 0, 1350)
+Content.CanvasSize = UDim2.new(0, 0, 0, 1500)
 Content.Parent = MainFrame
 
 local Layout = Instance.new("UIListLayout")
@@ -943,6 +1122,7 @@ local function AddToggle(text, initVal, onChange)
         active = not active
         Refresh()
         onChange(active)
+        SaveConfig()
     end)
 end
 
@@ -974,6 +1154,7 @@ AddToggle("ถอยเก็บถ้วยด่านก่อนหน้า
 end)
 AddToggle("ยืนแท่นคูณ 3 อัตโนมัติ (Pad x3 Multiplier)", Config.Stages.PadType == "purple", function(v)
     Config.Stages.PadType = v and "purple" or "gold"
+    SaveConfig()
 end)
 
 -- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 5
@@ -1006,6 +1187,7 @@ for wId = 1, 5 do
     local btnName = string.format("🗺️ เลือกระดับโลก %d: %s", wId, info.name)
     AddButton(btnName, info.color, function()
         Config.Stages.TargetWorld = wId
+        SaveConfig()
         State.StatusText = string.format("🌀 กำลังสลับไปโลก %d (%s)...", wId, info.name)
         TeleportToWorld(wId)
         task.wait(0.5)
@@ -1028,7 +1210,7 @@ AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง 
 end)
 
 -- KURAMA BOSS SECTION
-AddSection("🦊 2. KURAMA BOSS EVENT (บอสคุรามะ - อัพเดทใหม่!)", Color3.fromRGB(255, 125, 40))
+AddSection("🦊 2. KURAMA BOSS EVENT (ตีบอสคุรามะ - ตายจอยใหม่ทันที!)", Color3.fromRGB(255, 125, 40))
 local BossStatusLabel = Instance.new("TextLabel")
 BossStatusLabel.Size = UDim2.new(1, 0, 0, 22)
 BossStatusLabel.BackgroundTransparency = 1
@@ -1055,7 +1237,7 @@ task.spawn(function()
     end
 end)
 
-AddToggle("ร่วมตีบอสคุรามะอัตโนมัติ (Auto Kurama Boss)", Config.Automation.AutoBoss, function(v)
+AddToggle("ร่วมตีบอสคุรามะอัตโนมัติ (สู้บอส & ตายจอยใหม่ทันที)", Config.Automation.AutoBoss, function(v)
     Config.Automation.AutoBoss = v
 end)
 AddButton("🦊 วาร์ปเข้าร่วมสู้บอสทันที (Join Boss)", Color3.fromRGB(180, 60, 20), function()
@@ -1073,17 +1255,30 @@ AddButton("🛍️ ซื้อของ Boss Shop (Fox Fire / Grand Prize)", Co
     end
 end)
 
-AddSection("⚡ 3. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
+AddSection("🧘 3. CHAKRA TRAINING (ซ้อมจักระ & มินิเกมที่ดีที่สุด)", Color3.fromRGB(0, 220, 130))
+AddToggle("ซ้อมจักระที่จุดที่ดีที่สุดของโลก (Auto Best Training)", Config.Automation.AutoBestTrain, function(v) 
+    Config.Automation.AutoBestTrain = v 
+end)
+AddToggle("ฝึกจักระรวดเร็ว (Auto Train Fast Click)", Config.Automation.AutoTrain, function(v) 
+    Config.Automation.AutoTrain = v 
+end)
+AddButton("🧘 วาร์ปไปจุดซ้อมที่ดีที่สุดทันที (Go Best Train Spot)", Color3.fromRGB(40, 140, 90), function()
+    TeleportToBestTrainingSpot()
+end)
+AddButton("🎮 เริ่มเล่นมินิเกม Arcade Snake (Chakra Snake)", Color3.fromRGB(30, 120, 180), function()
+    DoPlayArcadeSnake()
+end)
+
+AddSection("⚡ 4. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
 AddToggle("Auto Attack (M1 โจมตี/แอนิเมชันเต็ม)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
 AddToggle("Auto Skill E (สกิลปล่อยพลัง)", Config.Automation.AutoSkillE, function(v) Config.Automation.AutoSkillE = v end)
 AddToggle("Auto Skill R (คามุย Kamui)", Config.Automation.AutoSkillR, function(v) Config.Automation.AutoSkillR = v end)
-AddToggle("Auto Train (ฝึกจักระรวดเร็ว)", Config.Automation.AutoTrain, function(v) Config.Automation.AutoTrain = v end)
 
-AddSection("🌀 4. PROGRESSION & REBIRTH", Color3.fromRGB(255, 100, 255))
+AddSection("🌀 5. PROGRESSION & REBIRTH", Color3.fromRGB(255, 100, 255))
 AddToggle("เกิดใหม่อัตโนมัติ (Auto Rebirth)", Config.Automation.AutoRebirth, function(v) Config.Automation.AutoRebirth = v end)
 AddButton("🌀 สั่งเกิดใหม่ทันที (Rebirth Now)", Color3.fromRGB(150, 40, 150), function() pcall(DoRebirth) end)
 
-AddSection("💫 5. BEST GEAR & PET FUSER (ออร่า, ดวงตา & รวมสัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
+AddSection("💫 6. BEST GEAR & PET FUSER (ออร่า, ดวงตา & รวมสัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
 AddToggle("ใส่ออร่าที่ดีที่สุด ออโต้ (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
 AddButton("✨ ใส่ออร่าที่ดีที่สุดทันที (Equip Best Aura)", Color3.fromRGB(40, 120, 180), function() pcall(DoEquipBestAura) end)
 AddToggle("ใส่ดวงตาที่ดีที่สุด ออโต้ (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
@@ -1091,7 +1286,7 @@ AddToggle("ใส่สัตว์เลี้ยงที่ดีที่ส
 AddToggle("หลอมรวมสัตว์เลี้ยง 4 ตัวออโต้ (Auto Fuse Pets)", Config.Automation.AutoFusePets, function(v) Config.Automation.AutoFusePets = v end)
 AddButton("🧬 หลอมรวมสัตว์เลี้ยงทันที (Fuse Pets Now)", Color3.fromRGB(40, 140, 90), function() pcall(DoAutoFusePets) end)
 
-AddSection("🔥 6. MULTIPLIER, CODES & REWARDS", Color3.fromRGB(255, 215, 0))
+AddSection("🔥 7. MULTIPLIER, CODES & REWARDS", Color3.fromRGB(255, 215, 0))
 AddToggle("กดคูณจักระออโต้ (Pops Multipliers)", Config.Automation.AutoPops, function(v) Config.Automation.AutoPops = v end)
 AddToggle("รับภารกิจ & รางวัลเวลารอ ออโต้", Config.Automation.AutoClaimAll, function(v) Config.Automation.AutoClaimAll = v end)
 AddToggle("แลกโค้ดทั้งหมดอัตโนมัติ (Auto Redeem Codes)", Config.Automation.AutoRedeemCodes, function(v) Config.Automation.AutoRedeemCodes = v end)
