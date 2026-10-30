@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Non-Blocking Safe Architecture | Auto Clear Stages 1-15 | Anti-Freeze
-    Version: 8.8.0 (Bulletproof Auto Stage Engine)
+    Architecture: Non-Blocking Safe Architecture | Safe Height Combat | 100% Guaranteed Trophy Cashout
+    Version: 8.9.0 (Anti-Burst Safe Retreat Edition)
     ========================================================================
 --]]
 
@@ -79,8 +79,9 @@ local Config = {
         SkillRCooldown = 6.0,
     },
     Stages = {
-        MaxCombatTime = 10,            -- สู้มอนสเตอร์เกิน 10 วินาที ถือว่าสู้ไม่ไหว
-        HealthRetreatThreshold = 0.30, -- เลือดต่ำกว่า 30% ให้ถอยไปเก็บถ้วยด่านก่อนหน้าทันที
+        MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
+        HealthRetreatThreshold = 0.50, -- เลือดเหลือต่ำกว่า 50% ให้รีบถอยทันที (ป้องกันโดนรุมตีวันช็อตตายคาที่)
+        SafeAltitude = 7.5,            -- ลอยตัวสูงกว่ามอนสเตอร์ 7.5 studs เพื่อหลบการโจมตีระยะประชิด
     }
 }
 
@@ -133,7 +134,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & RETREAT ENGINE (SAFE & NON-BLOCKING)
+-- 4. SMART STAGE RUNNER & RETREAT ENGINE (SAFE BUFFER & NON-BLOCKING)
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -143,11 +144,10 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
--- ฟังก์ชันฟื้นฟูเลือดเต็ม 100% แบบปลอดภัย ป้องกันการค้างตลอดกาล
 local function SafeHealToFullHP()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Health < hum.MaxHealth * 0.5 then
+    if hum and hum.Health < hum.MaxHealth * 0.75 then
         State.StatusText = "💖 ฟื้นฟูเลือดเต็ม 100%..."
         hum.Health = 0
         local expire = tick() + 2.5
@@ -169,7 +169,7 @@ local function StartStageOneProperly()
     if not root then return end
 
     State.StatusText = "🚀 กำลังเข้าสู่ Stage 1..."
-    -- ก้าวผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
+    -- เดินผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
     root.CFrame = CFrame.new(0, 3.5, -20)
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.12)
@@ -177,8 +177,8 @@ local function StartStageOneProperly()
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.18)
 
-    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 ทันที
-    root.CFrame = CFrame.new(0, 3.5, -75)
+    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 พร้อมระยะปลอดภัย
+    root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, -75)
     root.AssemblyLinearVelocity = Vector3.zero
     State.CurrentStage = 1
     State.LastStage = 1
@@ -192,9 +192,17 @@ local function RetreatAndClaimTrophies(retreatStage)
     pcall(function()
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        -- ถ้าเลือดหมดหรือตัวละครตายแล้ว จะไม่สามารถเก็บถ้วยบนแท่นได้
+        if hum and hum.Health <= 0 then
+            SafeHealToFullHP()
+            StartStageOneProperly()
+            return
+        end
 
         if root and retreatStage and retreatStage >= 1 then
-            State.StatusText = string.format("🏆 สู้ไม่ไหว! เก็บถ้วยด่านก่อนหน้า (Stage %d)...", retreatStage)
+            State.StatusText = string.format("🏆 สู้ไม่ไหว! กำลังถอยเก็บถ้วย Stage %d...", retreatStage)
             local padPos = nil
             if World and World.padPosition then
                 pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
@@ -215,7 +223,7 @@ local function RetreatAndClaimTrophies(retreatStage)
             task.wait(0.5)
         end
 
-        -- ฟื้นฟูเลือดให้เต็ม 100% ทันที (พร้อม Timeout ป้องกันค้าง)
+        -- ฟื้นฟูเลือดให้เต็ม 100% ทันที
         if Config.Automation.AutoFullHpRespawn then
             SafeHealToFullHP()
         end
@@ -240,9 +248,9 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน ให้เข้า Stage 1 ทันที
+    -- ถ้าไม่ได้อยู่ในด่าน ให้เข้า Stage 1
     if not inStages or runStage == 0 then
-        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.5 then
+        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.75 then
             SafeHealToFullHP()
         end
         StartStageOneProperly()
@@ -260,7 +268,7 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 30% หรือ ตีมอนเกิน 10 วินาที)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 50% หรือ ตีมอนนานเกิน 8 วินาที)
     if Config.Automation.AutoRetreat then
         local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
         local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
@@ -280,9 +288,10 @@ local function ProcessStageRunner()
         local nearest = enemyList[1]
         local dist = (root.Position - nearest.pos).Magnitude
 
-        -- บินเข้าประชิดตัวมอนสเตอร์ทันที
-        if dist > 14 then
-            root.CFrame = CFrame.new(nearest.pos + Vector3.new(0, 1.5, 5))
+        -- บินอยู่เหนือหัวมอนสเตอร์ (Safe Altitude) โจมตีลงมา มอนสเตอร์จะตีไม่ถึง!
+        local safePos = nearest.pos + Vector3.new(0, Config.Stages.SafeAltitude, 2)
+        if (root.Position - safePos).Magnitude > 12 then
+            root.CFrame = CFrame.new(safePos)
             root.AssemblyLinearVelocity = Vector3.zero
         end
 
@@ -304,7 +313,7 @@ local function ProcessStageRunner()
 
         -- เคลียร์แล้ว พุ่งข้ามเข้าสู่ด่านถัดไปทันที
         local nextStage = runStage + 1
-        root.CFrame = CFrame.new(0, 3.5, GetStageCenterZ(nextStage))
+        root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(nextStage))
         root.AssemblyLinearVelocity = Vector3.zero
         State.LastStage = nextStage
         State.StageStartTime = tick()
@@ -534,7 +543,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.8)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.9)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -680,7 +689,7 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & เก็บถ้วย)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ปลอดภัย 100%)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
