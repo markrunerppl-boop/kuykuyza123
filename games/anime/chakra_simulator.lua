@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Native Input Hooks | Auto Clear Stages 1-15 | Instant Fast Loop
-    Version: 8.6.0 (High Performance Instant Stage Looper)
+    Architecture: Native Input Hooks | Smart Retreat & Cashout | Instant Full HP Reset
+    Version: 8.7.0
     ========================================================================
 --]]
 
@@ -64,6 +64,7 @@ local Config = {
         AutoSkillR = true,         -- สกิล R (Kamui)
         AutoStages = true,         -- ระบบลงด่านสเตจอัตโนมัติ (Stage 1-15)
         AutoRetreat = true,        -- ถอยไปเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว
+        AutoFullHpRespawn = true,  -- รีเซ็ตเลือดให้เต็ม 100% ทันทีก่อนเริ่มรอบใหม่
         AutoPops = true,           -- กดคูณจักระรูปไฟ
         AutoRebirth = true,        -- เกิดใหม่อัตโนมัติ
         AutoEquipBestAura = true,  -- ใส่ออร่าที่ดีที่สุด
@@ -73,13 +74,13 @@ local Config = {
     },
     Delays = {
         FastLoop = 0.04,
-        SlowLoop = 3.0,
+        SlowLoop = 2.5,
         SkillECooldown = 3.5,
         SkillRCooldown = 6.0,
     },
     Stages = {
         MaxCombatTime = 10,            -- สู้มอนสเตอร์เกิน 10 วินาที ถือว่าสู้ไม่ไหว
-        HealthRetreatThreshold = 0.30, -- เลือดต่ำกว่า 30% ให้รีบถอยไปเก็บถ้วยทันที
+        HealthRetreatThreshold = 0.30, -- เลือดต่ำกว่า 30% ให้ถอยไปเก็บถ้วยด่านก่อนหน้าทันที
     }
 }
 
@@ -88,6 +89,7 @@ local State = {
     CurrentStage = 1,
     LastStage = 0,
     StageStartTime = tick(),
+    IsRetreating = false,
     StatusText = "พร้อมทำงาน",
 }
 
@@ -131,7 +133,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & RETREAT ENGINE (INSTANT & SEAMLESS)
+-- 4. SMART STAGE RUNNER & RETREAT ENGINE (ACCURATE & FULL HEALTH)
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -141,23 +143,50 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
-local function TeleportToHub()
+local function HealToFullHP()
     local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        local hubPos = (World and World.SPAWN) or Vector3.new(0, 3, 46)
-        root.CFrame = CFrame.new(hubPos + Vector3.new(0, 1.5, 0))
-        root.AssemblyLinearVelocity = Vector3.zero
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health < hum.MaxHealth * 0.95 then
+        State.StatusText = "💖 กำลังฟื้นฟูเลือดให้เต็ม 100%..."
+        hum.Health = 0
+        local newChar = LocalPlayer.CharacterAdded:Wait()
+        newChar:WaitForChild("HumanoidRootPart", 5)
+        newChar:WaitForChild("Humanoid", 5)
+        task.wait(0.3)
     end
 end
 
-local function RetreatAndClaimTrophies(retreatStage)
+local function StartStageOneProperly()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    if retreatStage and retreatStage >= 1 then
-        State.StatusText = "🏆 เก็บถ้วยด่าน " .. retreatStage .. " แล้วเริ่มรอบใหม่ทันที!"
+    State.StatusText = "🚀 กำลังเข้าสู่ Stage 1..."
+    -- วาร์ปมาหน้าประตู แล้วก้าวผ่านเส้นประตูเพื่อทริกเกอร์ InStages อย่างสมบูรณ์
+    root.CFrame = CFrame.new(0, 3.5, -20)
+    root.AssemblyLinearVelocity = Vector3.zero
+    task.wait(0.1)
+    root.CFrame = CFrame.new(0, 3.5, -38)
+    root.AssemblyLinearVelocity = Vector3.zero
+    task.wait(0.2)
+
+    -- วาร์ปไปที่จุดมอนสเตอร์ของ Stage 1 ทันที เพื่อไม่ให้ยืนเฉยๆ
+    root.CFrame = CFrame.new(0, 3.5, -75)
+    root.AssemblyLinearVelocity = Vector3.zero
+    State.CurrentStage = 1
+    State.LastStage = 1
+    State.StageStartTime = tick()
+end
+
+local function RetreatAndClaimTrophies(retreatStage)
+    if State.IsRetreating then return end
+    State.IsRetreating = true
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+    if root and retreatStage and retreatStage >= 1 then
+        State.StatusText = string.format("🏆 สู้ไม่ไหว! กำลังเก็บถ้วยด่านก่อนหน้า (Stage %d)...", retreatStage)
         local padPos = nil
         if World and World.padPosition then
             pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
@@ -166,28 +195,33 @@ local function RetreatAndClaimTrophies(retreatStage)
             padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
         end
 
-        -- วาร์ปไปเหยียบแท่นถ้วยทอง PadGold
-        root.CFrame = CFrame.new(padPos + Vector3.new(0, 2.0, 0))
+        -- วาร์ปไปเหยียบแท่นรับถ้วย PadGold ของด่านที่ผ่านแล้ว
+        root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.5, 0))
         root.AssemblyLinearVelocity = Vector3.zero
-        task.wait(0.12)
+        task.wait(0.2)
 
-        -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
+        -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์ และรอประมวลผลให้ถ้วยเข้าตัวชัวร์ๆ
         pcall(function()
             PadRemote:FireServer(retreatStage, "gold")
         end)
-        task.wait(0.15)
+        task.wait(0.5)
+    else
+        State.StatusText = "⚠️ สู้ไม่ไหว! ถอยกลับไปฟื้นเลือด..."
     end
 
-    -- เริ่มรอบใหม่ทันทีโดยไม่ต้องยืนรอรีเจนเลือดที่ Hub!
-    root.CFrame = CFrame.new(0, 3.5, -45)
-    root.AssemblyLinearVelocity = Vector3.zero
-    State.CurrentStage = 1
-    State.LastStage = 1
-    State.StageStartTime = tick()
-    State.StatusText = "🚀 เริ่มรอบใหม่ทันที (Stage 1)"
+    -- ฟื้นฟูเลือดให้เต็ม 100% ทันที
+    if Config.Automation.AutoFullHpRespawn then
+        HealToFullHP()
+    end
+
+    -- เริ่มลูป Stage 1 รอบใหม่ด้วยเลือดเต็ม 100%
+    StartStageOneProperly()
+    State.IsRetreating = false
 end
 
 local function ProcessStageRunner()
+    if State.IsRetreating then return end
+
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -198,14 +232,12 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่ที่ Hub ให้พุ่งเข้า Stage 1 ทันทีแบบไม่ต้องรอ
+    -- ถ้าไม่ได้อยู่ในด่าน ให้ฟื้นเลือดเต็มแล้วเริ่ม Stage 1
     if not inStages or runStage == 0 then
-        State.StatusText = "🚀 เข้าสู่ Stage 1..."
-        root.CFrame = CFrame.new(0, 3.5, -45)
-        root.AssemblyLinearVelocity = Vector3.zero
-        State.CurrentStage = 1
-        State.LastStage = 1
-        State.StageStartTime = tick()
+        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.95 then
+            HealToFullHP()
+        end
+        StartStageOneProperly()
         return
     end
 
@@ -220,7 +252,7 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดเหลือน้อยกว่าเกณฑ์ หรือ เวลาตีมอนเกินกำหนด)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่าเกณฑ์ หรือ ตีมอนเกิน 10 วินาที)
     if Config.Automation.AutoRetreat then
         local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
         local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
@@ -240,7 +272,7 @@ local function ProcessStageRunner()
         local nearest = enemyList[1]
         local dist = (root.Position - nearest.pos).Magnitude
 
-        -- บิน/เคลื่อนที่เข้าประชิดมอนสเตอร์ถ้าอยู่ห่างเกินไป
+        -- บินเข้าประชิดตัวมอนสเตอร์ทันที จะได้ไม่ยืนเฉยๆ ให้มอนตีฟรี
         if dist > 14 then
             root.CFrame = CFrame.new(nearest.pos + Vector3.new(0, 1.5, 5))
             root.AssemblyLinearVelocity = Vector3.zero
@@ -262,7 +294,7 @@ local function ProcessStageRunner()
             return
         end
 
-        -- เคลียร์แล้ว เดินหน้าเข้าสู่ด่านถัดไปทันทีแบบไร้ดีเลย์
+        -- เคลียร์แล้ว พุ่งข้ามเข้าสู่ด่านถัดไปทันที
         local nextStage = runStage + 1
         root.CFrame = CFrame.new(0, 3.5, GetStageCenterZ(nextStage))
         root.AssemblyLinearVelocity = Vector3.zero
@@ -301,11 +333,12 @@ local function ProcessAutoPops()
     end
 end
 
--- 6. PERIODIC AUTOMATIONS (EQUIP BEST, REBIRTH, REWARDS)
+-- 6. PERIODIC AUTOMATIONS (EQUIP BEST AURA, EYE, PETS, REBIRTH)
 local function DoRebirth()
     pcall(function() RebirthFunc:InvokeServer() end)
 end
 
+-- ฟังก์ชันใส่ออร่าที่ดีที่สุด (แก้ไขสมบูรณ์ตามระบบแท้ของเกม)
 local function DoEquipBestAura()
     local aurasMod = ReplicatedStorage.Shared.Config:FindFirstChild("Auras")
     if not aurasMod or not StateMod then return end
@@ -316,16 +349,19 @@ local function DoEquipBestAura()
     local owned = StateMod.ownedAuras and StateMod.ownedAuras() or {}
     local currentAura = StateMod.string("Aura")
 
+    -- ตรวจสอบสิทธิ์การปลดล็อกออร่าตาม Logic แท้ของเกม Menus.lua
+    local function HasAuraUnlocked(a)
+        if not Auras.isOut(a) then return false end
+        if a.pass and LocalPlayer:GetAttribute("Pass_" .. a.pass) == true then return true end
+        if a.skip and LocalPlayer:GetAttribute("Pass_" .. a.skip) == true then return true end
+        if a.exclusive then return owned[a.id] == true end
+        return totalWins >= (a.trophies or 0)
+    end
+
     local bestAura = nil
     for _, a in ipairs(Auras.list or {}) do
-        local has = false
-        if a.pass and LocalPlayer:GetAttribute("Pass_" .. a.pass) == true then has = true
-        elseif a.skip and LocalPlayer:GetAttribute("Pass_" .. a.skip) == true then has = true
-        elseif a.exclusive and owned[a.id] == true then has = true
-        elseif (not a.pass and not a.skip and not a.exclusive and not a.boss) and totalWins >= (a.trophies or 0) then has = true end
-
-        if has then
-            if not bestAura or (a.mult and bestAura.mult and a.mult > bestAura.mult) or ((a.trophies or 0) > (bestAura.trophies or 0)) then
+        if HasAuraUnlocked(a) then
+            if not bestAura or (a.mult or 1) > (bestAura.mult or 1) then
                 bestAura = a
             end
         end
@@ -491,7 +527,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.6)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.7)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -637,29 +673,27 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ไหลลื่นรวดเร็ว)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & เก็บถ้วย)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
 AddToggle("ถอยเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว (Smart Retreat)", Config.Automation.AutoRetreat, function(v) 
     Config.Automation.AutoRetreat = v 
 end)
+AddToggle("รีเซ็ตเลือดเต็ม 100% ทันทีก่อนเริ่มรอบใหม่", Config.Automation.AutoFullHpRespawn, function(v) 
+    Config.Automation.AutoFullHpRespawn = v 
+end)
 AddButton("🏆 ถอยไปเก็บถ้วยด่านก่อนหน้าทันที (Retreat & Claim)", Color3.fromRGB(160, 100, 30), function()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     RetreatAndClaimTrophies(runCleared)
 end)
 AddButton("🚀 วาร์ปเข้าสู่ด่าน Stage 1 ทันที", Color3.fromRGB(140, 35, 35), function()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        root.CFrame = CFrame.new(0, 3.5, -45)
-        root.AssemblyLinearVelocity = Vector3.zero
-        State.LastStage = 1
-        State.StageStartTime = tick()
-    end
+    StartStageOneProperly()
 end)
 AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง (Hub Spawn)", Color3.fromRGB(60, 60, 80), function()
-    TeleportToHub()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then root.CFrame = CFrame.new(0, 4, 46) end
 end)
 
 AddSection("⚡ 2. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
@@ -674,6 +708,7 @@ AddButton("🌀 สั่งเกิดใหม่ทันที (Rebirth Now
 
 AddSection("💫 4. BEST GEAR (ออร่า & ดวงตา & สัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
 AddToggle("ใส่ออร่าที่ดีที่สุด ออโต้ (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
+AddButton("✨ ใส่ออร่าที่ดีที่สุดทันที (Equip Best Aura)", Color3.fromRGB(40, 120, 180), function() pcall(DoEquipBestAura) end)
 AddToggle("ใส่ดวงตาที่ดีที่สุด ออโต้ (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
 AddToggle("ใส่สัตว์เลี้ยงที่ดีที่สุด ออโต้ (Best Pets)", Config.Automation.AutoEquipBestPets, function(v) Config.Automation.AutoEquipBestPets = v end)
 
