@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Stage Filtered Targeting | Non-Blocking Safe Architecture | Anti-Leak
-    Version: 9.1.0 (Stage-Specific Target Lock Edition)
+    Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
+    Version: 9.3.0 (Anti-Stage-1-Stuck & Safe Progression Edition)
     ========================================================================
 --]]
 
@@ -79,9 +79,10 @@ local Config = {
     },
     Stages = {
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
-        HealthRetreatThreshold = 0.60, -- เลือดต่ำกว่า 60% ให้ถอยทันที ปลอดภัยแน่นอน
-        SafeAltitude = 8.0,            -- ลอยตัวสูง 8 studs เหนือหัวมอนสเตอร์เพื่อหลบการโจมตี
-        PadDwellTime = 0.8,            -- ยืนโชว์บนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
+        HealthRetreatThreshold = 0.35, -- เลือดต่ำกว่า 35% ให้ถอยทันที
+        MinRetreatStage = 8,           -- ด่าน 1-7 มอนสเตอร์อ่อน เลือดจะฟื้นฟูเองอัตโนมัติ ห้ามถอยเด็ดขาด ป้องกันการติดลูปด่านแรก
+        PadDwellTime = 0.8,            -- ยืนบนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
+        FloorY = 3.5,                  -- ระดับความสูงมาตรฐานที่ระบบทริกเกอร์ของเกมจับได้ 100%
     }
 }
 
@@ -91,6 +92,7 @@ local State = {
     LastStage = 0,
     StageStartTime = tick(),
     IsRetreating = false,
+    StartingStageOne = false,
     StatusText = "พร้อมทำงาน",
 }
 
@@ -144,7 +146,6 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
--- ฟังก์ชันกรองเฉพาะมอนสเตอร์ที่อยู่ในด่านปัจจุบันเท่านั้น (ป้องกันวาร์ปข้ามด่านไปตีด่านอื่น)
 local function GetEnemiesForStage(targetStage)
     local rawList = Enemies and Enemies.list() or {}
     local stageEnemies = {}
@@ -158,7 +159,6 @@ local function GetEnemiesForStage(targetStage)
         end
     end
 
-    -- เรียงลำดับตัวที่ใกล้ตัวผู้เล่นที่สุดก่อน
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root and #stageEnemies > 1 then
@@ -171,25 +171,33 @@ local function GetEnemiesForStage(targetStage)
 end
 
 local function StartStageOneProperly()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+    if State.StartingStageOne or State.IsRetreating then return end
+    State.StartingStageOne = true
 
-    State.StatusText = "🚀 เริ่มต้นรอบใหม่ เข้าสู่ Stage 1..."
-    -- ก้าวผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
-    root.CFrame = CFrame.new(0, 3.5, -20)
-    root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.12)
-    root.CFrame = CFrame.new(0, 3.5, -38)
-    root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.18)
+    pcall(function()
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
 
-    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 พร้อมระยะลอยตัวปลอดภัย
-    root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, -75)
-    root.AssemblyLinearVelocity = Vector3.zero
-    State.CurrentStage = 1
-    State.LastStage = 1
-    State.StageStartTime = tick()
+        State.StatusText = "🚀 กำลังก้าวเข้าสู่ Stage 1..."
+        -- ก้าวผ่านประตูที่ความสูงระดับพื้น Y = 3.5 เพื่อให้เซิร์ฟเวอร์ทริกเกอร์ InStages แน่นอน
+        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -20)
+        root.AssemblyLinearVelocity = Vector3.zero
+        task.wait(0.12)
+        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -40)
+        root.AssemblyLinearVelocity = Vector3.zero
+        task.wait(0.15)
+
+        -- เดินเข้าสู่ตำแหน่งกลางด่าน Stage 1
+        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -75)
+        root.AssemblyLinearVelocity = Vector3.zero
+        State.CurrentStage = 1
+        State.LastStage = 1
+        State.StageStartTime = tick()
+    end)
+
+    task.wait(0.3)
+    State.StartingStageOne = false
 end
 
 local function RetreatAndClaimTrophies(retreatStage)
@@ -216,7 +224,7 @@ local function RetreatAndClaimTrophies(retreatStage)
                 padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
             end
 
-            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย PadGold ให้เห็นชัดๆ
+            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย PadGold ที่ระดับพื้น
             root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.2, 0))
             root.AssemblyLinearVelocity = Vector3.zero
             
@@ -228,12 +236,11 @@ local function RetreatAndClaimTrophies(retreatStage)
             -- ยืนอยู่บนแท่นให้เห็นการรับถ้วยรางวัลชัดเจน
             task.wait(Config.Stages.PadDwellTime)
         end
-
-        -- วาร์ปกลับไปเริ่มลูปใหม่ที่ Stage 1 ทันที โดยไม่ฆ่าตัวละคร
-        StartStageOneProperly()
     end)
 
     State.IsRetreating = false
+    task.wait(0.08)
+    StartStageOneProperly()
 end
 
 local function ProcessStageRunner()
@@ -249,7 +256,7 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่นอก Stage ให้เริ่ม Stage 1
+    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่นอก Stage ให้เริ่ม Stage 1 ที่ระดับพื้น
     if not inStages or runStage == 0 then
         StartStageOneProperly()
         return
@@ -266,8 +273,10 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 60% หรือ ตีมอนเกิน 8 วินาที)
-    if Config.Automation.AutoRetreat then
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เฉพาะด่านสูง >= MinRetreatStage เท่านั้น เพื่อป้องกันการถอยในด่าน 1-7 ที่มอนสเตอร์อ่อน)
+    -- ป้องกันปัญหาตัวละครวนลูปติดอยู่ที่ด่านแรกๆ เวลาเลือดยังไม่เต็มจากรอบที่แล้ว
+    local minStage = Config.Stages.MinRetreatStage or 8
+    if Config.Automation.AutoRetreat and runStage >= minStage and runCleared >= 1 then
         local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
         local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
 
@@ -278,17 +287,17 @@ local function ProcessStageRunner()
         end
     end
 
-    -- ดึงเฉพาะมอนสเตอร์ของด่านปัจจุบันเท่านั้น! ป้องกันการข้ามไปตีด่านคนอื่น
+    -- ดึงเฉพาะมอนสเตอร์ของด่านปัจจุบันเท่านั้น
     local enemyList = GetEnemiesForStage(runStage)
     local enemyCount = #enemyList
 
     if enemyCount > 0 then
         local nearest = enemyList[1]
 
-        -- ลอยตัวเหนือหัวมอนสเตอร์อย่างปลอดภัย (มอนสเตอร์ฟันไม่ถึง)
-        local safePos = nearest.pos + Vector3.new(0, Config.Stages.SafeAltitude, 2)
-        if (root.Position - safePos).Magnitude > 10 then
-            root.CFrame = CFrame.new(safePos)
+        -- ประชิดมอนสเตอร์ที่ระดับพื้น Y = 3.5 ในระยะ 5 studs
+        local combatPos = nearest.pos + Vector3.new(0, 0.5, 5)
+        if (root.Position - combatPos).Magnitude > 8 then
+            root.CFrame = CFrame.new(combatPos)
             root.AssemblyLinearVelocity = Vector3.zero
         end
 
@@ -299,8 +308,8 @@ local function ProcessStageRunner()
         ExecuteSkill("E", nearest)
         ExecuteSkill("R", nearest)
     else
-        -- ตรวจสอบว่าเคลียร์ด่านแล้วจริงๆ หรือมอนกำลังสปอว์น
-        if timeInCombat > 0.4 then
+        -- ถ้าในด่านปัจจุบันไม่มีมอนสเตอร์แล้ว
+        if timeInCombat > 0.3 then
             State.StatusText = string.format("🎉 เคลียร์ Stage %d สำเร็จ!", runStage)
             
             -- ถ้าเคลียร์ถึงด่าน 15 (ด่านสุดท้าย) ให้เก็บถ้วยด่าน 15 แล้วเริ่มใหม่
@@ -309,15 +318,15 @@ local function ProcessStageRunner()
                 return
             end
 
-            -- เคลียร์แล้ว พุ่งลอยตัวเข้าสู่กึ่งกลางด่านถัดไปทันที
+            -- พุ่งข้ามเข้าสู่กึ่งกลางด่านถัดไปที่ระดับพื้น
             local nextStage = runStage + 1
-            root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(nextStage))
+            root.CFrame = CFrame.new(0, Config.Stages.FloorY, GetStageCenterZ(nextStage))
             root.AssemblyLinearVelocity = Vector3.zero
             State.LastStage = nextStage
             State.StageStartTime = tick()
         else
             -- มอนสเตอร์กำลังสปอว์น ให้ยืนประจำที่กึ่งกลางด่านรอ
-            root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(runStage))
+            root.CFrame = CFrame.new(0, Config.Stages.FloorY, GetStageCenterZ(runStage))
             root.AssemblyLinearVelocity = Vector3.zero
         end
     end
@@ -546,7 +555,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.1)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.2)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -692,7 +701,7 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ล็อคมอนตรงด่าน)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ไหลลื่นระดับพื้น)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
