@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.4.0 (Multi-World 1-4 Selector Edition)
+    Version: 9.5.0 (Persistent Selected World & Zero Force-Switch Edition)
     ========================================================================
 --]]
 
@@ -16,13 +16,25 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+local parentGui = nil
+pcall(function()
+    if gethui then
+        parentGui = gethui()
+    elseif game:GetService("CoreGui") then
+        parentGui = game:GetService("CoreGui")
+    end
+end)
+if not parentGui then
+    parentGui = PlayerGui
+end
+
 -- 0. CLEANUP PREVIOUS INSTANCE
 if _G.ChakraQACleanup then
     pcall(_G.ChakraQACleanup)
 end
 
-local existing = PlayerGui:FindFirstChild("ChakraQAGui")
-if existing then existing:Destroy() end
+local existing = parentGui:FindFirstChild("ChakraQAGui") or PlayerGui:FindFirstChild("ChakraQAGui")
+if existing then pcall(function() existing:Destroy() end) end
 
 -- 1. CLIENT MODULES BINDING
 local Input = nil
@@ -40,20 +52,20 @@ pcall(function() World = require(ReplicatedStorage.Shared.Config.World) end)
 local StagesConfig = nil
 pcall(function() StagesConfig = require(ReplicatedStorage.Shared.Config.Stages) end)
 
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local TrainRemote = Remotes:WaitForChild("Train")
-local CastRemote = Remotes:WaitForChild("Cast")
-local RebirthFunc = Remotes:WaitForChild("Rebirth")
-local ClaimQuestFunc = Remotes:WaitForChild("ClaimQuest")
-local ClaimRewardFunc = Remotes:WaitForChild("ClaimReward")
-local ClaimDailyFunc = Remotes:WaitForChild("ClaimDaily")
-local ClaimGroupFunc = Remotes:WaitForChild("ClaimGroup")
-local PetActionFunc = Remotes:WaitForChild("PetAction")
-local EquipAuraFunc = Remotes:WaitForChild("EquipAura")
-local UnlockEyeRemote = Remotes:WaitForChild("UnlockEye")
-local EquipRemote = Remotes:WaitForChild("Equip")
-local PadRemote = Remotes:WaitForChild("Pad")
-local TeleportRemote = Remotes:FindFirstChild("Teleport") or Remotes:WaitForChild("Teleport", 5)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5) or ReplicatedStorage:FindFirstChild("Remotes")
+local TrainRemote = Remotes and (Remotes:FindFirstChild("Train") or Remotes:WaitForChild("Train", 3))
+local CastRemote = Remotes and (Remotes:FindFirstChild("Cast") or Remotes:WaitForChild("Cast", 3))
+local RebirthFunc = Remotes and (Remotes:FindFirstChild("Rebirth") or Remotes:WaitForChild("Rebirth", 3))
+local ClaimQuestFunc = Remotes and (Remotes:FindFirstChild("ClaimQuest") or Remotes:WaitForChild("ClaimQuest", 3))
+local ClaimRewardFunc = Remotes and (Remotes:FindFirstChild("ClaimReward") or Remotes:WaitForChild("ClaimReward", 3))
+local ClaimDailyFunc = Remotes and (Remotes:FindFirstChild("ClaimDaily") or Remotes:WaitForChild("ClaimDaily", 3))
+local ClaimGroupFunc = Remotes and (Remotes:FindFirstChild("ClaimGroup") or Remotes:WaitForChild("ClaimGroup", 3))
+local PetActionFunc = Remotes and (Remotes:FindFirstChild("PetAction") or Remotes:WaitForChild("PetAction", 3))
+local EquipAuraFunc = Remotes and (Remotes:FindFirstChild("EquipAura") or Remotes:WaitForChild("EquipAura", 3))
+local UnlockEyeRemote = Remotes and (Remotes:FindFirstChild("UnlockEye") or Remotes:WaitForChild("UnlockEye", 3))
+local EquipRemote = Remotes and (Remotes:FindFirstChild("Equip") or Remotes:WaitForChild("Equip", 3))
+local PadRemote = Remotes and (Remotes:FindFirstChild("Pad") or Remotes:WaitForChild("Pad", 3))
+local TeleportRemote = Remotes and (Remotes:FindFirstChild("Teleport") or Remotes:WaitForChild("Teleport", 3))
 
 local WorldsInfo = {
     [1] = {name = "Shinobi Lands", color = Color3.fromRGB(69, 200, 255), desc = "โลก 1: ดินแดนนินจา"},
@@ -86,7 +98,7 @@ local Config = {
         SkillRCooldown = 6.0,
     },
     Stages = {
-        TargetWorld = 1,               -- เลือกระดับโลกเป้าหมาย (1: Shinobi, 2: Celestial, 3: Blood Moon, 4: Frozen Abyss)
+        TargetWorld = nil,             -- โลกเป้าหมาย (ถ้าไม่ระบุ จะฟาร์มโลกที่ตัวละครยืนอยู่ปัจจุบันตลอดไป)
         AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
         HealthRetreatThreshold = 0.35, -- เลือดต่ำกว่า 35% ให้ถอยทันที
@@ -248,16 +260,8 @@ local function StartStageOneProperly()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then return end
 
+        -- อยู่โลกไหน ให้ลงด่านโลกนั้นเสมอ ไม่มีการสลับกลับโลกเก่าเด็ดขาด
         local curWorld = GetCurrentWorld()
-        if Config.Stages.TargetWorld and curWorld ~= Config.Stages.TargetWorld then
-            local switched = TeleportToWorld(Config.Stages.TargetWorld)
-            if switched then
-                curWorld = GetCurrentWorld()
-            else
-                Config.Stages.TargetWorld = curWorld
-            end
-        end
-
         local originX = GetWorldOrigin(curWorld).X
         local wName = WorldsInfo[curWorld] and WorldsInfo[curWorld].name or ("World " .. curWorld)
 
@@ -613,7 +617,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ChakraQAGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999
-ScreenGui.Parent = PlayerGui
+ScreenGui.Parent = parentGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
