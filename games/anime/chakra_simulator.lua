@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Native Input Hooks | Smart Retreat & Cashout | Instant Full HP Reset
-    Version: 8.7.0
+    Architecture: Non-Blocking Safe Architecture | Auto Clear Stages 1-15 | Anti-Freeze
+    Version: 8.8.0 (Bulletproof Auto Stage Engine)
     ========================================================================
 --]]
 
@@ -64,7 +64,7 @@ local Config = {
         AutoSkillR = true,         -- สกิล R (Kamui)
         AutoStages = true,         -- ระบบลงด่านสเตจอัตโนมัติ (Stage 1-15)
         AutoRetreat = true,        -- ถอยไปเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว
-        AutoFullHpRespawn = true,  -- รีเซ็ตเลือดให้เต็ม 100% ทันทีก่อนเริ่มรอบใหม่
+        AutoFullHpRespawn = true,  -- ฟื้นเลือดเต็ม 100% ปลอดภัย ไร้อาการค้าง
         AutoPops = true,           -- กดคูณจักระรูปไฟ
         AutoRebirth = true,        -- เกิดใหม่อัตโนมัติ
         AutoEquipBestAura = true,  -- ใส่ออร่าที่ดีที่สุด
@@ -133,7 +133,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & RETREAT ENGINE (ACCURATE & FULL HEALTH)
+-- 4. SMART STAGE RUNNER & RETREAT ENGINE (SAFE & NON-BLOCKING)
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -143,16 +143,23 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
-local function HealToFullHP()
+-- ฟังก์ชันฟื้นฟูเลือดเต็ม 100% แบบปลอดภัย ป้องกันการค้างตลอดกาล
+local function SafeHealToFullHP()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Health < hum.MaxHealth * 0.95 then
-        State.StatusText = "💖 กำลังฟื้นฟูเลือดให้เต็ม 100%..."
+    if hum and hum.Health < hum.MaxHealth * 0.5 then
+        State.StatusText = "💖 ฟื้นฟูเลือดเต็ม 100%..."
         hum.Health = 0
-        local newChar = LocalPlayer.CharacterAdded:Wait()
-        newChar:WaitForChild("HumanoidRootPart", 5)
-        newChar:WaitForChild("Humanoid", 5)
-        task.wait(0.3)
+        local expire = tick() + 2.5
+        while tick() < expire do
+            local c = LocalPlayer.Character
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            local r = c and c:FindFirstChild("HumanoidRootPart")
+            if c and h and r and h.Health >= h.MaxHealth * 0.8 then
+                break
+            end
+            task.wait(0.15)
+        end
     end
 end
 
@@ -162,15 +169,15 @@ local function StartStageOneProperly()
     if not root then return end
 
     State.StatusText = "🚀 กำลังเข้าสู่ Stage 1..."
-    -- วาร์ปมาหน้าประตู แล้วก้าวผ่านเส้นประตูเพื่อทริกเกอร์ InStages อย่างสมบูรณ์
+    -- ก้าวผ่านประตูเพื่อกระตุ้น InStages อย่างสมบูรณ์
     root.CFrame = CFrame.new(0, 3.5, -20)
     root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.1)
+    task.wait(0.12)
     root.CFrame = CFrame.new(0, 3.5, -38)
     root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.2)
+    task.wait(0.18)
 
-    -- วาร์ปไปที่จุดมอนสเตอร์ของ Stage 1 ทันที เพื่อไม่ให้ยืนเฉยๆ
+    -- วาร์ปเข้าตำแหน่งมอนสเตอร์ของ Stage 1 ทันที
     root.CFrame = CFrame.new(0, 3.5, -75)
     root.AssemblyLinearVelocity = Vector3.zero
     State.CurrentStage = 1
@@ -182,40 +189,41 @@ local function RetreatAndClaimTrophies(retreatStage)
     if State.IsRetreating then return end
     State.IsRetreating = true
 
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    pcall(function()
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
 
-    if root and retreatStage and retreatStage >= 1 then
-        State.StatusText = string.format("🏆 สู้ไม่ไหว! กำลังเก็บถ้วยด่านก่อนหน้า (Stage %d)...", retreatStage)
-        local padPos = nil
-        if World and World.padPosition then
-            pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
+        if root and retreatStage and retreatStage >= 1 then
+            State.StatusText = string.format("🏆 สู้ไม่ไหว! เก็บถ้วยด่านก่อนหน้า (Stage %d)...", retreatStage)
+            local padPos = nil
+            if World and World.padPosition then
+                pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
+            end
+            if not padPos then
+                padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
+            end
+
+            -- วาร์ปไปเหยียบแท่นรับถ้วย PadGold
+            root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.5, 0))
+            root.AssemblyLinearVelocity = Vector3.zero
+            task.wait(0.2)
+
+            -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
+            pcall(function()
+                PadRemote:FireServer(retreatStage, "gold")
+            end)
+            task.wait(0.5)
         end
-        if not padPos then
-            padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
+
+        -- ฟื้นฟูเลือดให้เต็ม 100% ทันที (พร้อม Timeout ป้องกันค้าง)
+        if Config.Automation.AutoFullHpRespawn then
+            SafeHealToFullHP()
         end
 
-        -- วาร์ปไปเหยียบแท่นรับถ้วย PadGold ของด่านที่ผ่านแล้ว
-        root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.5, 0))
-        root.AssemblyLinearVelocity = Vector3.zero
-        task.wait(0.2)
+        -- เริ่มรอบใหม่ที่ Stage 1
+        StartStageOneProperly()
+    end)
 
-        -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์ และรอประมวลผลให้ถ้วยเข้าตัวชัวร์ๆ
-        pcall(function()
-            PadRemote:FireServer(retreatStage, "gold")
-        end)
-        task.wait(0.5)
-    else
-        State.StatusText = "⚠️ สู้ไม่ไหว! ถอยกลับไปฟื้นเลือด..."
-    end
-
-    -- ฟื้นฟูเลือดให้เต็ม 100% ทันที
-    if Config.Automation.AutoFullHpRespawn then
-        HealToFullHP()
-    end
-
-    -- เริ่มลูป Stage 1 รอบใหม่ด้วยเลือดเต็ม 100%
-    StartStageOneProperly()
     State.IsRetreating = false
 end
 
@@ -232,10 +240,10 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน ให้ฟื้นเลือดเต็มแล้วเริ่ม Stage 1
+    -- ถ้าไม่ได้อยู่ในด่าน ให้เข้า Stage 1 ทันที
     if not inStages or runStage == 0 then
-        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.95 then
-            HealToFullHP()
+        if Config.Automation.AutoFullHpRespawn and hpPercent < 0.5 then
+            SafeHealToFullHP()
         end
         StartStageOneProperly()
         return
@@ -252,7 +260,7 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่าเกณฑ์ หรือ ตีมอนเกิน 10 วินาที)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เลือดต่ำกว่า 30% หรือ ตีมอนเกิน 10 วินาที)
     if Config.Automation.AutoRetreat then
         local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
         local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
@@ -272,7 +280,7 @@ local function ProcessStageRunner()
         local nearest = enemyList[1]
         local dist = (root.Position - nearest.pos).Magnitude
 
-        -- บินเข้าประชิดตัวมอนสเตอร์ทันที จะได้ไม่ยืนเฉยๆ ให้มอนตีฟรี
+        -- บินเข้าประชิดตัวมอนสเตอร์ทันที
         if dist > 14 then
             root.CFrame = CFrame.new(nearest.pos + Vector3.new(0, 1.5, 5))
             root.AssemblyLinearVelocity = Vector3.zero
@@ -338,7 +346,7 @@ local function DoRebirth()
     pcall(function() RebirthFunc:InvokeServer() end)
 end
 
--- ฟังก์ชันใส่ออร่าที่ดีที่สุด (แก้ไขสมบูรณ์ตามระบบแท้ของเกม)
+-- ฟังก์ชันใส่ออร่าที่ดีที่สุด
 local function DoEquipBestAura()
     local aurasMod = ReplicatedStorage.Shared.Config:FindFirstChild("Auras")
     if not aurasMod or not StateMod then return end
@@ -349,7 +357,6 @@ local function DoEquipBestAura()
     local owned = StateMod.ownedAuras and StateMod.ownedAuras() or {}
     local currentAura = StateMod.string("Aura")
 
-    -- ตรวจสอบสิทธิ์การปลดล็อกออร่าตาม Logic แท้ของเกม Menus.lua
     local function HasAuraUnlocked(a)
         if not Auras.isOut(a) then return false end
         if a.pass and LocalPlayer:GetAttribute("Pass_" .. a.pass) == true then return true end
@@ -527,7 +534,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.7)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v8.8)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
