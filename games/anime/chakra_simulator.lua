@@ -2,8 +2,8 @@
     ========================================================================
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Non-Blocking Safe Architecture | Clear Visual Pad Standoff | Safe Flight Combat
-    Version: 9.0.0 (Ultimate Trophy Cashout & Clear Visuals Edition)
+    Architecture: Stage Filtered Targeting | Non-Blocking Safe Architecture | Anti-Leak
+    Version: 9.1.0 (Stage-Specific Target Lock Edition)
     ========================================================================
 --]]
 
@@ -80,7 +80,7 @@ local Config = {
     Stages = {
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
         HealthRetreatThreshold = 0.60, -- เลือดต่ำกว่า 60% ให้ถอยทันที ปลอดภัยแน่นอน
-        SafeAltitude = 8.0,            -- ลอยตัวสูง 8 studs เหนือหัวมอนสเตอร์เพื่อหลบการโจมตี 100%
+        SafeAltitude = 8.0,            -- ลอยตัวสูง 8 studs เหนือหัวมอนสเตอร์เพื่อหลบการโจมตี
         PadDwellTime = 0.8,            -- ยืนโชว์บนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
     }
 }
@@ -134,7 +134,7 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER & VISUAL RETREAT ENGINE
+-- 4. SMART STAGE RUNNER WITH STAGE-SPECIFIC TARGETING
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -142,6 +142,32 @@ local function GetStageCenterZ(stageNum)
         return (s + e) / 2
     end
     return -75 - (stageNum - 1) * 90
+end
+
+-- ฟังก์ชันกรองเฉพาะมอนสเตอร์ที่อยู่ในด่านปัจจุบันเท่านั้น (ป้องกันวาร์ปข้ามด่านไปตีด่านอื่น)
+local function GetEnemiesForStage(targetStage)
+    local rawList = Enemies and Enemies.list() or {}
+    local stageEnemies = {}
+
+    for _, e in ipairs(rawList) do
+        if e.pos then
+            local eStage = (World and World.stageAt) and World.stageAt(e.pos.Z)
+            if eStage == targetStage then
+                table.insert(stageEnemies, e)
+            end
+        end
+    end
+
+    -- เรียงลำดับตัวที่ใกล้ตัวผู้เล่นที่สุดก่อน
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root and #stageEnemies > 1 then
+        table.sort(stageEnemies, function(a, b)
+            return (root.Position - a.pos).Magnitude < (root.Position - b.pos).Magnitude
+        end)
+    end
+
+    return stageEnemies
 end
 
 local function StartStageOneProperly()
@@ -223,7 +249,7 @@ local function ProcessStageRunner()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
 
-    -- ถ้าไม่ได้อยู่ในด่าน ให้เริ่ม Stage 1
+    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่นอก Stage ให้เริ่ม Stage 1
     if not inStages or runStage == 0 then
         StartStageOneProperly()
         return
@@ -252,8 +278,8 @@ local function ProcessStageRunner()
         end
     end
 
-    -- จัดการการต่อสู้ในด่านปัจจุบัน
-    local enemyList = Enemies and Enemies.list() or {}
+    -- ดึงเฉพาะมอนสเตอร์ของด่านปัจจุบันเท่านั้น! ป้องกันการข้ามไปตีด่านคนอื่น
+    local enemyList = GetEnemiesForStage(runStage)
     local enemyCount = #enemyList
 
     if enemyCount > 0 then
@@ -266,28 +292,34 @@ local function ProcessStageRunner()
             root.AssemblyLinearVelocity = Vector3.zero
         end
 
-        State.StatusText = string.format("⚔️ Stage %d | มอน %d ตัว | เวลา: %.1fs | HP: %d%%", 
+        State.StatusText = string.format("⚔️ Stage %d | มอนในด่าน %d ตัว | เวลา: %.1fs | HP: %d%%", 
             runStage, enemyCount, timeInCombat, math.floor(hpPercent * 100))
 
         ExecuteAttack(nearest)
         ExecuteSkill("E", nearest)
         ExecuteSkill("R", nearest)
     else
-        -- เคลียร์มอนสเตอร์ในด่านนี้หมดแล้ว!
-        State.StatusText = string.format("🎉 เคลียร์ Stage %d สำเร็จ!", runStage)
-        
-        -- ถ้าเคลียร์ถึงด่าน 15 (ด่านสุดท้าย) ให้เก็บถ้วยด่าน 15 แล้วเริ่มใหม่
-        if runStage >= 15 then
-            RetreatAndClaimTrophies(15)
-            return
-        end
+        -- ตรวจสอบว่าเคลียร์ด่านแล้วจริงๆ หรือมอนกำลังสปอว์น
+        if timeInCombat > 0.4 then
+            State.StatusText = string.format("🎉 เคลียร์ Stage %d สำเร็จ!", runStage)
+            
+            -- ถ้าเคลียร์ถึงด่าน 15 (ด่านสุดท้าย) ให้เก็บถ้วยด่าน 15 แล้วเริ่มใหม่
+            if runStage >= 15 then
+                RetreatAndClaimTrophies(15)
+                return
+            end
 
-        -- เคลียร์แล้ว พุ่งลอยตัวเข้าสู่ด่านถัดไปทันที
-        local nextStage = runStage + 1
-        root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(nextStage))
-        root.AssemblyLinearVelocity = Vector3.zero
-        State.LastStage = nextStage
-        State.StageStartTime = tick()
+            -- เคลียร์แล้ว พุ่งลอยตัวเข้าสู่กึ่งกลางด่านถัดไปทันที
+            local nextStage = runStage + 1
+            root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(nextStage))
+            root.AssemblyLinearVelocity = Vector3.zero
+            State.LastStage = nextStage
+            State.StageStartTime = tick()
+        else
+            -- มอนสเตอร์กำลังสปอว์น ให้ยืนประจำที่กึ่งกลางด่านรอ
+            root.CFrame = CFrame.new(0, 3.5 + Config.Stages.SafeAltitude, GetStageCenterZ(runStage))
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
     end
 end
 
@@ -514,7 +546,7 @@ TitleCorner.Parent = TitleBar
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.0)"
+TitleLabel.Text = "⚡ Chakra QA Hub (Stage & Combat Pro v9.1)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -660,7 +692,7 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & เห็นแท่นชัดเจน)", Color3.fromRGB(255, 75, 75))
+AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ล็อคมอนตรงด่าน)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
