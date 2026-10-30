@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.3.0 (Anti-Stage-1-Stuck & Safe Progression Edition)
+    Version: 9.4.0 (Multi-World 1-4 Selector Edition)
     ========================================================================
 --]]
 
@@ -53,6 +53,14 @@ local EquipAuraFunc = Remotes:WaitForChild("EquipAura")
 local UnlockEyeRemote = Remotes:WaitForChild("UnlockEye")
 local EquipRemote = Remotes:WaitForChild("Equip")
 local PadRemote = Remotes:WaitForChild("Pad")
+local TeleportRemote = Remotes:FindFirstChild("Teleport") or Remotes:WaitForChild("Teleport", 5)
+
+local WorldsInfo = {
+    [1] = {name = "Shinobi Lands", color = Color3.fromRGB(69, 200, 255), desc = "โลก 1: ดินแดนนินจา"},
+    [2] = {name = "Celestial Realm", color = Color3.fromRGB(180, 92, 255), desc = "โลก 2: แดนสวรรค์"},
+    [3] = {name = "Blood Moon", color = Color3.fromRGB(255, 46, 77), desc = "โลก 3: พระจันทร์เลือด"},
+    [4] = {name = "Frozen Abyss", color = Color3.fromRGB(63, 184, 255), desc = "โลก 4: แดนเยือกแข็ง"},
+}
 
 -- 2. CONFIGURATION
 local Config = {
@@ -78,6 +86,8 @@ local Config = {
         SkillRCooldown = 6.0,
     },
     Stages = {
+        TargetWorld = 1,               -- เลือกระดับโลกเป้าหมาย (1: Shinobi, 2: Celestial, 3: Blood Moon, 4: Frozen Abyss)
+        AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
         HealthRetreatThreshold = 0.35, -- เลือดต่ำกว่า 35% ให้ถอยทันที
         MinRetreatStage = 8,           -- ด่าน 1-7 มอนสเตอร์อ่อน เลือดจะฟื้นฟูเองอัตโนมัติ ห้ามถอยเด็ดขาด ป้องกันการติดลูปด่านแรก
@@ -136,7 +146,57 @@ local function ExecuteSkill(slot, target)
     end)
 end
 
--- 4. SMART STAGE RUNNER WITH STAGE-SPECIFIC TARGETING
+-- 4. SMART STAGE RUNNER WITH MULTI-WORLD 1-4 SUPPORT
+local function GetCurrentWorld()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root and World and World.worldAt then
+        local w = World.worldAt(root.Position)
+        if w and w >= 1 and w <= 5 then return w end
+    end
+    local attrW = LocalPlayer:GetAttribute("World")
+    if attrW and attrW >= 1 and attrW <= 5 then return attrW end
+    if StateMod and StateMod.number then
+        local stW = StateMod.number("World")
+        if stW and stW >= 1 and stW <= 5 then return stW end
+    end
+    return 1
+end
+
+local function GetWorldOrigin(worldId)
+    local w = worldId or GetCurrentWorld()
+    if World and World.origin then
+        local ok, orig = pcall(function() return World.origin(w) end)
+        if ok and orig then return orig end
+    end
+    local origins = {0, 3000, 6000, 9000, 12000}
+    local x = origins[w] or 0
+    return Vector3.new(x, 0, 0)
+end
+
+local function TeleportToWorld(targetWorldId)
+    if not targetWorldId or targetWorldId < 1 or targetWorldId > 4 then return false end
+    local curWorld = GetCurrentWorld()
+    if curWorld == targetWorldId then return true end
+
+    local info = WorldsInfo[targetWorldId]
+    local name = info and info.name or ("World " .. targetWorldId)
+    State.StatusText = string.format("🌀 กำลังเปลี่ยนไปโลก %d (%s)...", targetWorldId, name)
+
+    if TeleportRemote then
+        pcall(function() TeleportRemote:FireServer(targetWorldId) end)
+        task.wait(1.5)
+    end
+
+    local afterWorld = GetCurrentWorld()
+    if afterWorld == targetWorldId then
+        return true
+    else
+        State.StatusText = string.format("⚠️ ไม่สามารถไปโลก %d ได้ (ยังล็อคอยู่/ต้องผ่านด่าน 15 โลกก่อนหน้า)", targetWorldId)
+        return false
+    end
+end
+
 local function GetStageCenterZ(stageNum)
     if World and World.stageStart and World.stageEnd then
         local s = World.stageStart(stageNum)
@@ -146,14 +206,23 @@ local function GetStageCenterZ(stageNum)
     return -75 - (stageNum - 1) * 90
 end
 
+local function GetStageCenter(stageNum, worldId)
+    local curWorld = worldId or GetCurrentWorld()
+    local originX = GetWorldOrigin(curWorld).X
+    local z = GetStageCenterZ(stageNum)
+    return Vector3.new(originX, Config.Stages.FloorY, z)
+end
+
 local function GetEnemiesForStage(targetStage)
     local rawList = Enemies and Enemies.list() or {}
     local stageEnemies = {}
+    local curWorld = GetCurrentWorld()
 
     for _, e in ipairs(rawList) do
         if e.pos then
             local eStage = (World and World.stageAt) and World.stageAt(e.pos.Z)
-            if eStage == targetStage then
+            local eWorld = (World and World.worldAt) and World.worldAt(e.pos) or curWorld
+            if eStage == targetStage and eWorld == curWorld then
                 table.insert(stageEnemies, e)
             end
         end
@@ -179,17 +248,30 @@ local function StartStageOneProperly()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then return end
 
-        State.StatusText = "🚀 กำลังก้าวเข้าสู่ Stage 1..."
-        -- ก้าวผ่านประตูที่ความสูงระดับพื้น Y = 3.5 เพื่อให้เซิร์ฟเวอร์ทริกเกอร์ InStages แน่นอน
-        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -20)
+        local curWorld = GetCurrentWorld()
+        if Config.Stages.TargetWorld and curWorld ~= Config.Stages.TargetWorld then
+            local switched = TeleportToWorld(Config.Stages.TargetWorld)
+            if switched then
+                curWorld = GetCurrentWorld()
+            else
+                Config.Stages.TargetWorld = curWorld
+            end
+        end
+
+        local originX = GetWorldOrigin(curWorld).X
+        local wName = WorldsInfo[curWorld] and WorldsInfo[curWorld].name or ("World " .. curWorld)
+
+        State.StatusText = string.format("🚀 ก้าวเข้าสู่ Stage 1 (โลก %d: %s)...", curWorld, wName)
+        -- ก้าวผ่านประตูที่ความสูงระดับพื้น Y = 3.5 ของโลกนั้นๆ
+        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -20)
         root.AssemblyLinearVelocity = Vector3.zero
         task.wait(0.12)
-        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -40)
+        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -40)
         root.AssemblyLinearVelocity = Vector3.zero
         task.wait(0.15)
 
         -- เดินเข้าสู่ตำแหน่งกลางด่าน Stage 1
-        root.CFrame = CFrame.new(0, Config.Stages.FloorY, -75)
+        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -75)
         root.AssemblyLinearVelocity = Vector3.zero
         State.CurrentStage = 1
         State.LastStage = 1
@@ -208,6 +290,8 @@ local function RetreatAndClaimTrophies(retreatStage)
         local char = LocalPlayer.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local curWorld = GetCurrentWorld()
+        local originX = GetWorldOrigin(curWorld).X
 
         if hum and hum.Health <= 0 then
             StartStageOneProperly()
@@ -215,13 +299,18 @@ local function RetreatAndClaimTrophies(retreatStage)
         end
 
         if root and retreatStage and retreatStage >= 1 then
-            State.StatusText = string.format("🏆 กำลังเหยียบแท่นทองด่านที่ผ่าน (Stage %d)...", retreatStage)
+            State.StatusText = string.format("🏆 กำลังเหยียบแท่นทองด่านที่ผ่าน (โลก %d | Stage %d)...", curWorld, retreatStage)
             local padPos = nil
             if World and World.padPosition then
-                pcall(function() padPos = World.padPosition(retreatStage, "gold") end)
+                pcall(function()
+                    local localPad = World.padPosition(retreatStage, "gold")
+                    if localPad then
+                        padPos = Vector3.new(originX + localPad.X, localPad.Y, localPad.Z)
+                    end
+                end)
             end
             if not padPos then
-                padPos = Vector3.new(20, 0.6, -111 - (retreatStage - 1) * 90)
+                padPos = Vector3.new(originX + 20, 0.6, -111 - (retreatStage - 1) * 90)
             end
 
             -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย PadGold ที่ระดับพื้น
@@ -318,15 +407,17 @@ local function ProcessStageRunner()
                 return
             end
 
-            -- พุ่งข้ามเข้าสู่กึ่งกลางด่านถัดไปที่ระดับพื้น
+            -- พุ่งข้ามเข้าสู่กึ่งกลางด่านถัดไปที่ระดับพื้นของโลกปัจจุบัน
+            local curWorld = GetCurrentWorld()
             local nextStage = runStage + 1
-            root.CFrame = CFrame.new(0, Config.Stages.FloorY, GetStageCenterZ(nextStage))
+            root.CFrame = CFrame.new(GetStageCenter(nextStage, curWorld))
             root.AssemblyLinearVelocity = Vector3.zero
             State.LastStage = nextStage
             State.StageStartTime = tick()
         else
             -- มอนสเตอร์กำลังสปอว์น ให้ยืนประจำที่กึ่งกลางด่านรอ
-            root.CFrame = CFrame.new(0, Config.Stages.FloorY, GetStageCenterZ(runStage))
+            local curWorld = GetCurrentWorld()
+            root.CFrame = CFrame.new(GetStageCenter(runStage, curWorld))
             root.AssemblyLinearVelocity = Vector3.zero
         end
     end
@@ -701,24 +792,63 @@ local function AddButton(text, bgCol, onClick)
 end
 
 -- SECTIONS
-AddSection("⚔️ 1. AUTO STAGES (ระบบลงด่านสเตจ & ไหลลื่นระดับพื้น)", Color3.fromRGB(255, 75, 75))
+AddSection("🌍 1. AUTO STAGES (เลือกระดับโลก 1-4 & ฟาร์มอัตโนมัติ)", Color3.fromRGB(255, 75, 75))
 AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
     Config.Automation.AutoStages = v 
 end)
 AddToggle("ถอยเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว (Smart Retreat)", Config.Automation.AutoRetreat, function(v) 
     Config.Automation.AutoRetreat = v 
 end)
+
+-- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 4
+local WorldStatusLabel = Instance.new("TextLabel")
+WorldStatusLabel.Size = UDim2.new(1, 0, 0, 22)
+WorldStatusLabel.BackgroundTransparency = 1
+WorldStatusLabel.Font = Enum.Font.GothamBold
+WorldStatusLabel.TextSize = 11
+WorldStatusLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+WorldStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+local initialWorld = GetCurrentWorld()
+WorldStatusLabel.Text = string.format("🌐 โลกปัจจุบัน: %d (%s)", initialWorld, WorldsInfo[initialWorld] and WorldsInfo[initialWorld].name or "World " .. initialWorld)
+WorldStatusLabel.Parent = Content
+
+task.spawn(function()
+    while State.Running do
+        pcall(function()
+            local cw = GetCurrentWorld()
+            local tw = Config.Stages.TargetWorld or cw
+            local wName = WorldsInfo[cw] and WorldsInfo[cw].name or ("World " .. cw)
+            WorldStatusLabel.Text = string.format("🌐 โลกปัจจุบัน: %d (%s) | เป้าหมาย: %d", cw, wName, tw)
+        end)
+        task.wait(0.5)
+    end
+end)
+
+-- ปุ่มเลือกโลกทั้ง 4 โลก (Shinobi Lands, Celestial Realm, Blood Moon, Frozen Abyss)
+for wId = 1, 4 do
+    local info = WorldsInfo[wId]
+    local btnName = string.format("🗺️ เลือกระดับโลก %d: %s", wId, info.name)
+    AddButton(btnName, info.color, function()
+        Config.Stages.TargetWorld = wId
+        State.StatusText = string.format("🌀 กำลังสลับไปโลก %d (%s)...", wId, info.name)
+        TeleportToWorld(wId)
+        task.wait(0.5)
+        StartStageOneProperly()
+    end)
+end
+
 AddButton("🏆 ถอยไปเก็บถ้วยด่านก่อนหน้าทันที (Retreat & Claim)", Color3.fromRGB(160, 100, 30), function()
     local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
     RetreatAndClaimTrophies(runCleared)
 end)
-AddButton("🚀 วาร์ปเข้าสู่ด่าน Stage 1 ทันที", Color3.fromRGB(140, 35, 35), function()
+AddButton("🚀 เริ่มด่าน Stage 1 ของโลกนี้ทันที", Color3.fromRGB(140, 35, 35), function()
     StartStageOneProperly()
 end)
-AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง (Hub Spawn)", Color3.fromRGB(60, 60, 80), function()
+AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง (Hub Spawn ของโลกนี้)", Color3.fromRGB(60, 60, 80), function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then root.CFrame = CFrame.new(0, 4, 46) end
+    local originX = GetWorldOrigin().X
+    if root then root.CFrame = CFrame.new(originX, 4, 46) end
 end)
 
 AddSection("⚡ 2. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
