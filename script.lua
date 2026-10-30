@@ -1,24 +1,28 @@
 --[[
-    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V11 (All-in-One Safe Pipeline)
+    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V12 (Complete Automation & Reward Engine)
     ========================================================================
-    ✅ 1. อัพระดับ Damage สถิติให้ตันแบบระบุตัวเลขได้:
+    ✅ 1. อัพระดับ Damage สถิติให้ตันแบบระบุตัวเลขได้ (1-200):
           - กำหนดเลเวลเป้าหมายได้อิสระ (1-200) หรือกดปุ่ม [ตัน] เพื่อตั้งค่าเลเวล 200 ทันที
-          - ป้องกันการอัปเกินค่า MaxLevel และตรวจเช็คเงินสดทุกครั้งก่อนยิงคำสั่ง
-    ✅ 2. เพิ่มฟังก์ชันสุ่มลูกเต๋าเวทมนต์ (Auto Roll Enchanted Dice):
-          - ตรวจสอบการปลดล็อกแท่น Enchant และจำนวนลูกเต๋า (DiceCount > 0) ก่อนยิงคำสั่ง
-          - รองรับทั้ง EnchantDice ปกติ และ HalloweenDice อัตโนมัติ (สแตนด์บาย 0% Spam เมื่อหมด)
-    ✅ 3. เพิ่มฟังก์ชันสุ่มม้วนอัญเชิญ (Auto Roll Summon Scrolls):
-          - ตรวจสอบการปลดล็อกศาลเจ้า Summon และจำนวนม้วนอัญเชิญ (ScrollCount > 0) ก่อนยิงคำสั่ง
-          - สุ่มครั้งละสูงสุด 10 ม้วนตามจำนวนที่มีจริง (สแตนด์บาย 0% Spam เมื่อหมด)
-    ✅ 4. Pre-flight Checks เคร่งครัดทุกฟังก์ชัน 100%:
-          - ตรวจสอบยอดเงินคงเหลือและสต็อกจริงแบบ Real-time ก่อนยิงทุก Remote Event
-          - หมดปัญหาข้อความเตือน "เงินไม่พอ" หรือยิงคำสั่งซ้ำซ้อน
-    ✅ 5. ทุกฟังก์ชันสามารถเปิดพร้อมกันได้ 100% เรียงตามลำดับ Priority 1 -> 9:
-          1. เก็บของ -> 2. ขายของ (แร่ + โซนเก่า) -> 3. ต้นไม้ & แกนหลัก -> 4. ซื้อขวาน
-          5. สถิติตัวละคร (จัดตาม Base DMG) -> 6. สุ่มการกลายพันธุ์ (เปิดค้างได้)
-          7. สุ่มลูกเต๋าเวทมนต์ -> 8. สุ่มม้วนอัญเชิญ -> 9. อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่, Anti-AFK)
-    ✅ 6. Auto-Save & Auto-Load ลง AnimeMine_Config.json
-    ✅ 7. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
+          - ป้องกันการอัปเกินค่า และตรวจเช็คเงินสดทุกครั้งก่อนยิงคำสั่ง
+    ✅ 2. รับรางวัลในดัชนี (Index Rewards) อัตโนมัติ:
+          - ตรวจสอบโควต้ารางวัลที่ปลดล็อกผ่าน MineIndexRewardsConfig อย่างแม่นยำ
+          - ส่งคำสั่งเคลมรางวัลทุกระดับที่ปลดล็อกสำเร็จ พร้อมปุ่ม [⚡ รับรางวัล Index ทันที]
+    ✅ 3. รับรางวัลในบอร์ดอีเว้น (Event Board Rewards) อัตโนมัติ:
+          - ดึงสถานะบอร์ดอีเว้นและระดับคะแนน Thresholds ปัจจุบัน
+          - เคลมรางวัล Milestone ทั้งหมดทันทีเมื่อคะแนนถึง พร้อมปุ่ม [⚡ รับรางวัล Event ทันที]
+    ✅ 4. ปรับปรุงฟังก์ชันสวมใส่ตัวละครที่ดีที่สุด (Auto Equip Best):
+          - ยิงคำสั่งทั้งฝั่ง Client UI Button และ Server Remote Event อย่างสมบูรณ์
+          - เพิ่มปุ่มกด [⚡ ใส่ตัวที่ดีที่สุดทันที] ให้กดใช้งานได้ตลอดเวลา
+          - แสดงสถานะบน Status Badge ชัดเจนเมื่อทำงาน
+    ✅ 5. ใช้น้ำยาอัตโนมัติแบบระบุและเลือกใช้พร้อมกันได้ (Auto Use Potions):
+          - เลือกน้ำยาที่ต้องการใช้ได้ไม่จำกัดชนิด พร้อมเมนูกดเลือกทั้งหมด/ล้าง
+          - ตรวจสอบสต็อกน้ำยาในคลังจริงก่อนใช้ (ไม่มียิงคำสั่งเปล่า 0% Spam)
+          - ใช้ต่อเนื่องทีละขวดตามลำดับอย่างปลอดภัย (Human Rate Limit)
+    ✅ 6. เงื่อนไขความปลอดภัยเคร่งครัด 100%:
+          - ห้ามยิงคำสั่งพร้อมกัน (Sequential Single-Thread Pipeline)
+          - ตรวจสอบความพร้อมใช้งาน (Pre-flight checks) ก่อนเริ่มยิงทุกคำสั่ง
+    ✅ 7. Auto-Save & Auto-Load ลง AnimeMine_Config.json
+    ✅ 8. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
           loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 ]]
 
@@ -40,6 +44,9 @@ local MineStock = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild
 local Items = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Items"))
 local MineEnchantCatalog = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineEnchantCatalog"))
 local MineSummonCatalog = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineSummonCatalog"))
+local MineIndexRewardsConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineIndexRewardsConfig"))
+local MineEventsConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MineEventsConfig"))
+local MinePotionCatalog = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MinePotionCatalog"))
 
 -- ═══════════════════════════════════════════════
 -- 🛡️ RATE LIMITER & HUMAN DELAY & HELPERS
@@ -136,6 +143,33 @@ local Config = {
     AutoMutation = false,
     AutoRollDice = false,       -- สุ่มลูกเต๋าเวทมนต์อัตโนมัติ
     AutoSummonScrolls = false,  -- สุ่มม้วนอัญเชิญอัตโนมัติ
+    AutoClaimIndex = true,      -- รับรางวัลในดัชนี (Index) อัตโนมัติ
+    AutoClaimEvents = true,     -- รับรางวัลบอร์ดอีเว้น (Events) อัตโนมัติ
+    AutoUsePotions = false,     -- ใช้น้ำยาอัตโนมัติ
+
+    SelectedPotions = {
+        ["Mutation Luck Potion I"] = true,
+        ["Mutation Luck Potion II"] = true,
+        ["Mutation Luck Potion III"] = true,
+        ["Character Luck Potion"] = true,
+        ["Character Luck Potion II"] = true,
+        ["Enchant Luck Potion"] = true,
+        ["Speed Potion"] = true,
+        ["Damage Potion"] = true,
+        ["Miner's Hourglass"] = true,
+        ["Prospector's Bottle"] = true,
+        ["Prospector's Bottle II"] = true,
+        ["Crit Elixir"] = true,
+        ["Crit Elixir II"] = true,
+        ["Colossus Rally"] = true,
+        ["Colossus Rally II"] = true,
+        ["Regrowth Potion"] = true,
+        ["Deep Focus"] = true,
+        ["Evergreen Charm"] = true,
+        ["Diamondbound Charm"] = true,
+        ["Anchor Stone"] = true,
+        ["Dice Saver"] = true
+    },
 
     MutationSlots = {
         ["M1"] = true,
@@ -177,6 +211,47 @@ local AllMutations = {
     "Bronze"
 }
 
+local AllPotionsList = {
+    "Mutation Luck Potion I",
+    "Mutation Luck Potion II",
+    "Mutation Luck Potion III",
+    "Character Luck Potion",
+    "Character Luck Potion II",
+    "Enchant Luck Potion",
+    "Speed Potion",
+    "Damage Potion",
+    "Miner's Hourglass",
+    "Miner's Hourglass II",
+    "Prospector's Bottle",
+    "Prospector's Bottle II",
+    "Crit Elixir",
+    "Crit Elixir II",
+    "Colossus Rally",
+    "Colossus Rally II",
+    "Regrowth Potion",
+    "Deep Focus",
+    "Evergreen Charm",
+    "Miner's Coffee",
+    "Diamondbound Charm",
+    "Anchor Stone",
+    "Dice Saver",
+    "Haggler's Tonic",
+    "Haste Potion",
+    "Ore Luck Potion",
+    "Ore Elixir I"
+}
+
+-- ตัวแปรเก็บสถานะอีเว้นล่าสุด
+local latestEventsPayload = nil
+local lastEventRequestTime = 0
+pcall(function()
+    GameState.ListenToEvent(MineEventsConfig.Events.State, function(data)
+        if type(data) == "table" then
+            latestEventsPayload = data
+        end
+    end)
+end)
+
 local function SaveConfig()
     pcall(function()
         if writefile then
@@ -194,6 +269,10 @@ local function SaveConfig()
                 AutoMutation = Config.AutoMutation,
                 AutoRollDice = Config.AutoRollDice,
                 AutoSummonScrolls = Config.AutoSummonScrolls,
+                AutoClaimIndex = Config.AutoClaimIndex,
+                AutoClaimEvents = Config.AutoClaimEvents,
+                AutoUsePotions = Config.AutoUsePotions,
+                SelectedPotions = Config.SelectedPotions,
                 MutationSlots = Config.MutationSlots,
                 TargetLevelDamage = Config.TargetLevelDamage,
                 TargetLevelSpeed = Config.TargetLevelSpeed,
@@ -245,13 +324,13 @@ end
 -- ═══════════════════════════════════════════════
 -- 🎨 UI SYSTEM
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11"}) do
+for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12"}) do
     local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV11"
+ScreenGui.Name = "AnimeMineAutoFarmV12"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -316,7 +395,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 175, 1, 0)
 Title.Position = UDim2.new(0, 14, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V11"
+Title.Text = "⛏️ Auto Farm Suite V12"
 Title.TextColor3 = Theme.Text
 Title.TextSize = 15
 Title.Font = Enum.Font.GothamBold
@@ -914,8 +993,145 @@ local function AddMultiMutationSelector(order)
     end
 end
 
+-- ตัวเลือกน้ำยาเป้าหมาย (เลือกได้หลายชนิดพร้อมกัน)
+local function AddMultiPotionSelector(order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 160)
+    Frame.BackgroundColor3 = Theme.Button
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order
+    Frame.Parent = Scroll
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 8)
+    fCorner.Parent = Frame
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0, 200, 0, 20)
+    lbl.Position = UDim2.new(0, 12, 0, 6)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "🧪 เลือกน้ำยาที่ต้องการใช้:"
+    lbl.TextColor3 = Theme.Text
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = Frame
+
+    local QuickActions = Instance.new("Frame")
+    QuickActions.Size = UDim2.new(0, 130, 0, 20)
+    QuickActions.Position = UDim2.new(1, -140, 0, 6)
+    QuickActions.BackgroundTransparency = 1
+    QuickActions.Parent = Frame
+
+    local qLayout = Instance.new("UIListLayout")
+    qLayout.FillDirection = Enum.FillDirection.Horizontal
+    qLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    qLayout.Padding = UDim.new(0, 4)
+    qLayout.Parent = QuickActions
+
+    local SelectAllBtn = Instance.new("TextButton")
+    SelectAllBtn.Size = UDim2.new(0, 62, 1, 0)
+    SelectAllBtn.BackgroundColor3 = Theme.BadgeBG
+    SelectAllBtn.Text = "เลือกทั้งหมด"
+    SelectAllBtn.TextColor3 = Theme.Accent
+    SelectAllBtn.TextSize = 9
+    SelectAllBtn.Font = Enum.Font.GothamMedium
+    SelectAllBtn.BorderSizePixel = 0
+    SelectAllBtn.Parent = QuickActions
+
+    local saCorner = Instance.new("UICorner")
+    saCorner.CornerRadius = UDim.new(0, 4)
+    saCorner.Parent = SelectAllBtn
+
+    local ClearAllBtn = Instance.new("TextButton")
+    ClearAllBtn.Size = UDim2.new(0, 44, 1, 0)
+    ClearAllBtn.BackgroundColor3 = Theme.BadgeBG
+    ClearAllBtn.Text = "ล้าง"
+    ClearAllBtn.TextColor3 = Theme.SubText
+    ClearAllBtn.TextSize = 9
+    ClearAllBtn.Font = Enum.Font.GothamMedium
+    ClearAllBtn.BorderSizePixel = 0
+    ClearAllBtn.Parent = QuickActions
+
+    local caCorner = Instance.new("UICorner")
+    caCorner.CornerRadius = UDim.new(0, 4)
+    caCorner.Parent = ClearAllBtn
+
+    local PotionScroll = Instance.new("ScrollingFrame")
+    PotionScroll.Size = UDim2.new(1, -24, 0, 122)
+    PotionScroll.Position = UDim2.new(0, 12, 0, 28)
+    PotionScroll.BackgroundTransparency = 1
+    PotionScroll.BorderSizePixel = 0
+    PotionScroll.ScrollBarThickness = 3
+    PotionScroll.ScrollBarImageColor3 = Theme.Accent
+    PotionScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    PotionScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    PotionScroll.Parent = Frame
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0, 158, 0, 26)
+    grid.CellPadding = UDim2.new(0, 6, 0, 6)
+    grid.Parent = PotionScroll
+
+    local potionChips = {}
+
+    local function RefreshChip(potName)
+        local chip = potionChips[potName]
+        if chip then
+            local isSelected = Config.SelectedPotions[potName] == true
+            chip.BackgroundColor3 = isSelected and Theme.ChipActive or Theme.ChipInactive
+            chip.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Theme.SubText
+            chip.Text = (isSelected and "✓ " or "+ ") .. potName
+        end
+    end
+
+    for _, potName in ipairs(AllPotionsList) do
+        local chip = Instance.new("TextButton")
+        local isSelected = Config.SelectedPotions[potName] == true
+        chip.BackgroundColor3 = isSelected and Theme.ChipActive or Theme.ChipInactive
+        chip.Text = (isSelected and "✓ " or "+ ") .. potName
+        chip.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Theme.SubText
+        chip.TextSize = 9
+        chip.Font = Enum.Font.GothamMedium
+        chip.BorderSizePixel = 0
+        chip.Parent = PotionScroll
+
+        local chCorner = Instance.new("UICorner")
+        chCorner.CornerRadius = UDim.new(0, 5)
+        chCorner.Parent = chip
+
+        potionChips[potName] = chip
+
+        chip.MouseButton1Click:Connect(function()
+            if Config.SelectedPotions[potName] then
+                Config.SelectedPotions[potName] = nil
+            else
+                Config.SelectedPotions[potName] = true
+            end
+            RefreshChip(potName)
+            SaveConfig()
+        end)
+    end
+
+    SelectAllBtn.MouseButton1Click:Connect(function()
+        for _, potName in ipairs(AllPotionsList) do
+            Config.SelectedPotions[potName] = true
+            RefreshChip(potName)
+        end
+        SaveConfig()
+    end)
+
+    ClearAllBtn.MouseButton1Click:Connect(function()
+        Config.SelectedPotions = {}
+        for _, potName in ipairs(AllPotionsList) do
+            RefreshChip(potName)
+        end
+        SaveConfig()
+    end)
+end
+
 -- ═══════════════════════════════════════════════
--- 📋 สร้างเมนูจัดหมวดหมู่ตามลำดับ PRIORITY 1 -> 7
+-- 📋 สร้างเมนูจัดหมวดหมู่ตามลำดับ PRIORITY
 -- ═══════════════════════════════════════════════
 AddCategory("📦 1. เก็บของ & 💰 2. ขายของ", 1)
 AddToggle("AutoChest", "1. Auto Take Chest (เก็บของ)", "ดูดแร่จากหีบเข้ากระเป๋าเมื่อหินแตก", 2)
@@ -971,11 +1187,101 @@ AddCategory("🎲 7. ลูกเต๋าเวทมนต์ & ม้วน�
 AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อลูกเต๋าหมด)", 51)
 AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", 52)
 
-AddCategory("⛏️ 8. อื่นๆ (ตีหิน, โซนใหม่, สวมใส่, Anti-AFK)", 60)
-AddToggle("AutoMine", "Auto Mine (ตีหินในแปลง)", "ค้นหาและตีหินในแปลงของตัวเองอย่างเป็นระเบียบ", 61)
-AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 62)
-AddToggle("AutoEquipBest", "Auto Equip Best", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วงไม่ส่งซ้ำ)", 63)
-AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 64)
+AddCategory("🏆 8. รับรางวัล (ดัชนี & บอร์ดอีเว้น)", 60)
+AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", 61)
+AddToggle("AutoClaimEvents", "Auto Claim Events (รับรางวัลอีเว้น)", "รับรางวัล Milestone บนบอร์ดอีเว้นอัตโนมัติ", 62)
+AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local d2 = GameState.GetData2()
+        local mg = d2 and d2.MineGame
+        if not (mg and MineIndexRewardsConfig and MineIndexRewardsConfig.Enabled) then return end
+        local heldNames = MineIndexRewardsConfig.HeldNames(mg)
+        local claimedAny = 0
+        for _, catKey in ipairs(MineIndexRewardsConfig.Keys()) do
+            local state = MineIndexRewardsConfig.State(mg, catKey, heldNames)
+            for _, tier in ipairs(state.Track or {}) do
+                if tier.Reached and not tier.Claimed then
+                    for rIdx, rDef in ipairs(tier.Rewards or {}) do
+                        local rIds = MineIndexRewardsConfig.RewardIds({rDef})
+                        local rId = rIds and rIds[1]
+                        local isClaimed = tier.ClaimedRewards and (tier.ClaimedRewards[rId] or 0) > 0
+                        if not isClaimed then
+                            UpdateStatus(string.format("📖 รับรางวัล Index: %s", catKey))
+                            GameState.SendEvent(MineIndexRewardsConfig.Events.Claim, catKey, tier.Key, rIdx)
+                            claimedAny = claimedAny + 1
+                            HumanWait(0.3, 0.45)
+                        end
+                    end
+                end
+            end
+        end
+        if claimedAny > 0 then
+            UpdateStatus(string.format("✅ รับรางวัล Index %d รายการสำเร็จ!", claimedAny))
+        else
+            UpdateStatus("ℹ️ ไม่มีรางวัล Index ที่ค้างรับ")
+        end
+    end)
+end, 63)
+AddActionButton("⚡ รับรางวัล Event ทันที", "ตรวจสอบและกดรับรางวัลบอร์ด Event ที่ปลดล็อกทั้งหมดทันที", "รับ Event", Theme.SpecialBtn, function()
+    task.spawn(function()
+        UpdateStatus("🏆 ตรวจสอบรางวัล Event...")
+        GameState.SendEvent(MineEventsConfig.Events.Open)
+        HumanWait(0.4, 0.6)
+        if latestEventsPayload and latestEventsPayload.Events then
+            local claimedCount = 0
+            for _, ev in ipairs(latestEventsPayload.Events or {}) do
+                local pts = tonumber(ev.Points) or 0
+                for tIdx, targetPts in ipairs(ev.Thresholds or {}) do
+                    if pts >= targetPts and not (ev.Claimed and ev.Claimed[tIdx]) then
+                        local tiers = ev.Days and ev.Key and MineEventsConfig.Catalog and MineEventsConfig.Catalog[ev.Key] and MineEventsConfig.Tiers(ev.Days, MineEventsConfig.Catalog[ev.Key])
+                        local tDef = tiers and tiers[tIdx]
+                        local rList = tDef and tDef.Rewards or {}
+                        for rIdx, rItem in ipairs(MineEventsConfig.Shown and MineEventsConfig.Shown(rList) or rList) do
+                            local actualIdx = table.find(rList, rItem) or rIdx
+                            local gotMask = type(ev.Got) == "table" and (tonumber(ev.Got[tIdx]) or 0) or 0
+                            if not (gotMask > 0 and bit32.btest(gotMask, 2 ^ (actualIdx - 1))) then
+                                GameState.SendEvent(MineEventsConfig.Events.Claim, ev.Id, tIdx, actualIdx)
+                                claimedCount = claimedCount + 1
+                                HumanWait(0.35, 0.5)
+                            end
+                        end
+                    end
+                end
+            end
+            if claimedCount > 0 then
+                UpdateStatus(string.format("✅ รับรางวัล Event %d รายการสำเร็จ!", claimedCount))
+            else
+                UpdateStatus("ℹ️ ไม่มีรางวัล Event ที่ค้างรับ")
+            end
+        else
+            UpdateStatus("ℹ️ กำลังรอข้อมูลบอร์ด Event...")
+        end
+    end)
+end, 64)
+
+AddCategory("🧪 9. ใช้น้ำยาอัตโนมัติ (เลือกใช้ได้หลายชนิดพร้อมกัน)", 70)
+AddToggle("AutoUsePotions", "Auto Use Potions (ใช้น้ำยา)", "กดใช้น้ำยาที่เลือกไว้ทันทีเมื่อมีในกระเป๋า (สแตนด์บายเมื่อหมด)", 71)
+AddMultiPotionSelector(72)
+
+AddCategory("⛏️ 10. อื่นๆ (ตีหิน, โซนใหม่, สวมใส่, Anti-AFK)", 80)
+AddToggle("AutoMine", "Auto Mine (ตีหินในแปลง)", "ค้นหาและตีหินในแปลงของตัวเองอย่างเป็นระเบียบ", 81)
+AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 82)
+AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", 83)
+AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
+        local invFrame = PlayerGui:FindFirstChild("MineGui") and PlayerGui.MineGui:FindFirstChild("InventoryFrame")
+        local eqBtn = invFrame and invFrame:FindFirstChild("EquipBestButton", true)
+        local conns = getconnections and eqBtn and getconnections(eqBtn.MouseButton1Click)
+        if conns and conns[1] then
+            conns[1]:Fire()
+        end
+        GameState.SendEvent("MineEquipBest")
+        HumanWait(0.25, 0.35)
+        UpdateStatus("✅ สวมใส่ตัวที่ดีที่สุดสำเร็จ!")
+    end)
+end, 84)
+AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 85)
 
 -- ═══════════════════════════════════════════════
 -- 🖱️ DRAGGING & MINIMIZE & HOTKEY
@@ -1452,9 +1758,110 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- ลำดับที่ 9: อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่ตัวดีที่สุด)
+        -- ลำดับที่ 9: รับรางวัลอัตโนมัติ (Index & Event Board)
+        -- ห้ามยิงพร้อมกัน ตรวจสอบเงื่อนไขพร้อมใช้งานก่อนส่งคำสั่ง 100%
         -- -------------------------------------------------------------
-        -- 7.1 ตีหินในแปลง
+        -- 9.1 รับรางวัลในดัชนี (MineIndexClaim)
+        if Config.AutoClaimIndex and mg and MineIndexRewardsConfig and MineIndexRewardsConfig.Enabled then
+            local heldNames = MineIndexRewardsConfig.HeldNames(mg)
+            for _, catKey in ipairs(MineIndexRewardsConfig.Keys()) do
+                local state = MineIndexRewardsConfig.State(mg, catKey, heldNames)
+                for _, tier in ipairs(state.Track or {}) do
+                    if tier.Reached and not tier.Claimed then
+                        for rIdx, rDef in ipairs(tier.Rewards or {}) do
+                            local rIds = MineIndexRewardsConfig.RewardIds({rDef})
+                            local rId = rIds and rIds[1]
+                            local isClaimed = tier.ClaimedRewards and (tier.ClaimedRewards[rId] or 0) > 0
+                            if not isClaimed then
+                                UpdateStatus(string.format("📖 รับรางวัล Index: %s T%s#%d", catKey, tostring(tier.Index or tier.Key), rIdx))
+                                GameState.SendEvent(MineIndexRewardsConfig.Events.Claim, catKey, tier.Key, rIdx)
+                                HumanWait(0.35, 0.5)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- 9.2 รับรางวัลในบอร์ดอีเว้น (MineEventsClaim)
+        if Config.AutoClaimEvents then
+            if not latestEventsPayload or os.clock() - lastEventRequestTime > 30 then
+                lastEventRequestTime = os.clock()
+                GameState.SendEvent(MineEventsConfig.Events.Open)
+                HumanWait(0.35, 0.5)
+            end
+
+            if latestEventsPayload and latestEventsPayload.Events then
+                local function CheckAndClaimLadder(ladderObj)
+                    if not ladderObj or not ladderObj.Thresholds then return end
+                    local pts = tonumber(ladderObj.Points) or 0
+                    local thresholds = ladderObj.Thresholds or {}
+                    local claimed = ladderObj.Claimed or {}
+                    local got = ladderObj.Got or {}
+
+                    for tIdx, targetPts in ipairs(thresholds) do
+                        if pts >= targetPts and not claimed[tIdx] then
+                            local tiers = (ladderObj.IsPersonal and MineEventsConfig.PersonalTiers() or (ladderObj.Days and ladderObj.Key and MineEventsConfig.Catalog and MineEventsConfig.Catalog[ladderObj.Key] and MineEventsConfig.Tiers(ladderObj.Days, MineEventsConfig.Catalog[ladderObj.Key])))
+                            local tDef = tiers and tiers[tIdx]
+                            local rList = tDef and tDef.Rewards or {}
+                            local shownList = MineEventsConfig.Shown and MineEventsConfig.Shown(rList) or rList
+
+                            for rIdx, rItem in ipairs(shownList) do
+                                local actualIdx = table.find(rList, rItem) or rIdx
+                                local gotMask = type(got) == "table" and (tonumber(got[tIdx]) or 0) or 0
+                                local isGot = (gotMask > 0 and bit32.btest(gotMask, 2 ^ (actualIdx - 1))) or claimed[tIdx] == true
+
+                                if not isGot then
+                                    UpdateStatus(string.format("🏆 รับรางวัล Event: %s T%d#%d", tostring(ladderObj.Key or ladderObj.Id), tIdx, actualIdx))
+                                    GameState.SendEvent(MineEventsConfig.Events.Claim, ladderObj.Id, tIdx, actualIdx)
+                                    HumanWait(0.35, 0.5)
+                                end
+                            end
+                        end
+                    end
+                end
+
+                for _, ev in ipairs(latestEventsPayload.Events or {}) do
+                    CheckAndClaimLadder(ev)
+                    if ev.Personal and MineEventsConfig.PersonalOn and MineEventsConfig.PersonalOn() then
+                        CheckAndClaimLadder(ev.Personal)
+                    end
+                end
+            end
+        end
+
+        -- -------------------------------------------------------------
+        -- ลำดับที่ 10: ใช้น้ำยาอัตโนมัติ (Auto Use Selected Potions)
+        -- ห้ามยิงพร้อมกัน ตรวจสอบว่ามีน้ำยาในคลังจริงก่อนส่งคำสั่ง 100%
+        -- -------------------------------------------------------------
+        if Config.AutoUsePotions and mg and mg.Potions then
+            for potName, isSelected in pairs(Config.SelectedPotions) do
+                if isSelected then
+                    local count = tonumber(mg.Potions[potName]) or 0
+                    if count > 0 then
+                        local canUse = true
+                        local pDef = MinePotionCatalog and MinePotionCatalog.ByName and MinePotionCatalog.ByName(potName)
+                        if pDef and pDef.Kind == "Food" and MineConfig.GetFoodRoom then
+                            local room = MineConfig.GetFoodRoom(mg, potName) or 0
+                            if room <= 0 then canUse = false end
+                        end
+
+                        if canUse then
+                            UpdateStatus(string.format("🧪 ใช้น้ำยา: %s (มี %d)", potName, count))
+                            GameState.SendEvent("MineUsePotion", potName, 1)
+                            HumanWait(0.35, 0.5)
+                            d2 = GameState.GetData2()
+                            mg = d2 and d2.MineGame
+                        end
+                    end
+                end
+            end
+        end
+
+        -- -------------------------------------------------------------
+        -- ลำดับที่ 11: อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่ตัวดีที่สุด)
+        -- -------------------------------------------------------------
+        -- 11.1 ตีหินในแปลง
         if Config.AutoMine and myPlot and myPlot:FindFirstChild("Nodes") then
             for hit = 1, 10 do
                 if not Config.AutoMine then break end
@@ -1481,7 +1888,7 @@ task.spawn(function()
             end
         end
 
-        -- 7.2 ซื้อโซนใหม่ที่ ZoneBoard
+        -- 11.2 ซื้อโซนใหม่ที่ ZoneBoard
         if Config.AutoBuyZone and myPlot then
             local zb = myPlot:FindFirstChild("ZoneBoard")
             local gui = zb and zb:FindFirstChild("ZoneBoardGui")
@@ -1524,11 +1931,18 @@ task.spawn(function()
             end
         end
 
-        -- 7.3 สวมใส่ตัวละครที่ดีที่สุด (เว้นช่วง 60 วิ ไม่ส่งซ้ำ)
-        if Config.AutoEquipBest and os.clock() - lastEquipTime > 60 then
+        -- 11.3 สวมใส่ตัวละครที่ดีที่สุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)
+        if Config.AutoEquipBest and os.clock() - lastEquipTime > 20 then
             lastEquipTime = os.clock()
+            UpdateStatus("👥 สวมใส่ตัวละครที่ดีที่สุด...")
+            local invFrame = PlayerGui:FindFirstChild("MineGui") and PlayerGui.MineGui:FindFirstChild("InventoryFrame")
+            local eqBtn = invFrame and invFrame:FindFirstChild("EquipBestButton", true)
+            local conns = getconnections and eqBtn and getconnections(eqBtn.MouseButton1Click)
+            if conns and conns[1] then
+                conns[1]:Fire()
+            end
             GameState.SendEvent("MineEquipBest")
-            HumanWait(0.2, 0.3)
+            HumanWait(0.25, 0.35)
         end
 
         task.wait(0.2)
@@ -1545,4 +1959,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("✅ [AnimeMineAutoFarmV11] โหลดสำเร็จ - All-in-One Safe Pipeline พร้อมทำงาน!")
+print("✅ [AnimeMineAutoFarmV12] โหลดสำเร็จ - Complete Automation & Reward Engine พร้อมทำงาน!")
