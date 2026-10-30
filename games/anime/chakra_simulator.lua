@@ -3,7 +3,7 @@
     [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
     Target Game: Chakra Training Simulator (Anime / Naruto)
     Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.5.0 (Persistent Selected World & Zero Force-Switch Edition)
+    Version: 9.6.0 (Universal Smart Retreat & Low-HP Pad Claim Edition)
     ========================================================================
 --]]
 
@@ -101,8 +101,7 @@ local Config = {
         TargetWorld = nil,             -- โลกเป้าหมาย (ถ้าไม่ระบุ จะฟาร์มโลกที่ตัวละครยืนอยู่ปัจจุบันตลอดไป)
         AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
         MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
-        HealthRetreatThreshold = 0.35, -- เลือดต่ำกว่า 35% ให้ถอยทันที
-        MinRetreatStage = 8,           -- ด่าน 1-7 มอนสเตอร์อ่อน เลือดจะฟื้นฟูเองอัตโนมัติ ห้ามถอยเด็ดขาด ป้องกันการติดลูปด่านแรก
+        HealthRetreatThreshold = 0.45, -- เลือดต่ำกว่า 45% ให้ถอยไปเก็บถ้วยทันที ป้องกันโดนบอสตีตาย
         PadDwellTime = 0.8,            -- ยืนบนแท่นทอง 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
         FloorY = 3.5,                  -- ระดับความสูงมาตรฐานที่ระบบทริกเกอร์ของเกมจับได้ 100%
     }
@@ -325,6 +324,10 @@ local function RetreatAndClaimTrophies(retreatStage)
             pcall(function()
                 PadRemote:FireServer(retreatStage, "gold")
             end)
+            task.wait(0.15)
+            pcall(function()
+                PadRemote:FireServer(retreatStage, "gold")
+            end)
             
             -- ยืนอยู่บนแท่นให้เห็นการรับถ้วยรางวัลชัดเจน
             task.wait(Config.Stages.PadDwellTime)
@@ -366,14 +369,16 @@ local function ProcessStageRunner()
     local timeInCombat = tick() - State.StageStartTime
     local isDowned = LocalPlayer:GetAttribute("Downed") == true
 
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว" (เฉพาะด่านสูง >= MinRetreatStage เท่านั้น เพื่อป้องกันการถอยในด่าน 1-7 ที่มอนสเตอร์อ่อน)
-    -- ป้องกันปัญหาตัวละครวนลูปติดอยู่ที่ด่านแรกๆ เวลาเลือดยังไม่เต็มจากรอบที่แล้ว
-    local minStage = Config.Stages.MinRetreatStage or 8
-    if Config.Automation.AutoRetreat and runStage >= minStage and runCleared >= 1 then
-        local healthCrit = (hpPercent <= Config.Stages.HealthRetreatThreshold) or isDowned
-        local timeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
+    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว / ใกล้ตาย" (ทำงานทุกด่านที่ผ่านด่าน 1 มาแล้ว และมีแท่นทองด่านก่อนหน้าให้เก็บถ้วย)
+    if Config.Automation.AutoRetreat and runStage > 1 and runCleared >= 1 then
+        -- 1. วิกฤตฉุกเฉิน: เลือดต่ำกว่า 20% หรือโดน Downed ให้ถอยไปเก็บถ้วยทันทีแบบไม่มีเงื่อนไข
+        local isEmergency = (hpPercent <= 0.20) or isDowned
+        -- 2. สู้ไม่ไหว: เลือดลดต่ำกว่า 45% หลังจากเข้าสู้ไปแล้วเกิน 0.8 วินาที
+        local isLowHpInCombat = (hpPercent <= Config.Stages.HealthRetreatThreshold) and (timeInCombat >= 0.8)
+        -- 3. ตีนานเกินไป: ตีมอนเกินเวลาที่กำหนด (8 วิ) ถือว่าสู้ไม่ทัน
+        local isTimeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
 
-        if healthCrit or timeCrit then
+        if isEmergency or isLowHpInCombat or isTimeCrit then
             local retreatTarget = runCleared
             RetreatAndClaimTrophies(retreatTarget)
             return
