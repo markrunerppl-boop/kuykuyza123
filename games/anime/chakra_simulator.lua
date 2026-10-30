@@ -836,14 +836,20 @@ local function GetBestTrainingSpot(worldId)
 
     if bestSpot and WorldConfig.TRAINING[bestIdx] then
         local rawOffset = WorldConfig.TRAINING[bestIdx]
-        local parts = string.split(rawOffset, ",")
-        local ox = tonumber(parts[1]) or 0
-        local oy = tonumber(parts[2]) or 0
-        local oz = tonumber(parts[3]) or 0
+        local offVec = Vector3.zero
+        if typeof(rawOffset) == "Vector3" then
+            offVec = rawOffset
+        elseif type(rawOffset) == "string" then
+            local parts = string.split(rawOffset, ",")
+            local ox = tonumber(parts[1]) or 0
+            local oy = tonumber(parts[2]) or 0
+            local oz = tonumber(parts[3]) or 0
+            offVec = Vector3.new(ox, oy, oz)
+        end
         return {
             spot = bestSpot,
             index = bestIdx,
-            offset = Vector3.new(ox, oy, oz)
+            offset = offVec
         }
     end
     return nil
