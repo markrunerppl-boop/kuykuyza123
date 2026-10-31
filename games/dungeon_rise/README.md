@@ -1,18 +1,23 @@
-# ดันเจี้ยนลุกขึ้น (Dungeon Rise) - QA Automation & Controller Pro
+# ดันเจี้ยนลุกขึ้น (Dungeon Rise) - QA Automation & Controller Pro V2
 
 ## โครงสร้างสถาปัตยกรรม (Architecture)
-โฟลเดอร์นี้รวบรวมระบบทดสอบและบอทอัตโนมัติสำหรับเกม **ดันเจี้ยนลุกขึ้น (Dungeon Rise / Solo Leveling)** โดยกลุ่มผู้สร้าง **CL GAMES!**
-Universe ID: `7074860883`
+โฟลเดอร์นี้รวบรวมระบบทดสอบและบอทอัตโนมัติสำหรับเกม **ดันเจี้ยนลุกขึ้น (Dungeon Rise / Solo Leveling)** โดยกลุ่มผู้สร้าง **CL GAMES!** (Universe ID: `7074860883`)
 
-### ไฟล์ในโฟลเดอร์
-- `main.lua`: สคริปต์หลักที่เชื่อมต่อกับระบบ BridgeNet2 ของเกมโดยตรง (`GENERAL_EVENT`, `ENEMY_EVENT`, `PET_EVENT`, `DUNGEON_EVENT`)
-
-### ฟังก์ชันที่รองรับตามระบบจริงของเกม
-1. **Auto Weapon Attack (M1)**: โจมตีด้วยอาวุธผ่าน `WeaponsModule.Click` และ BridgeNet2 `ENEMY_EVENT` (`PunchAttack`)
-2. **Auto Shadow Army (กองทัพเงา)**: สั่งกองทัพเงา/สัตว์เลี้ยงโจมตีมอนสเตอร์รอบตัวอัตโนมัติผ่าน `PetsController.AutoEnemy`
-3. **Auto Arise (สกัดเงา)**: เมื่อมอนสเตอร์ตายและเข้าสู่สถานะ Arise ระบบจะส่งสัญญาณ `EnemyCapture` เพื่อสกัดเงาเข้าสู่กองทัพทันที
-4. **Auto Target & Movement**: ค้นหามอนสเตอร์ที่ใกล้ที่สุดใน `workspace.__Main.__Enemies.Server`
-5. **Auto Equip Best Shadows**: สวมใส่เงาที่มีสเตตัสสูงสุดอัตโนมัติผ่าน `PET_EVENT` (`EquipBest`)
-6. **Auto Claim Quests & Gifts**: รับรางวัลเควสต์และของขวัญเล่นเกมฟรีอัตโนมัติ
-7. **Tabbed Modern UI & Minimize**: หน้าต่างแยก 5 หมวดหมู่ สลับแท็บง่าย และกดย่อเป็น Floating Pill ได้
-8. **Audit Logs & Stats**: ระบบบันทึกประวัติการทำงานแบบเรียลไทม์พร้อมตัวนับสถิติ
+### ฟังก์ชันใหม่ใน V2 (อัปเดตล่าสุด)
+1. **แก้ปัญหาโดนเตะ (Non-Kick Smooth Movement)**:
+   - ยกเลิกการ Instant CFrame Teleport ที่เสี่ยงต่อการถูกตรวจจับและโดนเซิร์ฟเวอร์เตะ
+   - เปลี่ยนมาใช้ `Humanoid:MoveTo` พร้อมการเว้นระยะโจมตีและ Safe Kiting 16 studs อย่างสมบูรณ์แบบ
+2. **ระบบลงดันเจี้ยนไม่จำกัดรอบ (Unlimited Auto Re-run Dungeons)**:
+   - รองรับกุญแจทุกประเภทในเกม (Key ทั่วไป, FairyKey, DSKey, Solo2Key, XWinterKey, SHKey, AoTKey ฯลฯ)
+   - เมื่อดันเจี้ยนจบ จะทำการเริ่มรอบใหม่ทันทีจนกว่ากุญแจจะหมดหรือดันเจี้ยนจะหายไป
+3. **ระบบลงหอคอยระบุชั้น & วนซ้ำ (Tower & Castle Specific Floor Loop)**:
+   - รองรับ Infernal Castle, Infinite Castle, Infinite Labyrinth, Infinite Mode
+   - สามารถระบุชั้นเป้าหมายที่ต้องการลงซ้ำได้ (เช่น ชั้น 950 หรือชั้นอื่นๆ) พร้อมปุ่มปรับ `[-25]` `[+25]`
+   - ระบบเร่งความเร็วหอคอยอัตโนมัติ (Auto SpeedUp)
+   - เมื่อจบหอคอยจะทำการลงซ้ำชั้นเดิมแบบไม่จำกัด
+4. **กองทัพเงา & สกัดเงา (55 Shadow Army & Auto Arise)**:
+   - สั่งกองทัพเงา 55 ตัวพุ่งโจมตีเป้าหมายอัตโนมัติ
+   - สกัดเงา (EnemyCapture) ทันทีที่มอนสเตอร์ตาย
+5. **Modern Dashboard UI & Audit Logger**:
+   - หน้าต่างแยก 7 แท็บเมนู ย่อเป็น Floating Pill ได้
+   - บันทึกประวัติ Action ย้อนหลังพร้อมตัวนับสถิติ

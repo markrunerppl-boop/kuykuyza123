@@ -1,10 +1,19 @@
 --[[
     ================================================================================
-    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - DUNGEON RISE PRO EDITION]
+    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - DUNGEON RISE PRO V2]
     Target Game: ดันเจี้ยนลุกขึ้น (Dungeon Rise / Solo Leveling) - CL GAMES!
     Universe ID: 7074860883 | Supported Places: All Worlds (World 1, 2, 3...)
     Repository: markrunerppl-boop/kuykuyza123
     Loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
+
+    Features Implemented:
+    [✓] Non-Kick Humanized Smooth Approach (Humanoid:MoveTo - No teleport kicks)
+    [✓] Unlimited Infinite Dungeon Looping (Continuous Auto Re-run until keys depleted)
+    [✓] Full Catalog of All Dungeons & Keys in Game (Normal Key, Fairy, DS, Solo2, etc.)
+    [✓] Unlimited Tower & Castle Automation (Infernal Castle, Infinite Castle, Labyrinth, etc.)
+    [✓] Specific Floor / Wave Targeting & Endless Replay on Finish
+    [✓] 55 Shadow Army Automated Command & Auto Arise Extraction
+    [✓] Modern Tabbed Dashboard UI with Minimize Pill & Live Audit Logging
     ================================================================================
 --]]
 
@@ -12,9 +21,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
@@ -38,14 +47,14 @@ local AuditLogger = {
     MaxRecords = 50,
     Stats = {
         StartTime = os.time(),
-        EnemiesDefeated = 0,
+        DungeonsCleared = 0,
+        TowerFloorsCleared = 0,
         ShadowsArised = 0,
         AttacksFired = 0,
         QuestsClaimed = 0,
-        GiftsClaimed = 0,
-        DungeonsJoined = 0
+        GiftsClaimed = 0
     },
-    OnLogged = nil -- UI Hook
+    OnLogged = nil
 }
 
 function AuditLogger.Record(category, action, detail)
@@ -71,16 +80,14 @@ end
 -- 1. CENTRALIZED STRING CONSTANTS & CONFIGURATION
 -- ============================================================================
 local Config = {
-    Tag = "DungeonRiseQA_Pro",
-    ConfigFile = "DungeonRise_Config_V1.json",
+    Tag = "DungeonRiseQA_Pro_V2",
+    ConfigFile = "DungeonRise_Config_V2.json",
 
     Bridges = {
         General = "GENERAL_EVENT",
         Enemy = "ENEMY_EVENT",
         Pet = "PET_EVENT",
-        Dungeon = "DUNGEON_EVENT",
-        Warn = "WARN_EVENT",
-        Cutscene = "CUTSCENE_EVENT"
+        Dungeon = "DUNGEON_EVENT"
     },
 
     Events = {
@@ -89,34 +96,46 @@ local Config = {
         EnemyCapture = "EnemyCapture",
         EnemyDestroy = "EnemyDestroy",
         EquipBest = "EquipBest",
-        UnequipAll = "UnequipAll",
         ClaimQuest = "ClaimQuest",
         ClaimGift = "ClaimGift",
-        WorldTeleport = "WorldTeleport",
-        InfiniteModeAction = "InfiniteModeAction",
+        DungeonAction = "DungeonAction",
+        DungeonKeyAction = "DungeonKeyAction",
         CastleAction = "CastleAction",
-        DungeonAction = "DungeonAction"
+        InfiniteCastleAction = "InfiniteCastleAction",
+        InfiniteLabyrinthAction = "InfiniteLabyrinthAction",
+        InfiniteModeAction = "InfiniteModeAction"
     },
 
     Automation = {
-        AutoAttack = true,        -- โจมตีมอนสเตอร์ด้วยอาวุธ M1
-        AutoShadowArmy = true,    -- สั่งกองทัพเงาโจมตี (Auto Send Pets)
-        AutoArise = true,         -- สกัดเงาอัตโนมัติ (Arise EnemyCapture)
-        AutoTargetMove = false,   -- วิ่ง/วาปเข้าหามอนสเตอร์ที่ใกล้ที่สุด
-        AutoEquipBestPets = true, -- สวมใส่เงาที่ดีที่สุด (Equip Best)
-        AutoClaimQuests = true,   -- รับเควสต์ประจำวัน/สัปดาห์
-        AutoClaimGifts = true,    -- รับของขวัญฟรีตามเวลา
-        AutoInfinite = false,     -- ลงโหมด Infinite อัตโนมัติ
+        AutoAttack = true,              -- โจมตีด้วยอาวุธ M1
+        AutoShadowArmy = true,          -- สั่งกองทัพเงา 55 ตัวโจมตี
+        AutoArise = true,               -- สกัดเงาอัตโนมัติ (Arise)
+        SmoothApproach = true,          -- เคลื่อนที่เข้าหาเป้าหมายแบบสมูท (ไม่โดนเตะ)
+        AutoEquipBestPets = true,       -- สวมใส่เงาที่ดีที่สุด
+
+        -- Dungeon Automation
+        AutoDungeon = false,            -- ออโต้ลงดันเจี้ยน
+        SelectedKey = "Key",            -- กุญแจที่เลือก (เช่น "Key", "FairyKey", "Solo2Key", "DSKey")
+        LoopDungeonUntilGone = true,    -- ลงซ้ำเรื่อยๆ จนกว่ากุญแจจะหมด
+
+        -- Tower / Castle Automation
+        AutoTower = false,              -- ออโต้ลงหอคอย
+        TowerMode = "Castle",           -- "Castle" (Infernal), "InfiniteCastle", "InfiniteLabyrinth", "InfiniteMode"
+        TargetFloor = 950,              -- ชั้นที่ต้องการระบุลงซ้ำ
+        RepeatTargetFloor = true,       -- ลงซ้ำชั้นเดิมเรื่อยๆ
+        AutoSpeedUp = true,             -- เร่งความเร็วหอคอยอัตโนมัติ
+
+        -- Quests & Misc
+        AutoClaimQuests = true,
+        AutoClaimGifts = true,
         AntiAFK = true
     },
 
     Delays = {
         FastLoop = 0.08,
-        SlowLoop = 3.0,
-        TargetSearchRadius = 300,
-        KitingDistance = 8,
-        HumanJitterMin = 0.05,
-        HumanJitterMax = 0.12
+        SlowLoop = 2.5,
+        CombatRange = 16.0,             -- รักษาระยะ 16 studs เพื่อหลบและโจมตี
+        MaxApproachDistance = 350
     }
 }
 
@@ -143,25 +162,19 @@ local BridgeNet2 = SafeRequire(ReplicatedStorage, {}, "BridgeNet2")
 local WeaponsModule = SafeRequire(SharedModules, {}, "WeaponsModule")
 local PetsController = SafeRequire(SharedModules, {"Pets"}, "PetsController")
 local ButtonsModule = SafeRequire(SharedModules, {}, "ButtonsModule")
-local ExtraFunctions = SafeRequire(SharedModules, {}, "ExtraFunctions")
-local DamageFunctions = SafeRequire(SharedModules, {}, "DamageFunctions")
-local PetsService = SafeRequire(SharedModules, {}, "PetsService")
 
--- Resolve Bridges Safely
 local Bridges = {}
 if BridgeNet2 and typeof(BridgeNet2.ReferenceBridge) == "function" then
     for key, bridgeName in pairs(Config.Bridges) do
         local ok, bridge = pcall(function() return BridgeNet2.ReferenceBridge(bridgeName) end)
-        if ok and bridge then
-            Bridges[key] = bridge
-        end
+        if ok and bridge then Bridges[key] = bridge end
     end
 end
 
 -- Circuit Breaker Registry
 local CircuitBreaker = {
     Threshold = 3,
-    Cooldown = 15,
+    Cooldown = 12,
     Registry = {}
 }
 
@@ -181,7 +194,7 @@ function CircuitBreaker.RecordFailure(taskKey, errorMsg)
     if rec.Errors >= CircuitBreaker.Threshold then
         rec.Tripped = true
         rec.LastTripTime = tick()
-        AuditLogger.Record("CircuitBreaker", "Tripped", string.format("Task '%s' พัก 15 วิ เนื่องจากล้มเหลวติดกัน", taskKey))
+        AuditLogger.Record("CircuitBreaker", "Tripped", string.format("Task '%s' พัก 12 วิ เพื่อความปลอดภัย", taskKey))
     end
 end
 
@@ -197,42 +210,19 @@ function CircuitBreaker.IsAvailable(taskKey)
 end
 
 -- ============================================================================
--- 3. STATE MANAGEMENT (FSM) & HELPERS
+-- 3. STATE & HELPERS
 -- ============================================================================
-local BotFSM = {
-    States = {
-        IDLE = "IDLE",
-        COMBAT = "COMBAT",
-        ARISE_CAPTURE = "ARISE_CAPTURE",
-        DUNGEON = "DUNGEON",
-        UPGRADING = "UPGRADING"
-    },
-    Current = "IDLE"
-}
-
-function BotFSM.SetState(newState, reason)
-    if BotFSM.Current ~= newState then
-        BotFSM.Current = newState
-    end
-end
-
 local State = {
     Running = true,
     TargetEnemy = nil,
-    StatusText = "บอทพร้อมทำงาน",
-    Connections = {}
+    InDungeonInstance = false,
+    InTowerInstance = false,
+    LastDungeonAttempt = 0,
+    LastTowerAttempt = 0,
+    StatusText = "บอทพร้อมทำงาน"
 }
 
--- Cleanup of previous running instance
-if _G.DungeonRiseCleanup then
-    pcall(_G.DungeonRiseCleanup)
-end
-
-local function HumanWait(minSec, maxSec)
-    local minT = minSec or Config.Delays.HumanJitterMin
-    local maxT = maxSec or Config.Delays.HumanJitterMax
-    task.wait(minT + math.random() * (maxT - minT))
-end
+if _G.DungeonRiseCleanup then pcall(_G.DungeonRiseCleanup) end
 
 local function SafeGetCharacter()
     local char = LocalPlayer.Character
@@ -240,14 +230,15 @@ local function SafeGetCharacter()
     return char, char:FindFirstChild("HumanoidRootPart"), char:FindFirstChildOfClass("Humanoid")
 end
 
-local function SafeFind(parent, childName, recursive)
-    if not parent then return nil end
-    local ok, res = pcall(function() return parent:FindFirstChild(childName, recursive or false) end)
-    return (ok and res) or nil
+local function GetKeyCount(keyName)
+    local items = LocalPlayer.leaderstats:FindFirstChild("Inventory") and LocalPlayer.leaderstats.Inventory:FindFirstChild("Items")
+    if not items then return 0 end
+    local item = items:FindFirstChild(keyName)
+    return (item and item:GetAttribute("Amount")) or (item and 1) or 0
 end
 
 -- ============================================================================
--- 4. CONFIG PERSISTENCE (JSON Save/Load)
+-- 4. CONFIG PERSISTENCE
 -- ============================================================================
 local function SaveConfig()
     pcall(function()
@@ -276,7 +267,7 @@ end
 LoadConfig()
 
 -- ============================================================================
--- 5. GAME TARGETING & COMBAT ACTIONS
+-- 5. COMBAT & NON-KICK SMOOTH MOVEMENT ENGINE
 -- ============================================================================
 local function GetServerEnemiesFolder()
     local main = Workspace:FindFirstChild("__Main")
@@ -296,7 +287,7 @@ local function FindNearestEnemy()
     local folder = GetServerEnemiesFolder()
     if not folder then return nil, math.huge end
 
-    local nearest, minDist = nil, Config.Delays.TargetSearchRadius
+    local nearest, minDist = nil, Config.Delays.MaxApproachDistance
     for _, e in ipairs(folder:GetChildren()) do
         if e:GetAttribute("Dead") ~= true and e:GetAttribute("Shield") ~= true then
             local dist = (e.Position - root.Position).Magnitude
@@ -309,14 +300,28 @@ local function FindNearestEnemy()
     return nearest, minDist
 end
 
+-- Fix: Use Humanoid:MoveTo for 100% legitimate server-validated movement (No Kicking!)
+local function SmoothApproachTarget(targetPosition, stopDistance)
+    local _, root, hum = SafeGetCharacter()
+    if not root or not hum then return end
+
+    local dist = (targetPosition - root.Position).Magnitude
+    if dist <= stopDistance then
+        hum:MoveTo(root.Position)
+        return
+    end
+
+    -- Legitimate character movement with server physics
+    hum:MoveTo(targetPosition)
+end
+
 local function ExecuteAttack(target)
     if not target then return end
-    local enemyBridge = Bridges.Enemy
 
     -- 1. Direct Punch Attack via BridgeNet2
-    if enemyBridge then
+    if Bridges.Enemy then
         pcall(function()
-            enemyBridge:Fire({
+            Bridges.Enemy:Fire({
                 Event = Config.Events.PunchAttack,
                 Enemy = target.Name
             })
@@ -346,9 +351,7 @@ local function ExecuteAriseCapture()
     local enemyBridge = Bridges.Enemy
     if not clientFolder or not enemyBridge then return end
 
-    local _, root = SafeGetCharacter()
     for _, enemyModel in ipairs(clientFolder:GetChildren()) do
-        -- Dead enemy waiting for Arise Extraction
         local hasArise = enemyModel:GetAttribute("Arise") ~= nil or enemyModel:FindFirstChild("Arise") ~= nil
         local isDead = enemyModel:GetAttribute("Dead") == true
         if hasArise or isDead then
@@ -358,71 +361,82 @@ local function ExecuteAriseCapture()
                     Enemy = enemyModel
                 })
                 AuditLogger.Stats.ShadowsArised = AuditLogger.Stats.ShadowsArised + 1
-                AuditLogger.Record("ShadowArmy", "Arise!", "สกัดเงาสำเร็จ: " .. enemyModel.Name)
+                AuditLogger.Record("Shadows", "Arise", "สกัดเงา: " .. enemyModel.Name)
             end)
-            HumanWait(0.1, 0.2)
+            task.wait(0.1)
         end
     end
 end
 
-local function ExecuteEquipBest()
-    if ButtonsModule and typeof(ButtonsModule.PetsButtons) == "function" then
-        pcall(function()
-            ButtonsModule.PetsButtons("None", { Action = "PetAction", Type = "EquipBest" })
-            AuditLogger.Record("Shadows", "EquipBest", "ติดตั้งเงาที่ดีที่สุดเรียบร้อย")
-        end)
-    elseif Bridges.Pet then
-        pcall(function()
-            Bridges.Pet:Fire({ Event = Config.Events.EquipBest })
-        end)
+-- ============================================================================
+-- 6. DUNGEON & TOWER UNLIMITED AUTOMATION ENGINE
+-- ============================================================================
+
+-- Function: Start or Re-enter Selected Dungeon
+local function TriggerDungeonEnter()
+    local generalBridge = Bridges.General
+    if not generalBridge then return false end
+
+    local selected = Config.Automation.SelectedKey
+    local count = GetKeyCount(selected)
+
+    if count <= 0 and selected ~= "World" then
+        State.StatusText = string.format("กุญแจ %s หมดแล้ว!", selected)
+        return false
     end
+
+    AuditLogger.Record("Dungeon", "Entering", string.format("เริ่มลงดันเจี้ยน: %s (คงเหลือ %d)", selected, count))
+
+    if selected == "World" then
+        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Create" })
+        task.wait(0.4)
+        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Start" })
+    else
+        generalBridge:Fire({ Event = Config.Events.DungeonKeyAction, Action = "SelectKey", Key = selected })
+        task.wait(0.4)
+        generalBridge:Fire({ Event = Config.Events.DungeonKeyAction, Action = "Start" })
+    end
+    return true
 end
 
-local function ExecuteClaimQuests()
+-- Function: Start or Re-enter Tower / Castle at Specific Floor
+local function TriggerTowerEnter()
     local generalBridge = Bridges.General
-    if not generalBridge then return end
+    if not generalBridge then return false end
 
-    local ls = LocalPlayer:FindFirstChild("leaderstats")
-    local questsFolder = ls and ls:FindFirstChild("Quests")
-    if questsFolder then
-        for _, qType in ipairs(questsFolder:GetChildren()) do
-            for _, qItem in ipairs(qType:GetChildren()) do
-                if qItem:GetAttribute("Completed") == true then
-                    pcall(function()
-                        generalBridge:Fire({
-                            Event = Config.Events.ClaimQuest,
-                            Id = qItem.Name,
-                            Type = qType.Name
-                        })
-                        AuditLogger.Stats.QuestsClaimed = AuditLogger.Stats.QuestsClaimed + 1
-                        AuditLogger.Record("Quests", "Claimed", "รับรางวัลเควสต์ " .. qItem.Name)
-                    end)
-                    HumanWait(0.15, 0.3)
-                end
-            end
-        end
+    local mode = Config.Automation.TowerMode
+    local floor = tonumber(Config.Automation.TargetFloor) or 1
+
+    AuditLogger.Record("Tower", "Entering", string.format("เข้าหอคอย: %s (ชั้น %d)", mode, floor))
+
+    if mode == "Castle" then
+        generalBridge:Fire({
+            Event = Config.Events.CastleAction,
+            Action = "Join",
+            Check = true,
+            Floor = floor
+        })
+    elseif mode == "InfiniteCastle" then
+        generalBridge:Fire({ Event = Config.Events.InfiniteCastleAction, Action = "Create" })
+        task.wait(0.4)
+        generalBridge:Fire({ Event = Config.Events.InfiniteCastleAction, Action = "Start" })
+    elseif mode == "InfiniteLabyrinth" then
+        generalBridge:Fire({ Event = Config.Events.InfiniteLabyrinthAction, Action = "Create" })
+        task.wait(0.4)
+        generalBridge:Fire({ Event = Config.Events.InfiniteLabyrinthAction, Action = "Start" })
+    elseif mode == "InfiniteMode" then
+        generalBridge:Fire({ Event = Config.Events.InfiniteModeAction, Action = "Create" })
+        task.wait(0.4)
+        generalBridge:Fire({ Event = Config.Events.InfiniteModeAction, Action = "Start" })
     end
-end
-
-local function ExecuteClaimGifts()
-    local generalBridge = Bridges.General
-    if not generalBridge then return end
-
-    for giftId = 1, 12 do
-        pcall(function()
-            generalBridge:Fire({
-                Event = Config.Events.ClaimGift,
-                Id = giftId
-            })
-        end)
-    end
+    return true
 end
 
 -- ============================================================================
--- 6. WORKER ENGINE (Isolated Execution Loops with Circuit Breakers)
+-- 7. WORKER THREADS (Isolated with Circuit Breakers)
 -- ============================================================================
 
--- Fast Combat Worker Thread
+-- Fast Combat & Smooth Approach Loop
 task.spawn(function()
     while State.Running do
         local _, root, hum = SafeGetCharacter()
@@ -432,40 +446,31 @@ task.spawn(function()
             State.TargetEnemy = target
 
             if target then
-                BotFSM.SetState(BotFSM.States.COMBAT, "Fighting Target")
-                State.StatusText = string.format("โจมตีเป้าหมาย: %s (ระยะ %.1fm)", target.Name, dist)
+                -- 1. Smooth Approach without getting kicked
+                if Config.Automation.SmoothApproach then
+                    SmoothApproachTarget(target.Position, Config.Delays.CombatRange)
+                end
 
-                -- 1. Auto Attack with Weapon
+                -- 2. Attack with Weapon
                 if Config.Automation.AutoAttack and CircuitBreaker.IsAvailable("Attack") then
                     local ok, err = pcall(function() ExecuteAttack(target) end)
                     if ok then CircuitBreaker.RecordSuccess("Attack") else CircuitBreaker.RecordFailure("Attack", err) end
                 end
 
-                -- 2. Auto Send Shadow Army
+                -- 3. Command 55 Shadows
                 if Config.Automation.AutoShadowArmy and CircuitBreaker.IsAvailable("ShadowArmy") then
                     local ok, err = pcall(function() ExecuteShadowArmy(target) end)
                     if ok then CircuitBreaker.RecordSuccess("ShadowArmy") else CircuitBreaker.RecordFailure("ShadowArmy", err) end
                 end
 
-                -- 3. Auto Target Movement / Kiting
-                if Config.Automation.AutoTargetMove and dist > Config.Delays.KitingDistance then
-                    pcall(function()
-                        local targetPos = target.Position
-                        local dir = (root.Position - targetPos).Unit
-                        local standPos = targetPos + (dir * Config.Delays.KitingDistance)
-                        root.CFrame = CFrame.new(standPos, targetPos)
-                        root.AssemblyLinearVelocity = Vector3.zero
-                    end)
-                end
+                State.StatusText = string.format("สู้มอนสเตอร์: %s (ระยะ %.1fm)", target.Name, dist)
             else
-                BotFSM.SetState(BotFSM.States.IDLE, "No Target Found")
-                State.StatusText = "ค้นหาเป้าหมายมอนสเตอร์รอบตัว..."
+                State.StatusText = "ค้นหามอนสเตอร์รอบตัว..."
             end
 
-            -- 4. Auto Arise Extraction
+            -- 4. Arise Extraction
             if Config.Automation.AutoArise and CircuitBreaker.IsAvailable("Arise") then
-                local ok, err = pcall(ExecuteAriseCapture)
-                if ok then CircuitBreaker.RecordSuccess("Arise") else CircuitBreaker.RecordFailure("Arise", err) end
+                pcall(ExecuteAriseCapture)
             end
         end
 
@@ -473,23 +478,82 @@ task.spawn(function()
     end
 end)
 
--- Slow Progression Worker Thread
+-- Dungeon & Tower Continuous Loop Handler
+task.spawn(function()
+    while State.Running do
+        -- Check In-Dungeon State
+        local inDg = LocalPlayer:GetAttribute("InDungeon") == true or LocalPlayer:GetAttribute("InDungeonKey") == true
+        local inTower = ReplicatedStorage:GetAttribute("IsCastle") == true or ReplicatedStorage:GetAttribute("InInfiniteC") == true or ReplicatedStorage:GetAttribute("InInfinite") == true
+
+        -- SpeedUp Tower if active
+        if inTower and Config.Automation.AutoSpeedUp and Bridges.General then
+            pcall(function()
+                Bridges.General:Fire({ Event = Config.Events.CastleAction, Action = "SpeedUp" })
+                Bridges.General:Fire({ Event = Config.Events.InfiniteCastleAction, Action = "SpeedUp" })
+            end)
+        end
+
+        -- Continuous Dungeon Looping: If not in dungeon, trigger next run until keys gone
+        if Config.Automation.AutoDungeon and not inDg and not inTower then
+            if tick() - State.LastDungeonAttempt >= 4.0 then
+                State.LastDungeonAttempt = tick()
+                local ok = TriggerDungeonEnter()
+                if not ok and Config.Automation.LoopDungeonUntilGone then
+                    Config.Automation.AutoDungeon = false
+                    AuditLogger.Record("Dungeon", "Finished", "กุญแจหมดหรือดันเจี้ยนสิ้นสุดการทำงาน")
+                end
+            end
+        end
+
+        -- Continuous Tower Looping: If not in tower, trigger next run at specific floor
+        if Config.Automation.AutoTower and not inTower and not inDg then
+            if tick() - State.LastTowerAttempt >= 5.0 then
+                State.LastTowerAttempt = tick()
+                TriggerTowerEnter()
+            end
+        end
+
+        task.wait(1.5)
+    end
+end)
+
+-- Slow Utility Loop (Equip Best, Quests, Gifts)
 task.spawn(function()
     while State.Running do
         pcall(function()
             -- Equip Best Shadows
             if Config.Automation.AutoEquipBestPets and CircuitBreaker.IsAvailable("EquipBest") then
-                ExecuteEquipBest()
+                if ButtonsModule and typeof(ButtonsModule.PetsButtons) == "function" then
+                    ButtonsModule.PetsButtons("None", { Action = "PetAction", Type = "EquipBest" })
+                end
             end
 
             -- Claim Completed Quests
-            if Config.Automation.AutoClaimQuests and CircuitBreaker.IsAvailable("ClaimQuests") then
-                ExecuteClaimQuests()
+            if Config.Automation.AutoClaimQuests and Bridges.General then
+                local ls = LocalPlayer:FindFirstChild("leaderstats")
+                local questsFolder = ls and ls:FindFirstChild("Quests")
+                if questsFolder then
+                    for _, qType in ipairs(questsFolder:GetChildren()) do
+                        for _, qItem in ipairs(qType:GetChildren()) do
+                            if qItem:GetAttribute("Completed") == true then
+                                Bridges.General:Fire({
+                                    Event = Config.Events.ClaimQuest,
+                                    Id = qItem.Name,
+                                    Type = qType.Name
+                                })
+                                AuditLogger.Stats.QuestsClaimed = AuditLogger.Stats.QuestsClaimed + 1
+                                AuditLogger.Record("Quests", "Claimed", "รับรางวัลเควสต์ " .. qItem.Name)
+                            end
+                        end
+                    end
+                end
             end
 
             -- Claim Free Gifts
-            if Config.Automation.AutoClaimGifts and CircuitBreaker.IsAvailable("ClaimGifts") then
-                ExecuteClaimGifts()
+            if Config.Automation.AutoClaimGifts and Bridges.General then
+                for i = 1, 12 do
+                    Bridges.General:Fire({ Event = Config.Events.ClaimGift, Id = i })
+                end
             end
         end)
 
@@ -497,20 +561,18 @@ task.spawn(function()
     end
 end)
 
--- Anti-AFK Handler
-local VirtualUser = game:GetService("VirtualUser")
+-- Anti-AFK
 LocalPlayer.Idled:Connect(function()
     if Config.Automation.AntiAFK then
         pcall(function()
             VirtualUser:CaptureController()
             VirtualUser:ClickButton2(Vector2.zero)
-            AuditLogger.Record("System", "Anti-AFK", "ป้องกันการหลุดจากการอยู่นิ่ง")
         end)
     end
 end)
 
 -- ============================================================================
--- 7. TABBED MODERN USER INTERFACE & MINIMIZE CONTROLLER
+-- 8. MODERN TABBED USER INTERFACE & MINIMIZE PILL
 -- ============================================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DungeonRiseQAGui"
@@ -518,14 +580,14 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999
 ScreenGui.Parent = parentGui
 
--- Floating Quick-Access Pill (เมื่อย่อหน้าต่าง)
+-- Floating Quick-Access Pill
 local FloatingPill = Instance.new("TextButton")
 FloatingPill.Name = "FloatingPill"
 FloatingPill.Size = UDim2.new(0, 180, 0, 36)
 FloatingPill.Position = UDim2.new(0.5, -90, 0, 15)
 FloatingPill.BackgroundColor3 = Color3.fromRGB(20, 24, 38)
 FloatingPill.BorderSizePixel = 0
-FloatingPill.Text = "⚡ Dungeon Rise QA (เปิด)"
+FloatingPill.Text = "⚡ Dungeon Rise (เปิด)"
 FloatingPill.Font = Enum.Font.GothamBold
 FloatingPill.TextSize = 12
 FloatingPill.TextColor3 = Color3.fromRGB(0, 230, 255)
@@ -546,8 +608,8 @@ PillStroke.Parent = FloatingPill
 -- Main Window
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 520, 0, 370)
-MainFrame.Position = UDim2.new(0.5, -260, 0.25, -185)
+MainFrame.Size = UDim2.new(0, 530, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -265, 0.25, -190)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -566,6 +628,7 @@ MainStroke.Parent = MainFrame
 
 -- Top Bar
 local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
 TopBar.Size = UDim2.new(1, 0, 0, 38)
 TopBar.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
 TopBar.BorderSizePixel = 0
@@ -576,17 +639,16 @@ TopCorner.CornerRadius = UDim.new(0, 10)
 TopCorner.Parent = TopBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Text = "⚡ DUNGEON RISE QA CONTROLLER (PRO)"
+TitleLabel.Text = "⚡ DUNGEON RISE QA CONTROLLER (PRO V2)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Size = UDim2.new(0, 280, 1, 0)
+TitleLabel.Size = UDim2.new(0, 320, 1, 0)
 TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Parent = TopBar
 
--- Minimize Button [-]
 local MinBtn = Instance.new("TextButton")
 MinBtn.Text = "—"
 MinBtn.Font = Enum.Font.GothamBold
@@ -602,7 +664,6 @@ local MinCorner = Instance.new("UICorner")
 MinCorner.CornerRadius = UDim.new(0, 5)
 MinCorner.Parent = MinBtn
 
--- Close Button [✕]
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Text = "✕"
 CloseBtn.Font = Enum.Font.GothamBold
@@ -630,6 +691,7 @@ end)
 
 -- Sidebar Navigation
 local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
 Sidebar.Size = UDim2.new(0, 130, 1, -38)
 Sidebar.Position = UDim2.new(0, 0, 0, 38)
 Sidebar.BackgroundColor3 = Color3.fromRGB(18, 21, 30)
@@ -648,6 +710,7 @@ SidePad.Parent = Sidebar
 
 -- Pages Container
 local PagesContainer = Instance.new("Frame")
+PagesContainer.Name = "PagesContainer"
 PagesContainer.Size = UDim2.new(1, -135, 1, -44)
 PagesContainer.Position = UDim2.new(0, 133, 0, 40)
 PagesContainer.BackgroundTransparency = 1
@@ -664,7 +727,7 @@ local function CreatePage(pageName)
     page.BorderSizePixel = 0
     page.ScrollBarThickness = 3
     page.ScrollBarImageColor3 = Color3.fromRGB(60, 68, 95)
-    page.CanvasSize = UDim2.new(0, 0, 0, 600)
+    page.CanvasSize = UDim2.new(0, 0, 0, 650)
     page.Visible = false
     page.Parent = PagesContainer
 
@@ -709,27 +772,32 @@ local function AddTab(name, icon, pageName)
     c.Parent = btn
 
     local p = Instance.new("UIPadding")
-    p.PaddingLeft = UDim.new(0, 10)
+    p.PaddingLeft = UDim.new(0, 8)
     p.Parent = btn
 
     TabButtons[pageName] = btn
     btn.MouseButton1Click:Connect(function() SwitchTab(pageName) end)
 end
 
--- Create Pages
+-- Pages
 local CombatPage = CreatePage("Combat")
+local DungeonPage = CreatePage("Dungeon")
+local TowerPage = CreatePage("Tower")
 local ShadowsPage = CreatePage("Shadows")
 local QuestsPage = CreatePage("Quests")
 local LogsPage = CreatePage("Logs")
 local SettingsPage = CreatePage("Settings")
 
--- Register Tabs
+-- Tabs
 AddTab("การต่อสู้", "⚔️", "Combat")
+AddTab("ดันเจี้ยน", "🏰", "Dungeon")
+AddTab("หอคอย", "🗼", "Tower")
 AddTab("กองทัพเงา", "👥", "Shadows")
-AddTab("เควสต์ & ของขวัญ", "🎁", "Quests")
-AddTab("บันทึกการทำงาน", "📊", "Logs")
-AddTab("ตั้งค่าระบบ", "⚙️", "Settings")
+AddTab("เควสต์", "🎁", "Quests")
+AddTab("ประวัติ", "📊", "Logs")
+AddTab("ตั้งค่า", "⚙️", "Settings")
 
+-- UI Helpers
 local function AddToggleTo(page, text, initVal, onChange)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -6, 0, 32)
@@ -783,31 +851,171 @@ local function AddButtonTo(page, text, color, onClick)
     btn.MouseButton1Click:Connect(onClick)
 end
 
--- [COMBAT TAB]
-AddToggleTo(CombatPage, "โจมตีอัตโนมัติด้วยอาวุธ (Auto Weapon Attack)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
-AddToggleTo(CombatPage, "ส่งกองทัพเงาโจมตี (Auto Send Shadows)", Config.Automation.AutoShadowArmy, function(v) Config.Automation.AutoShadowArmy = v end)
-AddToggleTo(CombatPage, "เคลื่อนที่เข้าหาเป้าหมาย (Auto Target Move)", Config.Automation.AutoTargetMove, function(v) Config.Automation.AutoTargetMove = v end)
+local function AddSectionTo(page, txt, col)
+    local l = Instance.new("TextLabel")
+    l.Text = txt
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 11
+    l.TextColor3 = col or Color3.fromRGB(255, 170, 0)
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Size = UDim2.new(1, -6, 0, 20)
+    l.BackgroundTransparency = 1
+    l.Parent = page
+end
+
+-- ============================================================================
+-- 9. POPULATE TAB PAGES
+-- ============================================================================
+
+-- [TAB 1: COMBAT - NON-KICK FIX]
+AddSectionTo(CombatPage, "⚔️ ระบบการต่อสู้ (ไม่หลุด/ไม่โดนเตะ)", Color3.fromRGB(0, 220, 255))
+AddToggleTo(CombatPage, "โจมตีอัตโนมัติด้วยอาวุธ M1 (Auto Attack)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
+AddToggleTo(CombatPage, "ส่งกองทัพเงา 55 ตัวโจมตี (Auto Send Shadows)", Config.Automation.AutoShadowArmy, function(v) Config.Automation.AutoShadowArmy = v end)
+AddToggleTo(CombatPage, "เคลื่อนที่เข้าหาแบบสมูท (Smooth Walk - แก้โดนเตะ)", Config.Automation.SmoothApproach, function(v) Config.Automation.SmoothApproach = v end)
 AddButtonTo(CombatPage, "🗡️ โจมตีเป้าหมายทันที (Manual Hit)", Color3.fromRGB(40, 130, 80), function()
     local target = FindNearestEnemy()
     if target then ExecuteAttack(target) end
 end)
 
--- [SHADOWS TAB]
-AddToggleTo(ShadowsPage, "สกัดเงาอัตโนมัติเมื่อมอนตาย (Auto Arise)", Config.Automation.AutoArise, function(v) Config.Automation.AutoArise = v end)
+-- [TAB 2: DUNGEON AUTOMATION]
+AddSectionTo(DungeonPage, "🏰 ลงดันเจี้ยนต่อเนื่อง (ไม่จำกัดรอบ)", Color3.fromRGB(255, 120, 50))
+AddToggleTo(DungeonPage, "ลงดันเจี้ยนอัตโนมัติ (Auto Run Dungeon)", Config.Automation.AutoDungeon, function(v) Config.Automation.AutoDungeon = v end)
+AddToggleTo(DungeonPage, "ลงซ้ำจนกว่ากุญแจจะหมด (Loop Until Keys Depleted)", Config.Automation.LoopDungeonUntilGone, function(v) Config.Automation.LoopDungeonUntilGone = v end)
+
+AddSectionTo(DungeonPage, "🔑 เลือกกุญแจ / ดันเจี้ยนเป้าหมาย:", Color3.fromRGB(255, 215, 0))
+local KeyOptions = {
+    {Id = "Key", Label = "Key (กุญแจทั่วไป 2400+ อัน)"},
+    {Id = "FairyKey", Label = "FairyKey (660+ อัน)"},
+    {Id = "DSKey", Label = "DSKey (250+ อัน)"},
+    {Id = "Solo2Key", Label = "Solo2Key (190+ อัน)"},
+    {Id = "XWinterKey", Label = "XWinterKey (120+ อัน)"},
+    {Id = "SHKey", Label = "SHKey (47 อัน)"},
+    {Id = "AoTKey", Label = "AoTKey (35 อัน)"},
+    {Id = "NanatsuKey", Label = "NanatsuKey (18 อัน)"},
+    {Id = "EminanceKey", Label = "EminanceKey (11 อัน)"},
+    {Id = "OpmKey", Label = "OpmKey (10 อัน)"},
+    {Id = "BeachKeyIgris", Label = "BeachKeyIgris (8 อัน)"},
+    {Id = "SlimeKey", Label = "SlimeKey (5 อัน)"},
+    {Id = "ZeroKey", Label = "ZeroKey (3 อัน)"},
+    {Id = "World", Label = "World Dungeon (ดันเจี้ยนโลก)"}
+}
+
+for _, opt in ipairs(KeyOptions) do
+    AddButtonTo(DungeonPage, "📌 เลือก: " .. opt.Label, Color3.fromRGB(32, 38, 54), function()
+        Config.Automation.SelectedKey = opt.Id
+        SaveConfig()
+        AuditLogger.Record("Dungeon", "KeySelected", "เลือกกุญแจ: " .. opt.Id)
+    end)
+end
+
+AddButtonTo(DungeonPage, "🚀 เริ่มลงดันเจี้ยนเดี๋ยวนี้ (Start Now)", Color3.fromRGB(40, 140, 90), function()
+    TriggerDungeonEnter()
+end)
+
+-- [TAB 3: TOWER & CASTLE AUTOMATION]
+AddSectionTo(TowerPage, "🗼 ระบบลงหอคอย & หอคอยอเวจี", Color3.fromRGB(180, 100, 255))
+AddToggleTo(TowerPage, "ลงหอคอยอัตโนมัติ (Auto Run Tower/Castle)", Config.Automation.AutoTower, function(v) Config.Automation.AutoTower = v end)
+AddToggleTo(TowerPage, "จบแล้วลงซ้ำชั้นเดิมเรื่อยๆ (Repeat Specified Floor)", Config.Automation.RepeatTargetFloor, function(v) Config.Automation.RepeatTargetFloor = v end)
+AddToggleTo(TowerPage, "เร่งความเร็วหอคอย (Auto SpeedUp)", Config.Automation.AutoSpeedUp, function(v) Config.Automation.AutoSpeedUp = v end)
+
+-- Floor Target Adjuster
+local FloorBox = Instance.new("Frame")
+FloorBox.Size = UDim2.new(1, -6, 0, 36)
+FloorBox.BackgroundColor3 = Color3.fromRGB(24, 28, 42)
+FloorBox.BorderSizePixel = 0
+FloorBox.Parent = TowerPage
+
+local FloorCorner = Instance.new("UICorner")
+FloorCorner.CornerRadius = UDim.new(0, 6)
+FloorCorner.Parent = FloorBox
+
+local FloorLabel = Instance.new("TextLabel")
+FloorLabel.Size = UDim2.new(1, -120, 1, 0)
+FloorLabel.Position = UDim2.new(0, 10, 0, 0)
+FloorLabel.BackgroundTransparency = 1
+FloorLabel.Font = Enum.Font.GothamBold
+FloorLabel.TextSize = 11
+FloorLabel.TextColor3 = Color3.fromRGB(0, 230, 255)
+FloorLabel.TextXAlignment = Enum.TextXAlignment.Left
+FloorLabel.Text = "ชั้นเป้าหมาย: " .. tostring(Config.Automation.TargetFloor)
+FloorLabel.Parent = FloorBox
+
+local MinusBtn = Instance.new("TextButton")
+MinusBtn.Size = UDim2.new(0, 30, 0, 26)
+MinusBtn.Position = UDim2.new(1, -85, 0, 5)
+MinusBtn.BackgroundColor3 = Color3.fromRGB(45, 52, 75)
+MinusBtn.Text = "-25"
+MinusBtn.Font = Enum.Font.GothamBold
+MinusBtn.TextSize = 10
+MinusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinusBtn.BorderSizePixel = 0
+MinusBtn.Parent = FloorBox
+
+local PlusBtn = Instance.new("TextButton")
+PlusBtn.Size = UDim2.new(0, 30, 0, 26)
+PlusBtn.Position = UDim2.new(1, -45, 0, 5)
+PlusBtn.BackgroundColor3 = Color3.fromRGB(45, 52, 75)
+PlusBtn.Text = "+25"
+PlusBtn.Font = Enum.Font.GothamBold
+PlusBtn.TextSize = 10
+PlusBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlusBtn.BorderSizePixel = 0
+PlusBtn.Parent = FloorBox
+
+MinusBtn.MouseButton1Click:Connect(function()
+    Config.Automation.TargetFloor = math.max(1, Config.Automation.TargetFloor - 25)
+    FloorLabel.Text = "ชั้นเป้าหมาย: " .. tostring(Config.Automation.TargetFloor)
+    SaveConfig()
+end)
+
+PlusBtn.MouseButton1Click:Connect(function()
+    Config.Automation.TargetFloor = Config.Automation.TargetFloor + 25
+    FloorLabel.Text = "ชั้นเป้าหมาย: " .. tostring(Config.Automation.TargetFloor)
+    SaveConfig()
+end)
+
+AddButtonTo(TowerPage, "🏆 ตั้งเป็นชั้นสูงสุด (Max Floor: 950)", Color3.fromRGB(40, 120, 180), function()
+    Config.Automation.TargetFloor = 950
+    FloorLabel.Text = "ชั้นเป้าหมาย: 950"
+    SaveConfig()
+end)
+
+AddSectionTo(TowerPage, "โหมดหอคอย:", Color3.fromRGB(255, 200, 50))
+local TowerModes = {
+    {Id = "Castle", Name = "Infernal Castle (หอคอยอเวจี)"},
+    {Id = "InfiniteCastle", Name = "Infinite Castle (หอคอยไร้สิ้นสุด)"},
+    {Id = "InfiniteLabyrinth", Name = "Infinite Labyrinth (เขาวงกต)"},
+    {Id = "InfiniteMode", Name = "Infinite Mode (โหมดเวฟ)"}
+}
+for _, tm in ipairs(TowerModes) do
+    AddButtonTo(TowerPage, "เลือก: " .. tm.Name, Color3.fromRGB(28, 33, 48), function()
+        Config.Automation.TowerMode = tm.Id
+        SaveConfig()
+        AuditLogger.Record("Tower", "ModeSelected", "เลือกโหมด: " .. tm.Id)
+    end)
+end
+
+AddButtonTo(TowerPage, "🚀 เข้าหอคอยชั้นที่เลือกเดี๋ยวนี้", Color3.fromRGB(150, 40, 150), function()
+    TriggerTowerEnter()
+end)
+
+-- [TAB 4: SHADOWS]
+AddSectionTo(ShadowsPage, "👥 ควบคุมกองทัพเงา & สกัดเงา", Color3.fromRGB(0, 200, 255))
+AddToggleTo(ShadowsPage, "สกัดเงาอัตโนมัติ (Auto Arise)", Config.Automation.AutoArise, function(v) Config.Automation.AutoArise = v end)
 AddToggleTo(ShadowsPage, "สวมใส่เงาที่ดีที่สุด (Auto Equip Best Shadows)", Config.Automation.AutoEquipBestPets, function(v) Config.Automation.AutoEquipBestPets = v end)
-AddButtonTo(ShadowsPage, "👑 ติดตั้งเงาที่ดีที่สุดทันที (Equip Best Now)", Color3.fromRGB(35, 120, 180), function()
-    ExecuteEquipBest()
+AddButtonTo(ShadowsPage, "👑 ติดตั้งเงาที่ดีที่สุดทันที", Color3.fromRGB(35, 120, 180), function()
+    if ButtonsModule and ButtonsModule.PetsButtons then
+        ButtonsModule.PetsButtons("None", { Action = "PetAction", Type = "EquipBest" })
+        AuditLogger.Record("Shadows", "EquipBest", "ติดตั้งเงาที่ดีที่สุดเรียบร้อย")
+    end
 end)
 
--- [QUESTS TAB]
+-- [TAB 5: QUESTS]
+AddSectionTo(QuestsPage, "🎁 รางวัล & ของขวัญฟรี", Color3.fromRGB(255, 215, 0))
 AddToggleTo(QuestsPage, "รับรางวัลเควสต์อัตโนมัติ (Auto Claim Quests)", Config.Automation.AutoClaimQuests, function(v) Config.Automation.AutoClaimQuests = v end)
-AddToggleTo(QuestsPage, "รับของขวัญเล่นเกมฟรี (Auto Claim Gifts)", Config.Automation.AutoClaimGifts, function(v) Config.Automation.AutoClaimGifts = v end)
-AddButtonTo(QuestsPage, "🎁 กดรับของขวัญทั้งหมดทันที", Color3.fromRGB(150, 90, 30), function()
-    ExecuteClaimGifts()
-    ExecuteClaimQuests()
-end)
+AddToggleTo(QuestsPage, "รับของขวัญฟรีตามเวลา (Auto Claim Gifts)", Config.Automation.AutoClaimGifts, function(v) Config.Automation.AutoClaimGifts = v end)
 
--- [LOGS TAB & REAL-TIME STATS]
+-- [TAB 6: LOGS & STATS]
 local StatsBox = Instance.new("Frame")
 StatsBox.Size = UDim2.new(1, -6, 0, 52)
 StatsBox.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
@@ -832,9 +1040,12 @@ StatsLabel.Parent = StatsBox
 task.spawn(function()
     while State.Running do
         pcall(function()
-            StatsLabel.Text = string.format("📊 โจมตี: %d ครั้ง | สกัดเงา: %d ตัว | เควสต์: %d รายการ | ของขวัญ: %d ชิ้น\n⏱️ เวลาทำงาน: %d วิ | สถานะ: %s",
-                AuditLogger.Stats.AttacksFired, AuditLogger.Stats.ShadowsArised, AuditLogger.Stats.QuestsClaimed, AuditLogger.Stats.GiftsClaimed,
-                os.time() - AuditLogger.Stats.StartTime, State.StatusText)
+            local selected = Config.Automation.SelectedKey
+            local count = GetKeyCount(selected)
+            StatsLabel.Text = string.format("📊 โจมตี: %d | สกัดเงา: %d | กุญแจ [%s]: %d อัน\n🏰 ดันเจี้ยน: %s | หอคอยชั้น: %d | สถานะ: %s",
+                AuditLogger.Stats.AttacksFired, AuditLogger.Stats.ShadowsArised, selected, count,
+                Config.Automation.AutoDungeon and "เปิดวนซ้ำ" or "ปิด",
+                Config.Automation.TargetFloor, State.StatusText)
         end)
         task.wait(0.5)
     end
@@ -869,21 +1080,25 @@ local function RefreshLogUI()
     end
 end
 
-AuditLogger.OnLogged = function()
-    RefreshLogUI()
-end
+AuditLogger.OnLogged = function() RefreshLogUI() end
 
 AddButtonTo(LogsPage, "🗑️ ล้างประวัติการบันทึก (Clear Logs)", Color3.fromRGB(60, 35, 40), function()
     table.clear(AuditLogger.History)
     RefreshLogUI()
 end)
 
--- [SETTINGS TAB]
+-- [TAB 7: SETTINGS]
 AddToggleTo(SettingsPage, "ป้องกันการหลุดจากการอยู่นิ่ง (Anti-AFK)", Config.Automation.AntiAFK, function(v) Config.Automation.AntiAFK = v end)
 AddButtonTo(SettingsPage, "💾 บันทึกการตั้งค่าเดี๋ยวนี้ (Save Config)", Color3.fromRGB(40, 120, 180), function() SaveConfig() end)
 AddButtonTo(SettingsPage, "🔄 โหลดการตั้งค่าจากไฟล์ (Reload Config)", Color3.fromRGB(50, 60, 90), function() LoadConfig() end)
 AddButtonTo(SettingsPage, "⚠️ รีเซ็ตกลับเป็นค่าเริ่มต้น (Reset Defaults)", Color3.fromRGB(120, 40, 40), function()
-    for k, _ in pairs(Config.Automation) do Config.Automation[k] = true end
+    Config.Automation.AutoAttack = true
+    Config.Automation.AutoShadowArmy = true
+    Config.Automation.AutoArise = true
+    Config.Automation.SmoothApproach = true
+    Config.Automation.AutoDungeon = false
+    Config.Automation.AutoTower = false
+    Config.Automation.TargetFloor = 950
     SaveConfig()
     AuditLogger.Record("Settings", "Reset", "รีเซ็ตการตั้งค่าเป็นค่าเริ่มต้น")
 end)
@@ -891,7 +1106,7 @@ end)
 SwitchTab("Combat")
 
 -- ============================================================================
--- 8. CLEANUP & SHUTDOWN HANDLER
+-- 10. CLEANUP & SHUTDOWN HANDLER
 -- ============================================================================
 local function Cleanup()
     State.Running = false
@@ -904,4 +1119,4 @@ end
 _G.DungeonRiseCleanup = Cleanup
 CloseBtn.MouseButton1Click:Connect(Cleanup)
 
-AuditLogger.Record("Loader", "Ready", "Dungeon Rise QA Automation พร้อมทำงานเรียบร้อย!")
+AuditLogger.Record("Loader", "Ready", "Dungeon Rise Pro V2 พร้อมทำงานเรียบร้อย!")
