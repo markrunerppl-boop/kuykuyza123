@@ -120,7 +120,11 @@ if gameInfo then
     if fetchSuccess and scriptSource and #scriptSource > 20 then
         local runSuccess, runError = pcall(function()
             local fn = loadstring(scriptSource)
-            if fn then fn() else error("Syntax error in script") end
+            if fn then
+                task.spawn(fn)
+            else
+                error("Syntax error in script")
+            end
         end)
 
         if runSuccess then
