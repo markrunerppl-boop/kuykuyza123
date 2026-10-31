@@ -45,11 +45,16 @@ local SupportedGames = {
         Path = "anime/anime_mine.lua"
     },
 
-    -- แมพ: ดันเจี้ยนลุกขึ้น (Dungeon Rise / QA Hub Test)
+    -- แมพ: ดันเจี้ยนลุกขึ้น (Dungeon Rise / Solo Leveling)
     [128336380114944] = {
-        Name = "ดันเจี้ยนลุกขึ้น (QA Hub)",
+        Name = "ดันเจี้ยนลุกขึ้น (Dungeon Rise)",
         Category = "Anime",
-        Path = "chakra_simulator/main.lua"
+        Path = "dungeon_rise/main.lua"
+    },
+    [131604490933694] = {
+        Name = "ดันเจี้ยนลุกขึ้น - โลก 3 (Dungeon Rise)",
+        Category = "Anime",
+        Path = "dungeon_rise/main.lua"
     },
 
     -- แมพ: Blox Fruits (ตัวอย่าง)
@@ -96,9 +101,9 @@ local SupportedUniverses = {
         Path = "anime/anime_mine.lua"
     },
     [7074860883] = {
-        Name = "ดันเจี้ยนลุกขึ้น (QA Hub)",
+        Name = "ดันเจี้ยนลุกขึ้น (Dungeon Rise)",
         Category = "Anime",
-        Path = "chakra_simulator/main.lua"
+        Path = "dungeon_rise/main.lua"
     }
 }
 
