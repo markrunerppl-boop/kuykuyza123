@@ -167,16 +167,18 @@ local WorldsInfo = {
 }
 
 -- ============================================================================
--- 2. SAFE MODULE LOADING & CIRCUIT BREAKER
+-- 2. SAFE MODULE LOADING & CIRCUIT BREAKER (NON-BLOCKING)
 -- ============================================================================
 local function SafeRequire(parent, pathTable, moduleName)
     local ok, res = pcall(function()
+        if not parent then return nil end
         local curr = parent
         for _, segment in ipairs(pathTable) do
-            curr = curr:FindFirstChild(segment) or curr:WaitForChild(segment, 2)
-            if not curr then error("Missing path: " .. segment) end
+            curr = curr:FindFirstChild(segment)
+            if not curr then return nil end
         end
-        local mod = curr:FindFirstChild(moduleName) or curr:WaitForChild(moduleName, 2)
+        local mod = curr:FindFirstChild(moduleName)
+        if not mod or not mod:IsA("ModuleScript") then return nil end
         return require(mod)
     end)
     return (ok and res) or nil
@@ -193,10 +195,10 @@ local EyesConfig = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Eyes")
 local AurasConfig = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Auras")
 local BossLogic = SafeRequire(ReplicatedStorage, {"Shared", "Logic"}, "Boss")
 
-local RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 5)
+local RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
 local Remotes = {}
 for alias, name in pairs(Config.Remotes) do
-    Remotes[alias] = RemotesFolder and (RemotesFolder:FindFirstChild(name) or RemotesFolder:WaitForChild(name, 2))
+    Remotes[alias] = RemotesFolder and RemotesFolder:FindFirstChild(name)
 end
 
 local CircuitBreaker = {
