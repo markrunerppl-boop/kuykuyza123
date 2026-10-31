@@ -35,7 +35,7 @@ local SupportedGames = {
     [97617452700163] = {
         Name = "Chakra Training Simulator",
         Category = "Anime",
-        Path = "anime/chakra_simulator.lua"
+        Path = "chakra_simulator/main.lua"
     },
 
     -- แมพ: เหมืองอนิเมะของฉัน (My Anime Mine)
@@ -43,6 +43,13 @@ local SupportedGames = {
         Name = "เหมืองอนิเมะของฉัน (Anime Mine)",
         Category = "Anime",
         Path = "anime/anime_mine.lua"
+    },
+
+    -- แมพ: ดันเจี้ยนลุกขึ้น (Dungeon Rise / QA Hub Test)
+    [128336380114944] = {
+        Name = "ดันเจี้ยนลุกขึ้น (QA Hub)",
+        Category = "Anime",
+        Path = "chakra_simulator/main.lua"
     },
 
     -- แมพ: Blox Fruits (ตัวอย่าง)
@@ -87,6 +94,11 @@ local SupportedUniverses = {
         Name = "เหมืองอนิเมะของฉัน (Anime Mine)",
         Category = "Anime",
         Path = "anime/anime_mine.lua"
+    },
+    [7074860883] = {
+        Name = "ดันเจี้ยนลุกขึ้น (QA Hub)",
+        Category = "Anime",
+        Path = "chakra_simulator/main.lua"
     }
 }
 

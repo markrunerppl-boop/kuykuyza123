@@ -1,10 +1,11 @@
 --[[
-    ========================================================================
-    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - STAGES & COMBAT PRO]
+    ================================================================================
+    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - CHAKRA QA ENTERPRISE V12]
     Target Game: Chakra Training Simulator (Anime / Naruto)
-    Architecture: Ground Level Zone-Trigger Compliant | Stage Filtering | Smooth Fast Loop
-    Version: 9.9.1 (Kurama Zero-Damage Dodge, Post-Boss Best Training & Pet Fuser Fix)
-    ========================================================================
+    Architecture: Ground Level Zone-Trigger Compliant | Tabbed UI | Audit Logging
+    Repository: markrunerppl-boop/kuykuyza123
+    Loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
+    ================================================================================
 --]]
 
 local Players = game:GetService("Players")
@@ -12,170 +13,319 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
 
+-- Parent GUI Resolution
 local parentGui = nil
 pcall(function()
-    if gethui then
+    if typeof(gethui) == "function" then
         parentGui = gethui()
     elseif game:GetService("CoreGui") then
         parentGui = game:GetService("CoreGui")
     end
 end)
-if not parentGui then
-    parentGui = PlayerGui
-end
+if not parentGui then parentGui = PlayerGui end
 
--- 0. CLEANUP PREVIOUS INSTANCE
-if _G.ChakraQACleanup then
-    pcall(_G.ChakraQACleanup)
-end
-
-local existing = parentGui:FindFirstChild("ChakraQAGui") or PlayerGui:FindFirstChild("ChakraQAGui")
-if existing then pcall(function() existing:Destroy() end) end
-
--- 1. CLIENT MODULES BINDING
-local Input = nil
-pcall(function() Input = require(LocalPlayer.PlayerScripts.Client.Input) end)
-
-local Enemies = nil
-pcall(function() Enemies = require(LocalPlayer.PlayerScripts.Client.Enemies) end)
-
-local StateMod = nil
-pcall(function() StateMod = require(LocalPlayer.PlayerScripts.Client.State) end)
-
-local World = nil
-pcall(function() World = require(ReplicatedStorage.Shared.Config.World) end)
-
-local StagesConfig = nil
-pcall(function() StagesConfig = require(ReplicatedStorage.Shared.Config.Stages) end)
-
-local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5) or ReplicatedStorage:FindFirstChild("Remotes")
-local TrainRemote = Remotes and (Remotes:FindFirstChild("Train") or Remotes:WaitForChild("Train", 3))
-local CastRemote = Remotes and (Remotes:FindFirstChild("Cast") or Remotes:WaitForChild("Cast", 3))
-local RebirthFunc = Remotes and (Remotes:FindFirstChild("Rebirth") or Remotes:WaitForChild("Rebirth", 3))
-local ClaimQuestFunc = Remotes and (Remotes:FindFirstChild("ClaimQuest") or Remotes:WaitForChild("ClaimQuest", 3))
-local ClaimRewardFunc = Remotes and (Remotes:FindFirstChild("ClaimReward") or Remotes:WaitForChild("ClaimReward", 3))
-local ClaimDailyFunc = Remotes and (Remotes:FindFirstChild("ClaimDaily") or Remotes:WaitForChild("ClaimDaily", 3))
-local ClaimGroupFunc = Remotes and (Remotes:FindFirstChild("ClaimGroup") or Remotes:WaitForChild("ClaimGroup", 3))
-local PetActionFunc = Remotes and (Remotes:FindFirstChild("PetAction") or Remotes:WaitForChild("PetAction", 3))
-local EquipAuraFunc = Remotes and (Remotes:FindFirstChild("EquipAura") or Remotes:WaitForChild("EquipAura", 3))
-local UnlockEyeRemote = Remotes and (Remotes:FindFirstChild("UnlockEye") or Remotes:WaitForChild("UnlockEye", 3))
-local EquipRemote = Remotes and (Remotes:FindFirstChild("Equip") or Remotes:WaitForChild("Equip", 3))
-local PadRemote = Remotes and (Remotes:FindFirstChild("Pad") or Remotes:WaitForChild("Pad", 3))
-local TeleportRemote = Remotes and (Remotes:FindFirstChild("Teleport") or Remotes:WaitForChild("Teleport", 3))
-local FuseFunc = Remotes and (Remotes:FindFirstChild("Fuse") or Remotes:WaitForChild("Fuse", 3))
-local RedeemCodeFunc = Remotes and (Remotes:FindFirstChild("RedeemCode") or Remotes:WaitForChild("RedeemCode", 3))
-local BossRemote = Remotes and (Remotes:FindFirstChild("Boss") or Remotes:WaitForChild("Boss", 3))
-local BossShopFunc = Remotes and (Remotes:FindFirstChild("BossShop") or Remotes:WaitForChild("BossShop", 3))
-
-local WorldsInfo = {
-    [1] = {name = "Shinobi Lands", color = Color3.fromRGB(69, 200, 255), desc = "โลก 1: ดินแดนนินจา"},
-    [2] = {name = "Celestial Realm", color = Color3.fromRGB(180, 92, 255), desc = "โลก 2: แดนสวรรค์"},
-    [3] = {name = "Blood Moon", color = Color3.fromRGB(255, 46, 77), desc = "โลก 3: พระจันทร์เลือด"},
-    [4] = {name = "Frozen Abyss", color = Color3.fromRGB(63, 184, 255), desc = "โลก 4: แดนเยือกแข็ง"},
-    [5] = {name = "Cosmic Void", color = Color3.fromRGB(155, 92, 255), desc = "โลก 5: มิติคอสมิก"},
+-- ============================================================================
+-- 0. STRUCTURED LOGGING & AUDIT LOGGER (ระบบบันทึกประวัติการทำงาน)
+-- ============================================================================
+local AuditLogger = {
+    History = {},
+    MaxRecords = 50,
+    Stats = {
+        StartTime = os.time(),
+        StagesCleared = 0,
+        BossAttacks = 0,
+        RebirthsCount = 0,
+        PetsFused = 0,
+        RewardsClaimed = 0,
+        CodesRedeemed = 0
+    },
+    OnLogged = nil -- UI Callback
 }
 
--- 2. CONFIGURATION
+function AuditLogger.Record(category, action, detail)
+    local timestamp = os.date("%H:%M:%S")
+    local entry = {
+        Time = timestamp,
+        Category = category,
+        Action = action,
+        Detail = detail or ""
+    }
+    table.insert(AuditLogger.History, 1, entry)
+    if #AuditLogger.History > AuditLogger.MaxRecords then
+        table.remove(AuditLogger.History)
+    end
+
+    print(string.format("[%s] [%s] %s: %s", timestamp, string.upper(category), action, tostring(detail)))
+    if AuditLogger.OnLogged then
+        pcall(AuditLogger.OnLogged, entry)
+    end
+end
+
+-- ============================================================================
+-- 1. CENTRALIZED CONSTANTS & CONFIGURATION
+-- ============================================================================
 local Config = {
-    Tag = "ChakraQA",
-    Automation = {
-        AutoTrain = true,          -- ฝึกจักระ
-        AutoBestTrain = true,      -- ซ้อมจักระที่จุดที่ดีที่สุดของโลกอัตโนมัติ (หลังจบศึกบอส / ช่วงรอบอส)
-        AutoAttack = true,         -- โจมตีฟันดาบ/หมัด (มีแอนิเมชันเต็มรูปแบบ)
-        AutoSkillE = true,         -- สกิล E
-        AutoSkillR = true,         -- สกิล R (Kamui)
-        AutoStages = true,         -- ระบบลงด่านสเตจอัตโนมัติ (Stage 1-15)
-        AutoRetreat = true,        -- ถอยไปเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว
-        AutoPops = true,           -- กดคูณจักระรูปไฟ
-        AutoRebirth = true,        -- เกิดใหม่อัตโนมัติ
-        AutoEquipBestAura = true,  -- ใส่ออร่าที่ดีที่สุด
-        AutoEquipBestEye = true,   -- ใส่ดวงตาที่ดีที่สุด
-        AutoEquipBestPets = true,  -- ใส่สัตว์เลี้ยงที่ดีที่สุด
-        AutoClaimAll = true,       -- เคลมของขวัญและเควสต์
-        AutoRedeemCodes = true,    -- แลกโค้ดอัตโนมัติ (Update Codes)
-        AutoFusePets = true,       -- รวมสัตว์เลี้ยง 4 ตัวเป็นระดับสูง (Update 3 Fusing)
-        AutoBoss = true,           -- ร่วมตีบอสคุรามะอัตโนมัติ (Update 2 Boss & หลบการโจมตี 100%)
+    Tag = "ChakraQA_Pro",
+    ConfigFile = "ChakraQA_Config_V12.json",
+
+    Remotes = {
+        Train = "Train",
+        Cast = "Cast",
+        Rebirth = "Rebirth",
+        ClaimQuest = "ClaimQuest",
+        ClaimReward = "ClaimReward",
+        ClaimDaily = "ClaimDaily",
+        ClaimGroup = "ClaimGroup",
+        PetAction = "PetAction",
+        EquipAura = "EquipAura",
+        UnlockEye = "UnlockEye",
+        Equip = "Equip",
+        Pad = "Pad",
+        Teleport = "Teleport",
+        Fuse = "Fuse",
+        RedeemCode = "RedeemCode",
+        Boss = "Boss",
+        BossShop = "BossShop",
+        Revive = "Revive",
+        ArcadeStart = "ArcadeStart"
     },
+
+    Attributes = {
+        World = "World",
+        Downed = "Downed",
+        InStages = "InStages",
+        RunStage = "RunStage",
+        RunCleared = "RunCleared",
+        BossPhase = "BossPhase",
+        BossHp = "BossHp",
+        Rebirths = "Rebirths",
+        TrainMult = "TrainMult"
+    },
+
+    Events = {
+        Attack = "attack",
+        SkillE = "E",
+        SkillR = "R",
+        ReviveDeny = "no",
+        EquipBest = "equipBest",
+        FuseAction = "fuse",
+        BossJoin = "join",
+        BossLeave = "leave"
+    },
+
+    Automation = {
+        AutoTrain = true,
+        AutoBestTrain = true,
+        AutoAttack = true,
+        AutoSkillE = true,
+        AutoSkillR = true,
+        AutoStages = true,
+        AutoRetreat = true,
+        AutoPops = true,
+        AutoRebirth = true,
+        AutoEquipBestAura = true,
+        AutoEquipBestEye = true,
+        AutoEquipBestPets = true,
+        AutoClaimAll = true,
+        AutoRedeemCodes = true,
+        AutoFusePets = true,
+        AutoBoss = true
+    },
+
     Delays = {
-        FastLoop = 0.04,
+        FastLoop = 0.05,
         SlowLoop = 2.5,
         SkillECooldown = 3.5,
         SkillRCooldown = 6.0,
+        HumanJitterMin = 0.06,
+        HumanJitterMax = 0.14
     },
+
     Stages = {
-        TargetWorld = 5,               -- โลกเป้าหมาย (ค่าเริ่มต้นโลก 5: Cosmic Void)
-        AutoDetectWorld = true,        -- ซิงค์พิกัดตามโลกที่ตัวละครยืนอยู่อัตโนมัติ
-        PadType = "purple",            -- ประเภทแท่น ("purple" = แท่นคูณ 3, "gold" = แท่นทองปกติ)
-        MaxCombatTime = 8,             -- สู้มอนสเตอร์เกิน 8 วินาที ถือว่าสู้ไม่ไหว (ถอยทันที)
-        HealthRetreatThreshold = 0.45, -- เลือดต่ำกว่า 45% ให้ถอยไปเก็บถ้วยทันที ป้องกันโดนบอสตีตาย
-        PadDwellTime = 0.8,            -- ยืนบนแท่น 0.8 วินาทีให้เห็นการเก็บถ้วยชัดเจน
-        FloorY = 3.5,                  -- ระดับความสูงมาตรฐานที่ระบบทริกเกอร์ของเกมจับได้ 100%
+        TargetWorld = 5,
+        PadType = "purple",            -- "purple" = 3x, "gold" = standard
+        MaxCombatTime = 8.0,
+        HealthRetreatThreshold = 0.45,
+        PadDwellTime = 0.8,
+        FloorY = 3.5
     }
 }
 
--- 2.1 CONFIG PERSISTENCE (บันทึกและโหลดการตั้งค่าอัตโนมัติทุกครั้ง)
-local CONFIG_FILE = "ChakraQA_Config.json"
-local HttpService = game:GetService("HttpService")
+local WorldsInfo = {
+    [1] = { name = "Shinobi Lands", color = Color3.fromRGB(69, 200, 255), originX = 0 },
+    [2] = { name = "Celestial Realm", color = Color3.fromRGB(180, 92, 255), originX = 3000 },
+    [3] = { name = "Blood Moon", color = Color3.fromRGB(255, 46, 77), originX = 6000 },
+    [4] = { name = "Frozen Abyss", color = Color3.fromRGB(63, 184, 255), originX = 9000 },
+    [5] = { name = "Cosmic Void", color = Color3.fromRGB(155, 92, 255), originX = 12000 }
+}
 
-local function SaveConfig()
-    if writefile then
-        pcall(function()
-            local saveTable = {
-                Automation = Config.Automation,
-                Stages = Config.Stages
-            }
-            writefile(CONFIG_FILE, HttpService:JSONEncode(saveTable))
-        end)
+-- ============================================================================
+-- 2. SAFE MODULE LOADING & CIRCUIT BREAKER
+-- ============================================================================
+local function SafeRequire(parent, pathTable, moduleName)
+    local ok, res = pcall(function()
+        local curr = parent
+        for _, segment in ipairs(pathTable) do
+            curr = curr:FindFirstChild(segment) or curr:WaitForChild(segment, 2)
+            if not curr then error("Missing path: " .. segment) end
+        end
+        local mod = curr:FindFirstChild(moduleName) or curr:WaitForChild(moduleName, 2)
+        return require(mod)
+    end)
+    return (ok and res) or nil
+end
+
+local Input = SafeRequire(LocalPlayer, {"PlayerScripts", "Client"}, "Input")
+local Enemies = SafeRequire(LocalPlayer, {"PlayerScripts", "Client"}, "Enemies")
+local StateMod = SafeRequire(LocalPlayer, {"PlayerScripts", "Client"}, "State")
+local World = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "World")
+local Plots = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Plots")
+local FuseLogic = SafeRequire(ReplicatedStorage, {"Shared", "Logic"}, "Fuse")
+local CodesConfig = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Codes")
+local EyesConfig = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Eyes")
+local AurasConfig = SafeRequire(ReplicatedStorage, {"Shared", "Config"}, "Auras")
+local BossLogic = SafeRequire(ReplicatedStorage, {"Shared", "Logic"}, "Boss")
+
+local RemotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 5)
+local Remotes = {}
+for alias, name in pairs(Config.Remotes) do
+    Remotes[alias] = RemotesFolder and (RemotesFolder:FindFirstChild(name) or RemotesFolder:WaitForChild(name, 2))
+end
+
+local CircuitBreaker = {
+    Threshold = 3,
+    Cooldown = 15,
+    Registry = {}
+}
+
+function CircuitBreaker.RecordSuccess(taskKey)
+    if CircuitBreaker.Registry[taskKey] then
+        CircuitBreaker.Registry[taskKey].Errors = 0
+        CircuitBreaker.Registry[taskKey].Tripped = false
     end
 end
 
-local function LoadConfig()
-    if isfile and readfile and isfile(CONFIG_FILE) then
-        pcall(function()
-            local content = readfile(CONFIG_FILE)
-            local data = HttpService:JSONDecode(content)
-            if type(data) == "table" then
-                if type(data.Automation) == "table" then
-                    for k, v in pairs(data.Automation) do
-                        Config.Automation[k] = v
-                    end
-                end
-                if type(data.Stages) == "table" then
-                    for k, v in pairs(data.Stages) do
-                        Config.Stages[k] = v
-                    end
-                end
-            end
-        end)
+function CircuitBreaker.RecordFailure(taskKey, errorMsg)
+    if not CircuitBreaker.Registry[taskKey] then
+        CircuitBreaker.Registry[taskKey] = { Errors = 0, Tripped = false, LastTripTime = 0 }
+    end
+    local rec = CircuitBreaker.Registry[taskKey]
+    rec.Errors = rec.Errors + 1
+    if rec.Errors >= CircuitBreaker.Threshold then
+        rec.Tripped = true
+        rec.LastTripTime = tick()
+        AuditLogger.Record("CircuitBreaker", "Tripped", string.format("Task '%s' ล้มเหลวติดกันเกิน 3 ครั้ง พักการทำงาน 15 วิ", taskKey))
     end
 end
 
--- โหลดการตั้งค่าเดิมทันที (ถ้ายังไม่มีไฟล์ ให้บันทึกค่าเริ่มต้น)
-if isfile and isfile(CONFIG_FILE) then
-    LoadConfig()
-else
-    SaveConfig()
+function CircuitBreaker.IsAvailable(taskKey)
+    local rec = CircuitBreaker.Registry[taskKey]
+    if not rec or not rec.Tripped then return true end
+    if tick() - rec.LastTripTime >= CircuitBreaker.Cooldown then
+        rec.Tripped = false
+        rec.Errors = 0
+        return true
+    end
+    return false
 end
 
+-- ============================================================================
+-- 3. STATE, CHARACTER & RATE LIMITING HELPERS
+-- ============================================================================
 local State = {
     Running = true,
     CurrentStage = 1,
     LastStage = 0,
     StageStartTime = tick(),
     IsRetreating = false,
-    StartingStageOne = false,
-    StatusText = "พร้อมทำงาน",
+    StatusText = "ระบบกำลังเริ่มต้น...",
+    Connections = {}
 }
 
--- 3. ATTACK & SKILL ENGINE
+local function HumanWait(minSec, maxSec)
+    local minT = minSec or Config.Delays.HumanJitterMin
+    local maxT = maxSec or Config.Delays.HumanJitterMax
+    task.wait(minT + math.random() * (maxT - minT))
+end
+
+local function SafeFind(parent, childName, recursive)
+    if not parent then return nil end
+    local ok, res = pcall(function()
+        return parent:FindFirstChild(childName, recursive or false)
+    end)
+    return (ok and res) or nil
+end
+
+local function SafeGetCharacter()
+    local char = LocalPlayer.Character
+    if not char or not char.Parent then return nil, nil, nil end
+    return char, char:FindFirstChild("HumanoidRootPart"), char:FindFirstChildOfClass("Humanoid")
+end
+
+-- ============================================================================
+-- 4. CONFIG PERSISTENCE
+-- ============================================================================
+local function SaveConfig()
+    pcall(function()
+        if writefile then
+            local payload = { Automation = Config.Automation, Stages = Config.Stages }
+            writefile(Config.ConfigFile, HttpService:JSONEncode(payload))
+            AuditLogger.Record("Config", "Saved", "บันทึกการตั้งค่าลงไฟล์ " .. Config.ConfigFile)
+        end
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile and readfile and isfile(Config.ConfigFile) then
+            local raw = readfile(Config.ConfigFile)
+            local data = HttpService:JSONDecode(raw)
+            if type(data) == "table" then
+                if type(data.Automation) == "table" then
+                    for k, v in pairs(data.Automation) do Config.Automation[k] = v end
+                end
+                if type(data.Stages) == "table" then
+                    for k, v in pairs(data.Stages) do Config.Stages[k] = v end
+                end
+                AuditLogger.Record("Config", "Loaded", "โหลดการตั้งค่าเดิมเรียบร้อย")
+            end
+        end
+    end)
+end
+LoadConfig()
+
+-- ============================================================================
+-- 5. WORLD & COMBAT LOGIC
+-- ============================================================================
+local function GetCurrentWorld()
+    if Config.Stages.TargetWorld and Config.Stages.TargetWorld >= 1 and Config.Stages.TargetWorld <= 5 then
+        return Config.Stages.TargetWorld
+    end
+    local _, root = SafeGetCharacter()
+    if root and World and typeof(World.worldAt) == "function" then
+        local w = World.worldAt(root.Position)
+        if w and w >= 1 and w <= 5 then return w end
+    end
+    local attrW = LocalPlayer:GetAttribute(Config.Attributes.World)
+    return (attrW and attrW >= 1 and attrW <= 5) and attrW or 5
+end
+
+local function GetWorldOrigin(worldId)
+    local w = worldId or GetCurrentWorld()
+    local entry = WorldsInfo[w]
+    return Vector3.new(entry and entry.originX or 0, 0, 0)
+end
+
 local function GetAimPos(targetPos)
     if targetPos then return targetPos end
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local _, root = SafeGetCharacter()
     local cam = Workspace.CurrentCamera
     if cam and root then
         return root.Position + cam.CFrame.LookVector * 25
@@ -188,645 +338,36 @@ end
 local function ExecuteAttack(target)
     local aimPos = target and target.pos or GetAimPos()
     local targetId = target and target.id or nil
-
-    if Input and Input.press then
-        pcall(function() Input.press("attack") end)
+    if Input and typeof(Input.press) == "function" then
+        pcall(function() Input.press(Config.Events.Attack) end)
     end
-
-    pcall(function()
-        CastRemote:FireServer("attack", aimPos, targetId)
-    end)
+    if Remotes.Cast then
+        pcall(function() Remotes.Cast:FireServer(Config.Events.Attack, aimPos, targetId) end)
+    end
 end
 
 local function ExecuteSkill(slot, target)
     local aimPos = target and target.pos or GetAimPos()
     local targetId = target and target.id or nil
-
-    if Input and Input.press then
+    if Input and typeof(Input.press) == "function" then
         pcall(function() Input.press(slot) end)
     end
-
-    pcall(function()
-        CastRemote:FireServer(slot, aimPos, targetId)
-    end)
-end
-
--- 4. SMART STAGE RUNNER WITH MULTI-WORLD 1-4 SUPPORT
-local function GetCurrentWorld()
-    if Config.Stages.TargetWorld and Config.Stages.TargetWorld >= 1 and Config.Stages.TargetWorld <= 5 then
-        return Config.Stages.TargetWorld
-    end
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root and World and World.worldAt then
-        local w = World.worldAt(root.Position)
-        if w and w >= 1 and w <= 5 then return w end
-    end
-    if StateMod and StateMod.number then
-        local stW = StateMod.number("World")
-        if stW and stW >= 1 and stW <= 5 then return stW end
-    end
-    local attrW = LocalPlayer:GetAttribute("World")
-    if attrW and attrW >= 1 and attrW <= 5 then return attrW end
-    return 5
-end
-
-local function GetWorldOrigin(worldId)
-    local w = worldId or GetCurrentWorld()
-    if World and World.origin then
-        local ok, orig = pcall(function() return World.origin(w) end)
-        if ok and orig then return orig end
-    end
-    local origins = {0, 3000, 6000, 9000, 12000}
-    local x = origins[w] or 0
-    return Vector3.new(x, 0, 0)
-end
-
-local function TeleportToWorld(targetWorldId)
-    if not targetWorldId or targetWorldId < 1 or targetWorldId > 5 then return false end
-    local curWorld = GetCurrentWorld()
-    if curWorld == targetWorldId then return true end
-
-    local info = WorldsInfo[targetWorldId]
-    local name = info and info.name or ("World " .. targetWorldId)
-    State.StatusText = string.format("🌀 กำลังเปลี่ยนไปโลก %d (%s)...", targetWorldId, name)
-
-    if TeleportRemote then
-        pcall(function() TeleportRemote:FireServer(targetWorldId) end)
-        task.wait(1.5)
-    end
-
-    local afterWorld = GetCurrentWorld()
-    if afterWorld == targetWorldId then
-        return true
-    else
-        State.StatusText = string.format("⚠️ ไม่สามารถไปโลก %d ได้ (ยังล็อคอยู่/ต้องผ่านด่าน 15 โลกก่อนหน้า)", targetWorldId)
-        return false
+    if Remotes.Cast then
+        pcall(function() Remotes.Cast:FireServer(slot, aimPos, targetId) end)
     end
 end
 
-local function GetStageCenterZ(stageNum)
-    if World and World.stageStart and World.stageEnd then
-        local s = World.stageStart(stageNum)
-        local e = World.stageEnd(stageNum)
-        return (s + e) / 2
-    end
-    return -75 - (stageNum - 1) * 90
-end
-
-local function GetStageCenter(stageNum, worldId)
-    local curWorld = worldId or GetCurrentWorld()
-    local originX = GetWorldOrigin(curWorld).X
-    local z = GetStageCenterZ(stageNum)
-    return Vector3.new(originX, Config.Stages.FloorY, z)
-end
-
-local function GetEnemiesForStage(targetStage)
-    local rawList = Enemies and Enemies.list() or {}
-    local stageEnemies = {}
-    local curWorld = GetCurrentWorld()
-
-    for _, e in ipairs(rawList) do
-        if e.pos then
-            local eStage = (World and World.stageAt) and World.stageAt(e.pos.Z)
-            local eWorld = (World and World.worldAt) and World.worldAt(e.pos) or curWorld
-            if eStage == targetStage and eWorld == curWorld then
-                table.insert(stageEnemies, e)
-            end
-        end
-    end
-
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root and #stageEnemies > 1 then
-        table.sort(stageEnemies, function(a, b)
-            return (root.Position - a.pos).Magnitude < (root.Position - b.pos).Magnitude
-        end)
-    end
-
-    return stageEnemies
-end
-
-local function StartStageOneProperly()
-    if State.StartingStageOne or State.IsRetreating then return end
-    State.StartingStageOne = true
-
-    pcall(function()
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if not root then return end
-
-        -- เช็คสถานะล้ม/ตาย ให้ยิงปลดล็อคเกิดใหม่ทันที
-        local isDowned = LocalPlayer:GetAttribute("Downed") == true
-        if isDowned or (hum and hum.Health <= 0) then
-            State.StatusText = "🩹 กำลังแก้สถานะล้ม/ตาย (Respawn)..."
-            local rev = Remotes and Remotes:FindFirstChild("Revive")
-            if rev then pcall(function() rev:FireServer("no") end) end
-            task.wait(0.5)
-            return
-        end
-
-        -- รอให้เลือดฟื้นฟูอย่างน้อย 70% ก่อนก้าวเข้าด่าน เพื่อไม่ให้โดนตีตายซ้ำ
-        if hum and hum.Health < hum.MaxHealth * 0.70 then
-            State.StatusText = string.format("❤️ กำลังรอฟื้นฟูเลือด... (%d/%d)", math.floor(hum.Health), math.floor(hum.MaxHealth))
-            task.wait(0.4)
-            return
-        end
-
-        -- อยู่โลกไหน ให้ลงด่านโลกนั้นเสมอ ไม่มีการสลับกลับโลกเก่าเด็ดขาด
-        local curWorld = GetCurrentWorld()
-        local originX = GetWorldOrigin(curWorld).X
-        local wName = WorldsInfo[curWorld] and WorldsInfo[curWorld].name or ("World " .. curWorld)
-
-        State.StatusText = string.format("🚀 ก้าวเข้าสู่ Stage 1 (โลก %d: %s)...", curWorld, wName)
-        -- ก้าวผ่านประตูที่ความสูงระดับพื้น Y = 3.5 ของโลกนั้นๆ
-        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -20)
-        root.AssemblyLinearVelocity = Vector3.zero
-        task.wait(0.12)
-        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -40)
-        root.AssemblyLinearVelocity = Vector3.zero
-        task.wait(0.15)
-
-        -- เดินเข้าสู่ตำแหน่งกลางด่าน Stage 1
-        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -75)
-        root.AssemblyLinearVelocity = Vector3.zero
-        State.CurrentStage = 1
-        State.LastStage = 1
-        State.StageStartTime = tick()
-    end)
-
-    task.wait(0.3)
-    State.StartingStageOne = false
-end
-
-local function RetreatAndClaimTrophies(retreatStage)
-    if State.IsRetreating then return end
-    State.IsRetreating = true
-
-    pcall(function()
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        local curWorld = GetCurrentWorld()
-        local originX = GetWorldOrigin(curWorld).X
-
-        if hum and hum.Health <= 0 then
-            StartStageOneProperly()
-            return
-        end
-
-        if root and retreatStage and retreatStage >= 1 then
-            local padType = Config.Stages.PadType or "purple"
-            local isPurple = padType == "purple"
-            local padName = isPurple and "แท่นม่วง x3 (คูณ 3)" or "แท่นทอง"
-            State.StatusText = string.format("🏆 เหยียบ%s ด่านที่ผ่าน (โลก %d | Stage %d)...", padName, curWorld, retreatStage)
-
-            local padPos = nil
-            if World and World.padPosition then
-                pcall(function()
-                    local localPad = World.padPosition(retreatStage, padType)
-                    if localPad then
-                        padPos = Vector3.new(originX + localPad.X, localPad.Y, localPad.Z)
-                    end
-                end)
-            end
-            if not padPos then
-                local padOffsetX = isPurple and -20 or 20
-                padPos = Vector3.new(originX + padOffsetX, 0.6, -111 - (retreatStage - 1) * 90)
-            end
-
-            -- วาร์ปไปยืนบนกึ่งกลางแท่นรับถ้วย (PadPurple หรือ PadGold) ที่ระดับพื้น
-            root.CFrame = CFrame.new(padPos + Vector3.new(0, 1.2, 0))
-            root.AssemblyLinearVelocity = Vector3.zero
-            
-            -- ยิงคำสั่งเก็บถ้วยเข้าเซิร์ฟเวอร์
-            pcall(function()
-                PadRemote:FireServer(retreatStage, padType)
-            end)
-            task.wait(0.15)
-            pcall(function()
-                PadRemote:FireServer(retreatStage, padType)
-            end)
-            
-            -- ยืนอยู่บนแท่นให้เห็นการรับถ้วยรางวัลชัดเจน
-            task.wait(Config.Stages.PadDwellTime)
-        end
-    end)
-
-    State.IsRetreating = false
-    task.wait(0.08)
-    StartStageOneProperly()
-end
-
-local function ProcessStageRunner()
-    if State.IsRetreating then return end
-
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-
-    -- ฟื้นชีพทันทีเมื่อเลือดหมดหรือติดสถานะ Downed
-    local isDowned = LocalPlayer:GetAttribute("Downed") == true
-    if hum.Health <= 0 or isDowned then
-        State.StatusText = "🩹 กำลังกดยืนยันเกิดใหม่ (Respawn / Un-Downed)..."
-        local rev = Remotes and Remotes:FindFirstChild("Revive")
-        if rev then
-            pcall(function() rev:FireServer("no") end)
-        end
-        task.wait(0.5)
-        return
-    end
-
-    local inStages = LocalPlayer:GetAttribute("InStages")
-    local runStage = LocalPlayer:GetAttribute("RunStage") or 0
-    local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
-    local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
-
-    -- ถ้าไม่ได้อยู่ในด่าน หรืออยู่นอก Stage ให้เริ่ม Stage 1 ที่ระดับพื้น
-    if not inStages or runStage == 0 then
-        StartStageOneProperly()
-        return
-    end
-
-    State.CurrentStage = runStage
-
-    -- ตรวจสอบการเปลี่ยนด่าน เพื่อรีเซ็ตตัวจับเวลาต่อสู้
-    if State.CurrentStage ~= State.LastStage then
-        State.LastStage = State.CurrentStage
-        State.StageStartTime = tick()
-    end
-
-    local timeInCombat = tick() - State.StageStartTime
-
-    -- ตรวจสอบเงื่อนไข "สู้ไม่ไหว / ใกล้ตาย"
-    if Config.Automation.AutoRetreat then
-        if runStage > 1 and runCleared >= 1 then
-            -- 1. วิกฤตฉุกเฉิน: เลือดต่ำกว่า 25% หรือโดน Downed ให้ถอยไปเก็บถ้วยทันทีแบบไม่มีเงื่อนไข
-            local isEmergency = (hpPercent <= 0.25) or isDowned
-            -- 2. สู้ไม่ไหว: เลือดลดต่ำกว่า 45% หลังจากเข้าสู้ไปแล้วเกิน 0.8 วินาที
-            local isLowHpInCombat = (hpPercent <= Config.Stages.HealthRetreatThreshold) and (timeInCombat >= 0.8)
-            -- 3. ตีนานเกินไป: ตีมอนเกินเวลาที่กำหนด (8 วิ) ถือว่าสู้ไม่ทัน
-            local isTimeCrit = (timeInCombat >= Config.Stages.MaxCombatTime)
-
-            if isEmergency or isLowHpInCombat or isTimeCrit then
-                RetreatAndClaimTrophies(runCleared)
-                return
-            end
-        elseif runStage == 1 then
-            -- กรณีอยู่ใน Stage 1 แล้วสู้ไม่ไหว เลือดต่ำกว่า 40% ให้ถอยกลับไปจุดเซฟฮับเพื่อฟื้นเลือด
-            local isEmergency = (hpPercent <= 0.40) or isDowned or (timeInCombat >= Config.Stages.MaxCombatTime)
-            if isEmergency then
-                State.StatusText = "⚠️ เลือดต่ำใน Stage 1 กำลังถอยไปจุดปลอดภัยฟื้นฟู..."
-                local curWorld = GetCurrentWorld()
-                local originX = GetWorldOrigin(curWorld).X
-                root.CFrame = CFrame.new(originX, 4, 46)
-                root.AssemblyLinearVelocity = Vector3.zero
-                task.wait(1.5)
-                return
-            end
-        end
-    end
-
-    -- ดึงเฉพาะมอนสเตอร์ของด่านปัจจุบันเท่านั้น
-    local enemyList = GetEnemiesForStage(runStage)
-    local enemyCount = #enemyList
-
-    if enemyCount > 0 then
-        local nearest = enemyList[1]
-
-        -- รักษาระยะห่างปลอดภัย 15 studs (Safe Kiting Distance) ไม่ให้มอนสเตอร์เข้าประชิดตีโดน
-        local toPlayer = (root.Position - nearest.pos)
-        local dir = Vector3.new(toPlayer.X, 0, toPlayer.Z)
-        if dir.Magnitude < 0.1 then
-            dir = Vector3.new(0, 0, 1)
-        else
-            dir = dir.Unit
-        end
-        local safeDistance = 15
-        local safeHeight = 4.0
-        local combatPos = nearest.pos + (dir * safeDistance) + Vector3.new(0, safeHeight, 0)
-
-        root.CFrame = CFrame.new(combatPos, nearest.pos)
-        root.AssemblyLinearVelocity = Vector3.zero
-
-        State.StatusText = string.format("⚔️ Stage %d (ระยะปลอดภัย 15st) | มอน %d ตัว | HP: %d%%", 
-            runStage, enemyCount, math.floor(hpPercent * 100))
-
-        ExecuteAttack(nearest)
-        ExecuteSkill("E", nearest)
-        ExecuteSkill("R", nearest)
-    else
-        -- ถ้าในด่านปัจจุบันไม่มีมอนสเตอร์แล้ว
-        if timeInCombat > 0.3 then
-            State.StatusText = string.format("🎉 เคลียร์ Stage %d สำเร็จ!", runStage)
-            
-            -- ถ้าเคลียร์ถึงด่าน 15 (ด่านสุดท้าย) ให้เก็บถ้วยด่าน 15 แล้วเริ่มใหม่
-            if runStage >= 15 then
-                RetreatAndClaimTrophies(15)
-                return
-            end
-
-            -- พุ่งข้ามเข้าสู่กึ่งกลางด่านถัดไปที่ระดับพื้นของโลกปัจจุบัน
-            local curWorld = GetCurrentWorld()
-            local nextStage = runStage + 1
-            root.CFrame = CFrame.new(GetStageCenter(nextStage, curWorld))
-            root.AssemblyLinearVelocity = Vector3.zero
-            State.LastStage = nextStage
-            State.StageStartTime = tick()
-        else
-            -- มอนสเตอร์กำลังสปอว์น ให้ยืนประจำที่กึ่งกลางด่านรอ
-            local curWorld = GetCurrentWorld()
-            root.CFrame = CFrame.new(GetStageCenter(runStage, curWorld))
-            root.AssemblyLinearVelocity = Vector3.zero
-        end
-    end
-end
-
--- 5. AUTO POPS MULTIPLIER
-local function ProcessAutoPops()
-    local main = PlayerGui:FindFirstChild("Main")
-    local hud = main and main:FindFirstChild("HUD")
-    local pops = hud and hud:FindFirstChild("Pops")
-    if not pops then return end
-
-    for _, holder in ipairs(pops:GetChildren()) do
-        if holder:IsA("GuiObject") and not holder:FindFirstChild("Price", true) then
-            local btn = holder:FindFirstChildOfClass("GuiButton", true)
-                or holder:FindFirstChildOfClass("ImageButton", true)
-                or holder:FindFirstChildOfClass("TextButton", true)
-            if btn and btn.Visible then
-                if firesignal then pcall(function() firesignal(btn.Activated) end) end
-                if getconnections then
-                    pcall(function()
-                        for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
-                    end)
-                end
-                pcall(function()
-                    local pos = btn.AbsolutePosition + btn.AbsoluteSize / 2
-                    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-                    task.wait(0.01)
-                    VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-                end)
-            end
-        end
-    end
-end
-
--- 6. PERIODIC AUTOMATIONS (EQUIP BEST AURA, EYE, PETS, REBIRTH)
-local function DoRebirth()
-    pcall(function() RebirthFunc:InvokeServer() end)
-end
-
--- ฟังก์ชันใส่ออร่าที่ดีที่สุด
-local function DoEquipBestAura()
-    local aurasMod = ReplicatedStorage.Shared.Config:FindFirstChild("Auras")
-    if not aurasMod or not StateMod then return end
-    local okA, Auras = pcall(require, aurasMod)
-    if not okA or not Auras then return end
-
-    local totalWins = StateMod.number("TotalWins") or 0
-    local owned = StateMod.ownedAuras and StateMod.ownedAuras() or {}
-    local currentAura = StateMod.string("Aura")
-
-    local function HasAuraUnlocked(a)
-        if not Auras.isOut(a) then return false end
-        if a.pass and LocalPlayer:GetAttribute("Pass_" .. a.pass) == true then return true end
-        if a.skip and LocalPlayer:GetAttribute("Pass_" .. a.skip) == true then return true end
-        if a.exclusive then return owned[a.id] == true end
-        return totalWins >= (a.trophies or 0)
-    end
-
-    local bestAura = nil
-    for _, a in ipairs(Auras.list or {}) do
-        if HasAuraUnlocked(a) then
-            if not bestAura or (a.mult or 1) > (bestAura.mult or 1) then
-                bestAura = a
-            end
-        end
-    end
-
-    if bestAura and bestAura.id ~= currentAura then
-        pcall(function() EquipAuraFunc:InvokeServer(bestAura.id) end)
-    end
-end
-
-local function DoEquipBestEye()
-    local eyesMod = ReplicatedStorage.Shared.Config:FindFirstChild("Eyes")
-    if not eyesMod or not StateMod then return end
-    local okE, Eyes = pcall(require, eyesMod)
-    if not okE or not Eyes then return end
-
-    local totalWins = StateMod.number("TotalWins") or 0
-    local myEyes = StateMod.eyes and StateMod.eyes() or {}
-    local currentEye = StateMod.string("Eye")
-
-    local bestEye = nil
-    for _, eye in ipairs(Eyes.list or {}) do
-        local isUnlocked = myEyes[eye.id] ~= nil
-        local canUnlock = (totalWins >= (eye.wins or 0)) and not eye.pass and not eye.boss and not eye.exclusive
-
-        if isUnlocked or canUnlock then
-            if not bestEye or (eye.mult or 0) > (bestEye.mult or 0) then
-                bestEye = eye
-            end
-        end
-    end
-
-    if bestEye and bestEye.id ~= currentEye then
-        if myEyes[bestEye.id] == nil then
-            pcall(function() UnlockEyeRemote:FireServer(bestEye.id) end)
-            task.wait(0.15)
-        end
-        pcall(function() EquipRemote:FireServer(bestEye.id) end)
-    end
-end
-
-local function DoEquipBestPets()
-    pcall(function() PetActionFunc:InvokeServer("equipBest") end)
-end
-
-local function DoClaimAll()
-    pcall(function() ClaimDailyFunc:InvokeServer() end)
-    pcall(function() ClaimGroupFunc:InvokeServer() end)
-    for i = 1, 12 do pcall(function() ClaimRewardFunc:InvokeServer(i) end) end
-
-    if StateMod and StateMod.quests then
-        for _, kind in ipairs({"daily", "weekly"}) do
-            for _, q in ipairs(StateMod.quests(kind) or {}) do
-                if q.done and not q.claimed and q.slot then
-                    pcall(function() ClaimQuestFunc:InvokeServer(kind, q.slot) end)
-                end
-            end
-        end
-    end
-end
-
--- แลกโค้ดทั้งหมดอัตโนมัติ (Update 1 & Update 2 Codes)
-local lastCodeRedeemTick = 0
-local function DoRedeemAllCodes()
-    local codesMod = ReplicatedStorage.Shared.Config:FindFirstChild("Codes")
-    if not codesMod or not RedeemCodeFunc then return end
-    local okC, Codes = pcall(require, codesMod)
-    if not okC or not Codes or not Codes.list then return end
-
-    for _, c in ipairs(Codes.list) do
-        pcall(function()
-            RedeemCodeFunc:InvokeServer(c.code)
-        end)
-        task.wait(1.2)
-    end
-end
-
--- หลอมรวมสัตว์เลี้ยง 4 ตัวเป็นระดับสูงอัตโนมัติ (Update 3 Pet Fusing: Void, Rainbow, Corrupted)
-local function DoAutoFusePets()
-    local fuseLogicMod = ReplicatedStorage.Shared.Logic:FindFirstChild("Fuse")
-    if not fuseLogicMod or not FuseFunc or not StateMod then return end
-    local okF, FuseLogic = pcall(require, fuseLogicMod)
-    if not okF or not FuseLogic then return end
-
-    local pets = StateMod.pets and StateMod.pets() or {}
-    local petTiers = StateMod.petTiers and StateMod.petTiers() or {}
-    local groups = FuseLogic.groups and FuseLogic.groups(pets, petTiers) or {}
-
-    local didFuse = false
-    for _, group in ipairs(groups) do
-        local uids = group.uids or group
-        if #uids >= 4 then
-            local fuseList = {tostring(uids[1]), tostring(uids[2]), tostring(uids[3]), tostring(uids[4])}
-            local ok, res = pcall(function()
-                return FuseFunc:InvokeServer("fuse", fuseList)
-            end)
-            if ok and res then
-                didFuse = true
-            end
-            task.wait(0.35)
-        end
-    end
-    if didFuse then
-        task.wait(0.2)
-        pcall(DoEquipBestPets)
-    end
-end
-
--- ระบบต่อสู้กับบอสคุรามะ (Kurama Boss Event Update 2 - ระบบหลบการโจมตี 100% ไร้ดาเมจ และตายแล้วจอยเข้าใหม่ทันที)
-local function ProcessBossCombat()
-    local phase = Workspace:GetAttribute("BossPhase")
-    local hp = Workspace:GetAttribute("BossHp") or 0
-    local inFight = (phase == "fight" and hp > 0)
-    local bossCentre = Vector3.new(-3000, 0, 300)
-
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local isDowned = LocalPlayer:GetAttribute("Downed") == true
-
-    -- ถ้าล้ม/ตายในศึกบอส: กดยืนยันเกิดใหม่ทันที แล้วยิง Rejoin เข้าศึกบอสต่อทันที!
-    if isDowned or (hum and hum.Health <= 0) then
-        State.StatusText = "🩹 ตายในศึกบอส! กำลังเกิดใหม่และกลับเข้าสู้บอสต่อทันที..."
-        local rev = Remotes and Remotes:FindFirstChild("Revive")
-        if rev then
-            pcall(function() rev:FireServer("no") end)
-        end
-        task.wait(0.35)
-        if inFight and BossRemote then
-            pcall(function() BossRemote:FireServer("join") end)
-        end
-        return
-    end
-
-    if not root then return end
-
-    local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
-
-    if inFight then
-        if dist > 140 then
-            -- ยังไม่ได้เข้าอารีน่าบอส หรือเพิ่งเกิดใหม่นอกอารีน่า: ทำการวาร์ปเข้าร่วมสู้บอสทันที
-            State.StatusText = "🦊 กำลังเข้าร่วมศึกตีบอสคุรามะ (Kurama Boss)..."
-            if BossRemote then
-                pcall(function() BossRemote:FireServer("join") end)
-            end
-            local bp = Workspace:FindFirstChild("BossPortals")
-            local portal = bp and (bp:FindFirstChild("Portal5") or bp:FindFirstChildWhichIsA("Model"))
-            local prompt = portal and portal:FindFirstChild("JoinPrompt", true)
-            if prompt and prompt.Enabled and fireproximityprompt then
-                pcall(function() fireproximityprompt(prompt) end)
-            end
-            task.wait(0.5)
-        else
-            -- อยู่ในอารีน่าบอสแล้ว: บินโคจรหลบการโจมตีบอส 100% (Zero-Damage Sweet Spot)
-            -- บอสโจมตี: กรงเล็บ 56 studs, กวาดหาง 22-72 studs, คำราม 50 studs, ท่าทุบพื้น/ฝนจิ้งจอกระดับพื้น
-            -- ตำแหน่งปลอดภัยสมบูรณ์แบบ: รัศมี 76.5 studs ลอยสูง Y=18 studs พร้อมบินวนหลบระเบิดพื้น
-            local orbitAngle = (tick() * 0.45) % (math.pi * 2)
-            local safeRadius = 76.5
-            local safeCombatPos = bossCentre + Vector3.new(math.cos(orbitAngle) * safeRadius, 18, math.sin(orbitAngle) * safeRadius)
-            local bossLookPos = bossCentre + Vector3.new(0, 16, 0)
-
-            root.CFrame = CFrame.new(safeCombatPos, bossLookPos)
-            root.AssemblyLinearVelocity = Vector3.zero
-
-            State.StatusText = string.format("🦊⚔️ ตีบอสคุรามะ (บินหลบไร้ดาเมจ 76 studs) HP: %.1f%%", hp * 100)
-
-            local BossLogic = nil
-            pcall(function() BossLogic = require(ReplicatedStorage.Shared.Logic.Boss) end)
-            local aimPos = (BossLogic and BossLogic.aimPoint and BossLogic.aimPoint(root.Position.X, root.Position.Z)) or bossLookPos
-            local foeId = (BossLogic and BossLogic.FOE_ID) or 2000000000
-
-            local bossTarget = {
-                boss = true,
-                id = foeId,
-                pos = aimPos
-            }
-            ExecuteAttack(bossTarget)
-            ExecuteSkill("E", bossTarget)
-            ExecuteSkill("R", bossTarget)
-        end
-    else
-        -- บอสจบลงหรือยังไม่เริ่ม ถ้าตัวยังอยู่ในอารีน่า ให้กลับออกมาแล้ววาร์ปไปซ้อมจักระทันที
-        if dist <= 140 then
-            State.StatusText = "🚪 บอสจบแล้ว กำลังออกจากอารีน่าบอส..."
-            if BossRemote then
-                pcall(function() BossRemote:FireServer("leave") end)
-            end
-            task.wait(0.4)
-            if Config.Automation.AutoBestTrain then
-                pcall(TeleportToBestTrainingSpot)
-            end
-        end
-    end
-end
-
--- ระบบค้นหาและวาร์ปไปจุดซ้อมที่ดีที่สุดของโลก (Best Training Spot)
-local function GetBestTrainingSpot(worldId)
-    local w = worldId or GetCurrentWorld()
-    local Plots = nil
-    pcall(function() Plots = require(ReplicatedStorage.Shared.Config.Plots) end)
-    local WorldConfig = nil
-    pcall(function() WorldConfig = require(ReplicatedStorage.Shared.Config.World) end)
-    
-    if not Plots or not WorldConfig or not WorldConfig.TRAINING then return nil end
-    local spots = Plots.forWorld(w)
-    if not spots then return nil end
-
-    local rebirths = 0
-    if StateMod and StateMod.number then
-        rebirths = StateMod.number("Rebirths") or 0
-    end
-    if rebirths == 0 then
-        rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
-    end
-
-    local bestSpot = nil
-    local bestIdx = 1
-
+local function TeleportToBestTrainingSpot()
+    local _, root = SafeGetCharacter()
+    if not root or not Plots or not World or not World.TRAINING then return false end
+    local w = GetCurrentWorld()
+    local spots = (typeof(Plots.forWorld) == "function") and Plots.forWorld(w) or nil
+    if not spots then return false end
+
+    local rebirths = (StateMod and StateMod.number and StateMod.number("Rebirths")) or LocalPlayer:GetAttribute("Rebirths") or 0
+    local bestSpot, bestIdx = nil, 1
     for idx, spot in ipairs(spots) do
-        local passOk = true
-        if spot.pass then
-            passOk = LocalPlayer:GetAttribute("Pass_" .. spot.pass) == true
-        end
-        local rebirthOk = rebirths >= (spot.rebirths or 0)
-        if passOk and rebirthOk then
+        if rebirths >= (spot.rebirths or 0) then
             if not bestSpot or (spot.mult or 0) > (bestSpot.mult or 0) then
                 bestSpot = spot
                 bestIdx = idx
@@ -834,190 +375,299 @@ local function GetBestTrainingSpot(worldId)
         end
     end
 
-    if bestSpot and WorldConfig.TRAINING[bestIdx] then
-        local rawOffset = WorldConfig.TRAINING[bestIdx]
+    if bestSpot and World.TRAINING[bestIdx] then
+        local rawOffset = World.TRAINING[bestIdx]
         local offVec = Vector3.zero
         if typeof(rawOffset) == "Vector3" then
             offVec = rawOffset
         elseif type(rawOffset) == "string" then
             local parts = string.split(rawOffset, ",")
-            local ox = tonumber(parts[1]) or 0
-            local oy = tonumber(parts[2]) or 0
-            local oz = tonumber(parts[3]) or 0
-            offVec = Vector3.new(ox, oy, oz)
+            offVec = Vector3.new(tonumber(parts[1]) or 0, tonumber(parts[2]) or 0, tonumber(parts[3]) or 0)
         end
-        return {
-            spot = bestSpot,
-            index = bestIdx,
-            offset = offVec
-        }
-    end
-    return nil
-end
-
-local function TeleportToBestTrainingSpot()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-
-    -- ถ้าตัวยังอยู่ในอารีน่าบอส ให้ส่งคำขอออกจากห้องบอสก่อน
-    local bossCentre = Vector3.new(-3000, 0, 300)
-    local inBossDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
-    if inBossDist <= 150 and BossRemote then
-        pcall(function() BossRemote:FireServer("leave") end)
-    end
-
-    local curWorld = GetCurrentWorld()
-    local best = GetBestTrainingSpot(curWorld)
-    if not best then return false end
-
-    local originX = GetWorldOrigin(curWorld).X
-    local spotPos = Vector3.new(originX + best.offset.X, 4.5, best.offset.Z)
-
-    root.CFrame = CFrame.new(spotPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    State.StatusText = string.format("🧘 วาร์ปไปจุดซ้อม %s (คูณ %.1e x) เรียบร้อย", best.spot.name, best.spot.mult or 1)
-    return true
-end
-
-local function ProcessBestTraining()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    -- ถ้าตัวยังอยู่ในอารีน่าบอส ให้ส่งคำขอออกจากห้องบอสก่อน
-    local bossCentre = Vector3.new(-3000, 0, 300)
-    local inBossDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
-    if inBossDist <= 150 and BossRemote then
-        pcall(function() BossRemote:FireServer("leave") end)
-    end
-
-    local curWorld = GetCurrentWorld()
-    local best = GetBestTrainingSpot(curWorld)
-    if not best then return end
-
-    local originX = GetWorldOrigin(curWorld).X
-    local spotPos = Vector3.new(originX + best.offset.X, 4.5, best.offset.Z)
-
-    -- ยืนประจำตำแหน่งจุดซ้อมที่ดีที่สุด
-    if (root.Position - spotPos).Magnitude > 6 then
+        local originX = GetWorldOrigin(w).X
+        local spotPos = Vector3.new(originX + offVec.X, 4.5, offVec.Z)
         root.CFrame = CFrame.new(spotPos)
         root.AssemblyLinearVelocity = Vector3.zero
-    end
 
-    local multVal = StateMod and StateMod.number and StateMod.number("TrainMult") or (best.spot.mult or 1)
-    State.StatusText = string.format("🧘 กำลังซ้อมจักระที่ %s (คูณ %.1e x)", best.spot.name, multVal)
-
-    -- ซ้อมจักระรวดเร็ว
-    if Input and Input.autoClick then
-        Input.autoClick()
-    else
-        TrainRemote:FireServer()
+        if Input and Input.autoClick then Input.autoClick() elseif Remotes.Train then Remotes.Train:FireServer() end
+        local multVal = (bestSpot.mult or 1)
+        State.StatusText = string.format("ฝึกจักระ: %s (คูณ %.1e x)", bestSpot.name, multVal)
+        return true
     end
+    return false
 end
 
-local function DoPlayArcadeSnake()
-    local ArcadeStart = Remotes and Remotes:FindFirstChild("ArcadeStart")
-    if ArcadeStart then
-        pcall(function()
-            ArcadeStart:InvokeServer("snake")
-        end)
-    end
-end
-
--- 7. THREAD WORKERS
--- Fast Worker Loop
+-- ============================================================================
+-- 6. WORKER ENGINE (Tasks with Circuit Breakers & Logging)
+-- ============================================================================
 task.spawn(function()
-    local lastSkillE = 0
-    local lastSkillR = 0
+    local lastSkillE, lastSkillR = 0, 0
 
     while State.Running do
-        local bossPhase = Workspace:GetAttribute("BossPhase")
-        if Config.Automation.AutoBoss and (bossPhase == "fight" or bossPhase == "coming") then
-            pcall(ProcessBossCombat)
-        elseif Config.Automation.AutoBestTrain then
-            pcall(ProcessBestTraining)
-        elseif Config.Automation.AutoStages then
-            pcall(ProcessStageRunner)
+        local _, root, hum = SafeGetCharacter()
+        local isDowned = LocalPlayer:GetAttribute(Config.Attributes.Downed) == true
+
+        if hum and (hum.Health <= 0 or isDowned) then
+            State.StatusText = "ฟื้นฟูสภาพตัวละคร (Respawning)..."
+            if Remotes.Revive then
+                pcall(function() Remotes.Revive:FireServer(Config.Events.ReviveDeny) end)
+            end
+            task.wait(0.5)
         else
-            if Config.Automation.AutoTrain then
-                pcall(function()
-                    if Input and Input.autoClick then
-                        Input.autoClick()
+            -- Task: Boss Fight
+            local bossPhase = Workspace:GetAttribute(Config.Attributes.BossPhase)
+            local bossHp = Workspace:GetAttribute(Config.Attributes.BossHp) or 0
+
+            if Config.Automation.AutoBoss and (bossPhase == "fight" or bossPhase == "coming") and CircuitBreaker.IsAvailable("Boss") then
+                local ok, err = pcall(function()
+                    local bossCentre = Vector3.new(-3000, 0, 300)
+                    if not root then return end
+                    local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
+
+                    if dist > 140 then
+                        State.StatusText = "เดินทางเข้าห้องบอสคุรามะ..."
+                        if Remotes.Boss then Remotes.Boss:FireServer(Config.Events.BossJoin) end
+                        local bp = SafeFind(Workspace, "BossPortals")
+                        local portal = bp and (SafeFind(bp, "Portal5") or bp:FindFirstChildWhichIsA("Model"))
+                        local prompt = portal and SafeFind(portal, "JoinPrompt", true)
+                        if prompt and prompt.Enabled and typeof(fireproximityprompt) == "function" then
+                            fireproximityprompt(prompt)
+                        end
+                        task.wait(0.5)
                     else
-                        TrainRemote:FireServer()
+                        local orbitAngle = (tick() * 0.45) % (math.pi * 2)
+                        local safeCombatPos = bossCentre + Vector3.new(math.cos(orbitAngle) * 76.5, 18, math.sin(orbitAngle) * 76.5)
+                        root.CFrame = CFrame.new(safeCombatPos, bossCentre + Vector3.new(0, 16, 0))
+                        root.AssemblyLinearVelocity = Vector3.zero
+
+                        local bossTarget = { boss = true, id = 2000000000, pos = bossCentre + Vector3.new(0, 16, 0) }
+                        ExecuteAttack(bossTarget)
+                        ExecuteSkill(Config.Events.SkillE, bossTarget)
+                        ExecuteSkill(Config.Events.SkillR, bossTarget)
+                        AuditLogger.Stats.BossAttacks = AuditLogger.Stats.BossAttacks + 1
+                        State.StatusText = string.format("ตีบอสคุรามะ (Safe Orbit 76st) HP: %.1f%%", bossHp * 100)
+                    end
+                end)
+                if ok then CircuitBreaker.RecordSuccess("Boss") else CircuitBreaker.RecordFailure("Boss", err) end
+
+            -- Task: Best Training
+            elseif Config.Automation.AutoBestTrain and CircuitBreaker.IsAvailable("BestTrain") then
+                local ok, err = pcall(TeleportToBestTrainingSpot)
+                if ok then CircuitBreaker.RecordSuccess("BestTrain") else CircuitBreaker.RecordFailure("BestTrain", err) end
+
+            -- Task: Stages Runner
+            elseif Config.Automation.AutoStages and CircuitBreaker.IsAvailable("Stages") and root and hum then
+                local ok, err = pcall(function()
+                    local inStages = LocalPlayer:GetAttribute(Config.Attributes.InStages)
+                    local runStage = LocalPlayer:GetAttribute(Config.Attributes.RunStage) or 0
+                    local runCleared = LocalPlayer:GetAttribute(Config.Attributes.RunCleared) or 0
+                    local curWorld = GetCurrentWorld()
+                    local originX = GetWorldOrigin(curWorld).X
+
+                    if not inStages or runStage == 0 then
+                        root.CFrame = CFrame.new(originX, Config.Stages.FloorY, -75)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        State.CurrentStage = 1
+                        State.StageStartTime = tick()
+                        task.wait(0.3)
+                    else
+                        local hpPercent = hum.Health / math.max(hum.MaxHealth, 1)
+                        local timeInCombat = tick() - State.StageStartTime
+
+                        if Config.Automation.AutoRetreat and runStage > 1 and runCleared >= 1 and (hpPercent <= Config.Stages.HealthRetreatThreshold or timeInCombat >= Config.Stages.MaxCombatTime) then
+                            local padOffsetX = (Config.Stages.PadType == "purple") and -20 or 20
+                            root.CFrame = CFrame.new(originX + padOffsetX, 1.8, -111 - (runCleared - 1) * 90)
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            if Remotes.Pad then Remotes.Pad:FireServer(runCleared, Config.Stages.PadType) end
+                            AuditLogger.Record("Combat", "Smart Retreat", string.format("ถอยมารับถ้วยรางวัล Stage %d", runCleared))
+                            task.wait(Config.Stages.PadDwellTime)
+                        else
+                            local rawList = (Enemies and Enemies.list and Enemies.list()) or {}
+                            local currentTarget = nil
+                            for _, e in ipairs(rawList) do
+                                if e.pos and (World and World.stageAt and World.stageAt(e.pos.Z) == runStage) then
+                                    currentTarget = e; break
+                                end
+                            end
+
+                            if currentTarget then
+                                local toPlayer = (root.Position - currentTarget.pos)
+                                local dir = (toPlayer.Magnitude > 0.1) and toPlayer.Unit or Vector3.new(0, 0, 1)
+                                root.CFrame = CFrame.new(currentTarget.pos + dir * 15 + Vector3.new(0, 4, 0), currentTarget.pos)
+                                root.AssemblyLinearVelocity = Vector3.zero
+
+                                ExecuteAttack(currentTarget)
+                                ExecuteSkill(Config.Events.SkillE, currentTarget)
+                                ExecuteSkill(Config.Events.SkillR, currentTarget)
+                                State.StatusText = string.format("สู้ด่าน Stage %d (Kiting 15st) | เลือด: %d%%", runStage, math.floor(hpPercent * 100))
+                            else
+                                if runStage >= 15 then
+                                    if Remotes.Pad then Remotes.Pad:FireServer(15, Config.Stages.PadType) end
+                                    AuditLogger.Stats.StagesCleared = AuditLogger.Stats.StagesCleared + 1
+                                    AuditLogger.Record("Combat", "Stage Cleared", "เคลียร์ด่านสูงสุด Stage 15 สำเร็จ!")
+                                    task.wait(1.0)
+                                else
+                                    local nextZ = -75 - (runStage) * 90
+                                    root.CFrame = CFrame.new(originX, Config.Stages.FloorY, nextZ)
+                                    root.AssemblyLinearVelocity = Vector3.zero
+                                    State.StageStartTime = tick()
+                                end
+                            end
+                        end
+                    end
+                end)
+                if ok then CircuitBreaker.RecordSuccess("Stages") else CircuitBreaker.RecordFailure("Stages", err) end
+
+            -- Task: Basic Manual Train / Attack
+            else
+                if Config.Automation.AutoTrain and Remotes.Train then
+                    pcall(function()
+                        if Input and Input.autoClick then Input.autoClick() else Remotes.Train:FireServer() end
+                    end)
+                end
+                if Config.Automation.AutoAttack then ExecuteAttack(nil) end
+                if Config.Automation.AutoSkillE and (tick() - lastSkillE >= Config.Delays.SkillECooldown) then
+                    ExecuteSkill(Config.Events.SkillE, nil)
+                    lastSkillE = tick()
+                end
+                if Config.Automation.AutoSkillR and (tick() - lastSkillR >= Config.Delays.SkillRCooldown) then
+                    ExecuteSkill(Config.Events.SkillR, nil)
+                    lastSkillR = tick()
+                end
+            end
+
+            -- Task: Auto Pops
+            if Config.Automation.AutoPops then
+                pcall(function()
+                    local mainGui = SafeFind(PlayerGui, "Main")
+                    local hud = SafeFind(mainGui, "HUD")
+                    local pops = SafeFind(hud, "Pops")
+                    if pops then
+                        for _, holder in ipairs(pops:GetChildren()) do
+                            if holder:IsA("GuiObject") and not SafeFind(holder, "Price", true) then
+                                local btn = holder:FindFirstChildWhichIsA("GuiButton", true)
+                                if btn and btn.Visible and typeof(firesignal) == "function" then
+                                    firesignal(btn.Activated)
+                                end
+                            end
+                        end
                     end
                 end)
             end
-
-            if Config.Automation.AutoAttack then
-                ExecuteAttack(nil)
-            end
-
-            if Config.Automation.AutoSkillE and (tick() - lastSkillE >= Config.Delays.SkillECooldown) then
-                ExecuteSkill("E", nil)
-                lastSkillE = tick()
-            end
-
-            if Config.Automation.AutoSkillR and (tick() - lastSkillR >= Config.Delays.SkillRCooldown) then
-                ExecuteSkill("R", nil)
-                lastSkillR = tick()
-            end
-        end
-
-        if Config.Automation.AutoPops then
-            pcall(ProcessAutoPops)
         end
 
         task.wait(Config.Delays.FastLoop)
     end
 end)
 
--- Slow Worker Loop
+-- Slow Progression Thread
 task.spawn(function()
-    while State.Running do
-        if Config.Automation.AutoRebirth then
-            pcall(DoRebirth)
-        end
-        if Config.Automation.AutoEquipBestAura then
-            pcall(DoEquipBestAura)
-        end
-        if Config.Automation.AutoEquipBestEye then
-            pcall(DoEquipBestEye)
-        end
-        if Config.Automation.AutoEquipBestPets then
-            pcall(DoEquipBestPets)
-        end
-        if Config.Automation.AutoClaimAll then
-            pcall(DoClaimAll)
-        end
-        if Config.Automation.AutoFusePets then
-            pcall(DoAutoFusePets)
-        end
-        if Config.Automation.AutoRedeemCodes and (tick() - lastCodeRedeemTick >= 60) then
-            lastCodeRedeemTick = tick()
-            task.spawn(DoRedeemAllCodes)
-        end
+    local lastCodeTick = 0
 
+    while State.Running do
+        pcall(function()
+            -- Auto Rebirth
+            if Config.Automation.AutoRebirth and Remotes.Rebirth then
+                local res = Remotes.Rebirth:InvokeServer()
+                if res then
+                    AuditLogger.Stats.RebirthsCount = AuditLogger.Stats.RebirthsCount + 1
+                    AuditLogger.Record("Progression", "Rebirth", "ทำการจุติ (Rebirth) สำเร็จ")
+                end
+            end
+
+            -- Auto Equip Best Pets
+            if Config.Automation.AutoEquipBestPets and Remotes.PetAction then
+                Remotes.PetAction:InvokeServer(Config.Events.EquipBest)
+            end
+
+            -- Auto Fuse Pets
+            if Config.Automation.AutoFusePets and FuseLogic and Remotes.Fuse and StateMod then
+                local pets = (StateMod.pets and StateMod.pets()) or {}
+                local petTiers = (StateMod.petTiers and StateMod.petTiers()) or {}
+                local groups = (FuseLogic.groups and FuseLogic.groups(pets, petTiers)) or {}
+                for _, g in ipairs(groups) do
+                    local uids = g.uids or g
+                    if #uids >= 4 then
+                        Remotes.Fuse:InvokeServer(Config.Events.FuseAction, {tostring(uids[1]), tostring(uids[2]), tostring(uids[3]), tostring(uids[4])})
+                        AuditLogger.Stats.PetsFused = AuditLogger.Stats.PetsFused + 1
+                        AuditLogger.Record("Pets", "Pet Fused", "รวมสัตว์เลี้ยง 4 ตัวระดับสูงสำเร็จ")
+                        HumanWait(0.2, 0.4)
+                        break
+                    end
+                end
+            end
+
+            -- Daily, Group & Playtime Claims
+            if Config.Automation.AutoClaimAll then
+                if Remotes.ClaimDaily then Remotes.ClaimDaily:InvokeServer() end
+                if Remotes.ClaimGroup then Remotes.ClaimGroup:InvokeServer() end
+                if Remotes.ClaimReward then
+                    for i = 1, 12 do Remotes.ClaimReward:InvokeServer(i) end
+                end
+            end
+
+            -- Auto Redeem Codes
+            if Config.Automation.AutoRedeemCodes and Remotes.RedeemCode and CodesConfig and (tick() - lastCodeTick >= 60) then
+                lastCodeTick = tick()
+                if CodesConfig.list then
+                    for _, c in ipairs(CodesConfig.list) do
+                        Remotes.RedeemCode:InvokeServer(c.code)
+                        AuditLogger.Stats.CodesRedeemed = AuditLogger.Stats.CodesRedeemed + 1
+                        HumanWait(0.4, 0.8)
+                    end
+                end
+            end
+        end)
         task.wait(Config.Delays.SlowLoop)
     end
 end)
 
--- 8. MODERN USER INTERFACE
+-- ============================================================================
+-- 7. TABBED USER INTERFACE & MINIMIZE SYSTEM
+-- ============================================================================
+if _G.ChakraQACleanup then pcall(_G.ChakraQACleanup) end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ChakraQAGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999
 ScreenGui.Parent = parentGui
 
+-- Floating Quick-Access Pill
+local FloatingPill = Instance.new("TextButton")
+FloatingPill.Name = "FloatingPill"
+FloatingPill.Size = UDim2.new(0, 160, 0, 36)
+FloatingPill.Position = UDim2.new(0.5, -80, 0, 15)
+FloatingPill.BackgroundColor3 = Color3.fromRGB(20, 24, 36)
+FloatingPill.BorderSizePixel = 0
+FloatingPill.Text = "⚡ Chakra QA (เปิด)"
+FloatingPill.Font = Enum.Font.GothamBold
+FloatingPill.TextSize = 12
+FloatingPill.TextColor3 = Color3.fromRGB(0, 230, 255)
+FloatingPill.Visible = false
+FloatingPill.Active = true
+FloatingPill.Draggable = true
+FloatingPill.Parent = ScreenGui
+
+local PillCorner = Instance.new("UICorner")
+PillCorner.CornerRadius = UDim.new(1, 0)
+PillCorner.Parent = FloatingPill
+
+local PillStroke = Instance.new("UIStroke")
+PillStroke.Thickness = 1.5
+PillStroke.Color = Color3.fromRGB(0, 180, 255)
+PillStroke.Parent = FloatingPill
+
+-- Main Window
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 330, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -165, 0.18, 0)
+MainFrame.Size = UDim2.new(0, 520, 0, 360)
+MainFrame.Position = UDim2.new(0.5, -260, 0.25, -180)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
+MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -1026,122 +676,184 @@ MainCorner.Parent = MainFrame
 
 local MainStroke = Instance.new("UIStroke")
 MainStroke.Thickness = 1.5
-MainStroke.Color = Color3.fromRGB(50, 55, 78)
+MainStroke.Color = Color3.fromRGB(45, 52, 75)
 MainStroke.Parent = MainFrame
 
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 38)
-TitleBar.BackgroundColor3 = Color3.fromRGB(24, 27, 40)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = MainFrame
+-- Top Bar
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 38)
+TopBar.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
 
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 10)
-TitleCorner.Parent = TitleBar
+local TopCorner = Instance.new("UICorner")
+TopCorner.CornerRadius = UDim.new(0, 10)
+TopCorner.Parent = TopBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Text = "⚡ Chakra QA Hub (Auto Boss, Best Train & SaveConfig v9.9.0)"
+TitleLabel.Text = "⚡ CHAKRA QA CONTROLLER (ENTERPRISE)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Size = UDim2.new(1, -40, 1, 0)
-TitleLabel.Position = UDim2.new(0, 12, 0, 0)
+TitleLabel.Size = UDim2.new(0, 280, 1, 0)
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Parent = TitleBar
+TitleLabel.Parent = TopBar
 
+-- Minimize Button
+local MinBtn = Instance.new("TextButton")
+MinBtn.Text = "—"
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 12
+MinBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
+MinBtn.Size = UDim2.new(0, 26, 0, 26)
+MinBtn.Position = UDim2.new(1, -62, 0, 6)
+MinBtn.BackgroundColor3 = Color3.fromRGB(35, 40, 56)
+MinBtn.BorderSizePixel = 0
+MinBtn.Parent = TopBar
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 5)
+MinCorner.Parent = MinBtn
+
+-- Close Button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Text = "✕"
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 13
-CloseBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CloseBtn.Position = UDim2.new(1, -30, 0, 7)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(42, 45, 60)
+CloseBtn.TextSize = 12
+CloseBtn.TextColor3 = Color3.fromRGB(220, 150, 150)
+CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+CloseBtn.Position = UDim2.new(1, -32, 0, 6)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 35)
 CloseBtn.BorderSizePixel = 0
-CloseBtn.Parent = TitleBar
+CloseBtn.Parent = TopBar
 
 local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 5)
 CloseCorner.Parent = CloseBtn
 
-CloseBtn.MouseButton1Click:Connect(function()
-    State.Running = false
-    ScreenGui:Destroy()
+MinBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    FloatingPill.Visible = true
 end)
 
-local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -16, 1, -46)
-Content.Position = UDim2.new(0, 8, 0, 40)
-Content.BackgroundTransparency = 1
-Content.BorderSizePixel = 0
-Content.ScrollBarThickness = 3
-Content.ScrollBarImageColor3 = Color3.fromRGB(70, 75, 100)
-Content.CanvasSize = UDim2.new(0, 0, 0, 1500)
-Content.Parent = MainFrame
-
-local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 5)
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Parent = Content
-
--- LIVE STATUS BANNER
-local StatusBox = Instance.new("Frame")
-StatusBox.Size = UDim2.new(1, 0, 0, 36)
-StatusBox.BackgroundColor3 = Color3.fromRGB(20, 24, 36)
-StatusBox.BorderSizePixel = 0
-StatusBox.Parent = Content
-
-local StatusBoxCorner = Instance.new("UICorner")
-StatusBoxCorner.CornerRadius = UDim.new(0, 6)
-StatusBoxCorner.Parent = StatusBox
-
-local StatusBoxStroke = Instance.new("UIStroke")
-StatusBoxStroke.Thickness = 1
-StatusBoxStroke.Color = Color3.fromRGB(45, 52, 75)
-StatusBoxStroke.Parent = StatusBox
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Name = "StatusLabel"
-StatusLabel.Size = UDim2.new(1, -12, 1, 0)
-StatusLabel.Position = UDim2.new(0, 6, 0, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Font = Enum.Font.GothamMedium
-StatusLabel.TextSize = 10
-StatusLabel.TextColor3 = Color3.fromRGB(0, 220, 255)
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatusLabel.Text = "สถานะ: กำลังเริ่มต้น..."
-StatusLabel.Parent = StatusBox
-
-task.spawn(function()
-    while State.Running do
-        pcall(function()
-            StatusLabel.Text = "📌 " .. State.StatusText
-        end)
-        task.wait(0.15)
-    end
+FloatingPill.MouseButton1Click:Connect(function()
+    FloatingPill.Visible = false
+    MainFrame.Visible = true
 end)
 
-local function AddSection(txt, col)
-    local l = Instance.new("TextLabel")
-    l.Text = txt
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = 11
-    l.TextColor3 = col or Color3.fromRGB(255, 170, 0)
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.Size = UDim2.new(1, 0, 0, 20)
-    l.BackgroundTransparency = 1
-    l.Parent = Content
+-- Sidebar Navigation
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 130, 1, -38)
+Sidebar.Position = UDim2.new(0, 0, 0, 38)
+Sidebar.BackgroundColor3 = Color3.fromRGB(18, 21, 30)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
+
+local SideLayout = Instance.new("UIListLayout")
+SideLayout.Padding = UDim.new(0, 4)
+SideLayout.Parent = Sidebar
+
+local SidePad = Instance.new("UIPadding")
+SidePad.PaddingTop = UDim.new(0, 8)
+SidePad.PaddingLeft = UDim.new(0, 8)
+SidePad.PaddingRight = UDim.new(0, 8)
+SidePad.Parent = Sidebar
+
+-- Pages Container
+local PagesContainer = Instance.new("Frame")
+PagesContainer.Size = UDim2.new(1, -135, 1, -44)
+PagesContainer.Position = UDim2.new(0, 133, 0, 40)
+PagesContainer.BackgroundTransparency = 1
+PagesContainer.Parent = MainFrame
+
+local Pages = {}
+local TabButtons = {}
+
+local function CreatePage(pageName)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = pageName .. "Page"
+    page.Size = UDim2.new(1, -6, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Color3.fromRGB(60, 68, 95)
+    page.CanvasSize = UDim2.new(0, 0, 0, 600)
+    page.Visible = false
+    page.Parent = PagesContainer
+
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0, 6)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Parent = page
+
+    Pages[pageName] = page
+    return page
 end
 
-local function AddToggle(text, initVal, onChange)
+local function SwitchTab(tabName)
+    for name, page in pairs(Pages) do
+        page.Visible = (name == tabName)
+    end
+    for name, btn in pairs(TabButtons) do
+        if name == tabName then
+            btn.BackgroundColor3 = Color3.fromRGB(0, 140, 230)
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(24, 28, 40)
+            btn.TextColor3 = Color3.fromRGB(160, 170, 190)
+        end
+    end
+end
+
+local function AddTab(name, icon, pageName)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 30)
+    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(24, 28, 40)
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamMedium
     btn.TextSize = 11
-    btn.Parent = Content
+    btn.TextColor3 = Color3.fromRGB(160, 170, 190)
+    btn.Text = icon .. " " .. name
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = Sidebar
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 6)
+    c.Parent = btn
+
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft = UDim.new(0, 10)
+    p.Parent = btn
+
+    TabButtons[pageName] = btn
+    btn.MouseButton1Click:Connect(function() SwitchTab(pageName) end)
+end
+
+-- Create Pages
+local CombatPage = CreatePage("Combat")
+local TrainingPage = CreatePage("Training")
+local PetsPage = CreatePage("Pets")
+local RewardsPage = CreatePage("Rewards")
+local LogsPage = CreatePage("Logs")
+local SettingsPage = CreatePage("Settings")
+
+-- Register Tabs
+AddTab("การต่อสู้", "⚔️", "Combat")
+AddTab("ฝึกจักระ", "🧘", "Training")
+AddTab("สัตว์เลี้ยง", "🐾", "Pets")
+AddTab("รางวัล", "🎁", "Rewards")
+AddTab("บันทึกการทำงาน", "📊", "Logs")
+AddTab("ตั้งค่าระบบ", "⚙️", "Settings")
+
+local function AddToggleTo(page, text, initVal, onChange)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -6, 0, 32)
+    btn.BorderSizePixel = 0
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 11
+    btn.Parent = page
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
@@ -1150,12 +862,12 @@ local function AddToggle(text, initVal, onChange)
     local active = initVal
     local function Refresh()
         if active then
-            btn.BackgroundColor3 = Color3.fromRGB(35, 135, 70)
+            btn.BackgroundColor3 = Color3.fromRGB(35, 135, 75)
             btn.TextColor3 = Color3.fromRGB(255, 255, 255)
             btn.Text = "🟢 " .. text .. " : [เปิด]"
         else
-            btn.BackgroundColor3 = Color3.fromRGB(30, 33, 46)
-            btn.TextColor3 = Color3.fromRGB(165, 170, 185)
+            btn.BackgroundColor3 = Color3.fromRGB(28, 32, 46)
+            btn.TextColor3 = Color3.fromRGB(150, 160, 180)
             btn.Text = "⚪ " .. text .. " : [ปิด]"
         end
     end
@@ -1166,19 +878,20 @@ local function AddToggle(text, initVal, onChange)
         Refresh()
         onChange(active)
         SaveConfig()
+        AuditLogger.Record("Settings", "Toggle Changed", text .. " -> " .. (active and "เปิด" or "ปิด"))
     end)
 end
 
-local function AddButton(text, bgCol, onClick)
+local function AddButtonTo(page, text, color, onClick)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 28)
-    btn.BackgroundColor3 = bgCol or Color3.fromRGB(38, 44, 62)
+    btn.Size = UDim2.new(1, -6, 0, 30)
+    btn.BackgroundColor3 = color or Color3.fromRGB(38, 44, 62)
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 11
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Text = text
-    btn.Parent = Content
+    btn.Parent = page
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
@@ -1187,212 +900,128 @@ local function AddButton(text, bgCol, onClick)
     btn.MouseButton1Click:Connect(onClick)
 end
 
--- SECTIONS
-AddSection("🌍 1. AUTO STAGES (เลือกระดับโลก 1-5 & ฟาร์มอัตโนมัติ)", Color3.fromRGB(255, 75, 75))
-AddToggle("ลงด่านสเตจฟาร์มมอนอัตโนมัติ (Auto Stages)", Config.Automation.AutoStages, function(v) 
-    Config.Automation.AutoStages = v 
-end)
-AddToggle("ถอยเก็บถ้วยด่านก่อนหน้าเมื่อสู้ไม่ไหว (Smart Retreat)", Config.Automation.AutoRetreat, function(v) 
-    Config.Automation.AutoRetreat = v 
-end)
-AddToggle("ยืนแท่นคูณ 3 อัตโนมัติ (Pad x3 Multiplier)", Config.Stages.PadType == "purple", function(v)
-    Config.Stages.PadType = v and "purple" or "gold"
-    SaveConfig()
-end)
+-- [COMBAT TAB]
+AddToggleTo(CombatPage, "ลงด่านอัตโนมัติ (Auto Stages 1-15)", Config.Automation.AutoStages, function(v) Config.Automation.AutoStages = v end)
+AddToggleTo(CombatPage, "ล่าบอสคุรามะ (Auto Boss & Safe Orbit)", Config.Automation.AutoBoss, function(v) Config.Automation.AutoBoss = v end)
+AddToggleTo(CombatPage, "ถอยอัตโนมัติเมื่อเลือดต่ำ (Smart Retreat)", Config.Automation.AutoRetreat, function(v) Config.Automation.AutoRetreat = v end)
+AddToggleTo(CombatPage, "โจมตีธรรมดา M1 (Auto Attack)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
+AddToggleTo(CombatPage, "สกิล E (Skill E)", Config.Automation.AutoSkillE, function(v) Config.Automation.AutoSkillE = v end)
+AddToggleTo(CombatPage, "สกิล R คามุย (Skill R)", Config.Automation.AutoSkillR, function(v) Config.Automation.AutoSkillR = v end)
 
--- โชว์สถานะโลกและปุ่มเลือกระดับโลก 1 - 5
-local WorldStatusLabel = Instance.new("TextLabel")
-WorldStatusLabel.Size = UDim2.new(1, 0, 0, 22)
-WorldStatusLabel.BackgroundTransparency = 1
-WorldStatusLabel.Font = Enum.Font.GothamBold
-WorldStatusLabel.TextSize = 11
-WorldStatusLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-WorldStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-local initialWorld = GetCurrentWorld()
-WorldStatusLabel.Text = string.format("🌐 โลกปัจจุบัน: %d (%s)", initialWorld, WorldsInfo[initialWorld] and WorldsInfo[initialWorld].name or "World " .. initialWorld)
-WorldStatusLabel.Parent = Content
-
-task.spawn(function()
-    while State.Running do
-        pcall(function()
-            local cw = GetCurrentWorld()
-            local tw = Config.Stages.TargetWorld or cw
-            local wName = WorldsInfo[cw] and WorldsInfo[cw].name or ("World " .. cw)
-            WorldStatusLabel.Text = string.format("🌐 โลกปัจจุบัน: %d (%s) | เป้าหมาย: %d", cw, wName, tw)
-        end)
-        task.wait(0.5)
-    end
-end)
-
--- ปุ่มเลือกโลกทั้ง 5 โลก (Shinobi Lands, Celestial Realm, Blood Moon, Frozen Abyss, Cosmic Void)
-for wId = 1, 5 do
-    local info = WorldsInfo[wId]
-    local btnName = string.format("🗺️ เลือกระดับโลก %d: %s", wId, info.name)
-    AddButton(btnName, info.color, function()
-        Config.Stages.TargetWorld = wId
-        SaveConfig()
-        State.StatusText = string.format("🌀 กำลังสลับไปโลก %d (%s)...", wId, info.name)
-        TeleportToWorld(wId)
-        task.wait(0.5)
-        StartStageOneProperly()
-    end)
-end
-
-AddButton("🏆 ถอยไปเก็บถ้วยด่านก่อนหน้าทันที (Retreat & Claim)", Color3.fromRGB(160, 100, 30), function()
-    local runCleared = LocalPlayer:GetAttribute("RunCleared") or 0
-    RetreatAndClaimTrophies(runCleared)
-end)
-AddButton("🚀 เริ่มด่าน Stage 1 ของโลกนี้ทันที", Color3.fromRGB(140, 35, 35), function()
-    StartStageOneProperly()
-end)
-AddButton("🏠 วาร์ปกลับจุดศูนย์กลาง (Hub Spawn ของโลกนี้)", Color3.fromRGB(60, 60, 80), function()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local originX = GetWorldOrigin().X
-    if root then root.CFrame = CFrame.new(originX, 4, 46) end
-end)
-
--- KURAMA BOSS SECTION
-AddSection("🦊 2. KURAMA BOSS EVENT (ตีบอสคุรามะ - ตายจอยใหม่ทันที!)", Color3.fromRGB(255, 125, 40))
-local BossStatusLabel = Instance.new("TextLabel")
-BossStatusLabel.Size = UDim2.new(1, 0, 0, 22)
-BossStatusLabel.BackgroundTransparency = 1
-BossStatusLabel.Font = Enum.Font.GothamMedium
-BossStatusLabel.TextSize = 10
-BossStatusLabel.TextColor3 = Color3.fromRGB(255, 180, 80)
-BossStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-BossStatusLabel.Text = "🦊 กำลังเช็คสถานะบอสคุรามะ..."
-BossStatusLabel.Parent = Content
-
-task.spawn(function()
-    while State.Running do
-        pcall(function()
-            local phase = Workspace:GetAttribute("BossPhase") or "wait"
-            local hp = Workspace:GetAttribute("BossHp") or 0
-            local coins = LocalPlayer:GetAttribute("KuramaCoins") or 0
-            local phaseText = (phase == "fight" and string.format("กำลังสู้! (HP: %.0f%%)", hp * 100))
-                or (phase == "coming" and "กำลังเกิด...")
-                or (phase == "over" and "จบศึกแล้ว")
-                or "รอรอบถัดไป"
-            BossStatusLabel.Text = string.format("🦊 บอส: %s | เหรียญคุรามะ: %d 🪙", phaseText, coins)
-        end)
-        task.wait(0.5)
-    end
-end)
-
-AddToggle("ร่วมตีบอสคุรามะอัตโนมัติ (สู้บอส & ตายจอยใหม่ทันที)", Config.Automation.AutoBoss, function(v)
-    Config.Automation.AutoBoss = v
-end)
-AddButton("🦊 วาร์ปเข้าร่วมสู้บอสทันที (Join Boss)", Color3.fromRGB(180, 60, 20), function()
-    if BossRemote then pcall(function() BossRemote:FireServer("join") end) end
-end)
-AddButton("🚪 ออกจากห้องบอส (Leave Boss Arena)", Color3.fromRGB(60, 60, 80), function()
-    if BossRemote then pcall(function() BossRemote:FireServer("leave") end) end
-end)
-AddButton("🛍️ ซื้อของ Boss Shop (Fox Fire / Grand Prize)", Color3.fromRGB(150, 90, 20), function()
-    local shopItems = {"fox_fire", "chakra_cloak", "kanjogan", "tailed_cloak", "fuma_mangekyo", "bijuu_mode", "kurenai_mangekyo", "grand_prize"}
-    for _, item in ipairs(shopItems) do
-        if BossShopFunc then
-            pcall(function() BossShopFunc:InvokeServer("buy", item) end)
-        end
-    end
-end)
-
-AddSection("🧘 3. CHAKRA TRAINING (ซ้อมจักระ & มินิเกมที่ดีที่สุด)", Color3.fromRGB(0, 220, 130))
-AddToggle("ซ้อมจักระที่จุดที่ดีที่สุดของโลก (Auto Best Training)", Config.Automation.AutoBestTrain, function(v) 
-    Config.Automation.AutoBestTrain = v 
-end)
-AddToggle("ฝึกจักระรวดเร็ว (Auto Train Fast Click)", Config.Automation.AutoTrain, function(v) 
-    Config.Automation.AutoTrain = v 
-end)
-AddButton("🧘 วาร์ปไปจุดซ้อมที่ดีที่สุดทันที (Go Best Train Spot)", Color3.fromRGB(40, 140, 90), function()
+-- [TRAINING TAB]
+AddToggleTo(TrainingPage, "ฟาร์มจุดที่ดีที่สุดอัตโนมัติ (Auto Best Train)", Config.Automation.AutoBestTrain, function(v) Config.Automation.AutoBestTrain = v end)
+AddToggleTo(TrainingPage, "ฝึกวิชาพื้นฐาน (Auto Train)", Config.Automation.AutoTrain, function(v) Config.Automation.AutoTrain = v end)
+AddToggleTo(TrainingPage, "กดรับคูณพลังงาน (Auto Pops)", Config.Automation.AutoPops, function(v) Config.Automation.AutoPops = v end)
+AddButtonTo(TrainingPage, "🚀 วาปไปจุดฝึกที่ดีที่สุดทันที", Color3.fromRGB(30, 130, 80), function()
     TeleportToBestTrainingSpot()
-end)
-AddButton("🎮 เริ่มเล่นมินิเกม Arcade Snake (Chakra Snake)", Color3.fromRGB(30, 120, 180), function()
-    DoPlayArcadeSnake()
+    AuditLogger.Record("Training", "Manual Teleport", "วาปไปจุดฝึกที่ดีที่สุด")
 end)
 
-AddSection("⚡ 4. ATTACK & COMBAT (โจมตีและพลัง)", Color3.fromRGB(255, 170, 0))
-AddToggle("Auto Attack (M1 โจมตี/แอนิเมชันเต็ม)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
-AddToggle("Auto Skill E (สกิลปล่อยพลัง)", Config.Automation.AutoSkillE, function(v) Config.Automation.AutoSkillE = v end)
-AddToggle("Auto Skill R (คามุย Kamui)", Config.Automation.AutoSkillR, function(v) Config.Automation.AutoSkillR = v end)
+-- [PETS TAB]
+AddToggleTo(PetsPage, "ผสมสัตว์เลี้ยง 4 ตัวอัตโนมัติ (Auto Fuse Pets)", Config.Automation.AutoFusePets, function(v) Config.Automation.AutoFusePets = v end)
+AddToggleTo(PetsPage, "สวมใส่สัตว์เลี้ยงที่ดีที่สุด (Best Pets)", Config.Automation.AutoEquipBestPets, function(v) Config.Automation.AutoEquipBestPets = v end)
+AddToggleTo(PetsPage, "สวมใส่ออร่าที่ดีที่สุด (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
+AddToggleTo(PetsPage, "สวมใส่เนตรที่ดีที่สุด (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
 
-AddSection("🌀 5. PROGRESSION & REBIRTH", Color3.fromRGB(255, 100, 255))
-AddToggle("เกิดใหม่อัตโนมัติ (Auto Rebirth)", Config.Automation.AutoRebirth, function(v) Config.Automation.AutoRebirth = v end)
-AddButton("🌀 สั่งเกิดใหม่ทันที (Rebirth Now)", Color3.fromRGB(150, 40, 150), function() pcall(DoRebirth) end)
+-- [REWARDS TAB]
+AddToggleTo(RewardsPage, "จุติอัตโนมัติ (Auto Rebirth)", Config.Automation.AutoRebirth, function(v) Config.Automation.AutoRebirth = v end)
+AddToggleTo(RewardsPage, "รับของขวัญและเควสต์ทั้งหมด (Claim All)", Config.Automation.AutoClaimAll, function(v) Config.Automation.AutoClaimAll = v end)
+AddToggleTo(RewardsPage, "แลกโค้ดทั้งหมดอัตโนมัติ (Redeem Codes)", Config.Automation.AutoRedeemCodes, function(v) Config.Automation.AutoRedeemCodes = v end)
 
-AddSection("💫 6. BEST GEAR & PET FUSER (ออร่า, ดวงตา & รวมสัตว์เลี้ยง)", Color3.fromRGB(120, 220, 255))
-local PetFuseStatusLabel = Instance.new("TextLabel")
-PetFuseStatusLabel.Size = UDim2.new(1, 0, 0, 20)
-PetFuseStatusLabel.BackgroundTransparency = 1
-PetFuseStatusLabel.Font = Enum.Font.GothamMedium
-PetFuseStatusLabel.TextSize = 10
-PetFuseStatusLabel.TextColor3 = Color3.fromRGB(160, 230, 255)
-PetFuseStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-PetFuseStatusLabel.Text = "🐾 กำลังตรวจสอบสัตว์เลี้ยง..."
-PetFuseStatusLabel.Parent = Content
+-- [LOGS TAB & REAL-TIME STATS]
+local StatsBox = Instance.new("Frame")
+StatsBox.Size = UDim2.new(1, -6, 0, 50)
+StatsBox.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
+StatsBox.BorderSizePixel = 0
+StatsBox.Parent = LogsPage
+
+local StatsBoxCorner = Instance.new("UICorner")
+StatsBoxCorner.CornerRadius = UDim.new(0, 6)
+StatsBoxCorner.Parent = StatsBox
+
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Size = UDim2.new(1, -12, 1, 0)
+StatsLabel.Position = UDim2.new(0, 8, 0, 0)
+StatsLabel.BackgroundTransparency = 1
+StatsLabel.Font = Enum.Font.GothamMedium
+StatsLabel.TextSize = 10
+StatsLabel.TextColor3 = Color3.fromRGB(0, 220, 255)
+StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatsLabel.Text = "📊 สถิติรอบนี้: กำลังประมวลผล..."
+StatsLabel.Parent = StatsBox
 
 task.spawn(function()
     while State.Running do
         pcall(function()
-            local fuseLogicMod = ReplicatedStorage.Shared.Logic:FindFirstChild("Fuse")
-            if fuseLogicMod and StateMod then
-                local FuseLogic = require(fuseLogicMod)
-                local pets = StateMod.pets and StateMod.pets() or {}
-                local petTiers = StateMod.petTiers and StateMod.petTiers() or {}
-                local groups = FuseLogic.groups and FuseLogic.groups(pets, petTiers) or {}
-                local readyCount = 0
-                for _, g in ipairs(groups) do
-                    local uids = g.uids or g
-                    if #uids >= 4 then
-                        readyCount = readyCount + 1
-                    end
-                end
-                PetFuseStatusLabel.Text = string.format("🐾 สัตว์เลี้ยงพร้อมหลอม: %d กลุ่ม (ต้องการซ้ำ 4 ตัว)", readyCount)
-            end
+            StatsLabel.Text = string.format("📊 จุติ: %d ครั้ง | เคลียร์ด่าน: %d รอบ | ตีบอส: %d Hit | รวมสัตว์: %d ตัว\n⏱️ เวลาทำงาน: %d วินาที | สถานะ: %s",
+                AuditLogger.Stats.RebirthsCount, AuditLogger.Stats.StagesCleared, AuditLogger.Stats.BossAttacks, AuditLogger.Stats.PetsFused,
+                os.time() - AuditLogger.Stats.StartTime, State.StatusText)
         end)
-        task.wait(2.5)
+        task.wait(0.5)
     end
 end)
 
-AddToggle("ใส่ออร่าที่ดีที่สุด ออโต้ (Best Aura)", Config.Automation.AutoEquipBestAura, function(v) Config.Automation.AutoEquipBestAura = v end)
-AddButton("✨ ใส่ออร่าที่ดีที่สุดทันที (Equip Best Aura)", Color3.fromRGB(40, 120, 180), function() pcall(DoEquipBestAura) end)
-AddToggle("ใส่ดวงตาที่ดีที่สุด ออโต้ (Best Eye)", Config.Automation.AutoEquipBestEye, function(v) Config.Automation.AutoEquipBestEye = v end)
-AddToggle("ใส่สัตว์เลี้ยงที่ดีที่สุด ออโต้ (Best Pets)", Config.Automation.AutoEquipBestPets, function(v) Config.Automation.AutoEquipBestPets = v end)
-AddToggle("หลอมรวมสัตว์เลี้ยง 4 ตัวออโต้ (Auto Fuse Pets)", Config.Automation.AutoFusePets, function(v) Config.Automation.AutoFusePets = v end)
-AddButton("🧬 หลอมรวมสัตว์เลี้ยงทันที (Fuse Pets Now)", Color3.fromRGB(40, 140, 90), function() pcall(DoAutoFusePets) end)
+local LogContainer = Instance.new("ScrollingFrame")
+LogContainer.Size = UDim2.new(1, -6, 0, 240)
+LogContainer.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
+LogContainer.BorderSizePixel = 0
+LogContainer.ScrollBarThickness = 2
+LogContainer.CanvasSize = UDim2.new(0, 0, 0, 1000)
+LogContainer.Parent = LogsPage
 
-AddSection("🔥 7. MULTIPLIER, CODES & REWARDS", Color3.fromRGB(255, 215, 0))
-AddToggle("กดคูณจักระออโต้ (Pops Multipliers)", Config.Automation.AutoPops, function(v) Config.Automation.AutoPops = v end)
-AddToggle("รับภารกิจ & รางวัลเวลารอ ออโต้", Config.Automation.AutoClaimAll, function(v) Config.Automation.AutoClaimAll = v end)
-AddToggle("แลกโค้ดทั้งหมดอัตโนมัติ (Auto Redeem Codes)", Config.Automation.AutoRedeemCodes, function(v) Config.Automation.AutoRedeemCodes = v end)
-AddButton("🎁 แลกโค้ดทั้งหมดทันที (7 โค้ดฟรี: AWAKEN, UPDATE2, KURUMA...)", Color3.fromRGB(180, 110, 30), function() 
-    task.spawn(DoRedeemAllCodes) 
-end)
+local LogLayout = Instance.new("UIListLayout")
+LogLayout.Padding = UDim.new(0, 3)
+LogLayout.Parent = LogContainer
 
-AddSection("⚙️ 8. SYSTEM & SETTINGS", Color3.fromRGB(200, 200, 200))
-AddButton("🔄 คืนค่าเริ่มต้นทั้งหมด (Reset Config Defaults)", Color3.fromRGB(130, 45, 45), function()
-    Config.Automation.AutoBoss = true
-    Config.Automation.AutoBestTrain = true
-    Config.Automation.AutoStages = true
-    Config.Automation.AutoFusePets = true
-    Config.Automation.AutoTrain = true
-    Config.Automation.AutoAttack = true
-    Config.Automation.AutoSkillE = true
-    Config.Automation.AutoSkillR = true
-    Config.Automation.AutoRebirth = true
-    Config.Automation.AutoEquipBestAura = true
-    Config.Automation.AutoEquipBestEye = true
-    Config.Automation.AutoEquipBestPets = true
-    Config.Automation.AutoClaimAll = true
-    Config.Automation.AutoPops = true
-    Config.Stages.PadType = "purple"
-    Config.Stages.TargetWorld = 5
-    SaveConfig()
-    State.StatusText = "🔄 คืนค่าเริ่มต้นเรียบร้อย!"
-end)
-
-_G.ChakraQACleanup = function()
-    State.Running = false
-    pcall(function() ScreenGui:Destroy() end)
+local function RefreshLogUI()
+    for _, item in ipairs(LogContainer:GetChildren()) do
+        if item:IsA("TextLabel") then item:Destroy() end
+    end
+    for _, entry in ipairs(AuditLogger.History) do
+        local l = Instance.new("TextLabel")
+        l.Size = UDim2.new(1, -8, 0, 18)
+        l.BackgroundTransparency = 1
+        l.Font = Enum.Font.Gotham
+        l.TextSize = 9
+        l.TextColor3 = Color3.fromRGB(180, 195, 215)
+        l.TextXAlignment = Enum.TextXAlignment.Left
+        l.Text = string.format("[%s] [%s] %s: %s", entry.Time, entry.Category, entry.Action, entry.Detail)
+        l.Parent = LogContainer
+    end
 end
+
+AuditLogger.OnLogged = function()
+    RefreshLogUI()
+end
+
+AddButtonTo(LogsPage, "🗑️ ล้างประวัติการบันทึก (Clear Logs)", Color3.fromRGB(60, 35, 40), function()
+    table.clear(AuditLogger.History)
+    RefreshLogUI()
+end)
+
+-- [SETTINGS TAB]
+AddButtonTo(SettingsPage, "💾 บันทึกการตั้งค่าเดี๋ยวนี้ (Save Config)", Color3.fromRGB(40, 120, 180), function() SaveConfig() end)
+AddButtonTo(SettingsPage, "🔄 โหลดการตั้งค่าจากไฟล์ (Reload Config)", Color3.fromRGB(50, 60, 90), function() LoadConfig() end)
+AddButtonTo(SettingsPage, "⚠️ รีเซ็ตกลับเป็นค่าเริ่มต้น (Reset Defaults)", Color3.fromRGB(120, 40, 40), function()
+    for k, _ in pairs(Config.Automation) do Config.Automation[k] = true end
+    SaveConfig()
+    AuditLogger.Record("Settings", "Reset", "รีเซ็ตการตั้งค่าเป็นค่าเริ่มต้น")
+end)
+
+SwitchTab("Combat")
+
+-- ============================================================================
+-- 8. CLEANUP & SHUTDOWN HANDLER
+-- ============================================================================
+local function Cleanup()
+    State.Running = false
+    AuditLogger.Record("System", "Shutdown", "ทำความสะอาด GUI และยกเลิกการเชื่อมต่อ")
+    pcall(function() ScreenGui:Destroy() end)
+    pcall(function() FloatingPill:Destroy() end)
+    _G.ChakraQACleanup = nil
+end
+
+_G.ChakraQACleanup = Cleanup
+CloseBtn.MouseButton1Click:Connect(Cleanup)
+
+AuditLogger.Record("Loader", "Ready", "Chakra QA Enterprise Hub V12 พร้อมทำงาน!")
