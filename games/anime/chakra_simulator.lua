@@ -362,6 +362,14 @@ end
 local function TeleportToBestTrainingSpot()
     local _, root = SafeGetCharacter()
     if not root or not Plots or not World or not World.TRAINING then return false end
+
+    -- ถ้าตัวยังอยู่ในอารีน่าบอส ให้ส่งคำขอออกจากห้องบอสก่อน
+    local bossCentre = Vector3.new(-3000, 0, 300)
+    local inBossDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude
+    if inBossDist <= 150 and Remotes.Boss then
+        pcall(function() Remotes.Boss:FireServer(Config.Events.BossLeave) end)
+    end
+
     local w = GetCurrentWorld()
     local spots = (typeof(Plots.forWorld) == "function") and Plots.forWorld(w) or nil
     if not spots then return false end
@@ -369,7 +377,11 @@ local function TeleportToBestTrainingSpot()
     local rebirths = (StateMod and StateMod.number and StateMod.number("Rebirths")) or LocalPlayer:GetAttribute("Rebirths") or 0
     local bestSpot, bestIdx = nil, 1
     for idx, spot in ipairs(spots) do
-        if rebirths >= (spot.rebirths or 0) then
+        local passOk = true
+        if spot.pass then
+            passOk = LocalPlayer:GetAttribute("Pass_" .. spot.pass) == true
+        end
+        if passOk and rebirths >= (spot.rebirths or 0) then
             if not bestSpot or (spot.mult or 0) > (bestSpot.mult or 0) then
                 bestSpot = spot
                 bestIdx = idx
@@ -388,12 +400,19 @@ local function TeleportToBestTrainingSpot()
         end
         local originX = GetWorldOrigin(w).X
         local spotPos = Vector3.new(originX + offVec.X, 4.5, offVec.Z)
-        root.CFrame = CFrame.new(spotPos)
-        root.AssemblyLinearVelocity = Vector3.zero
 
-        if Input and Input.autoClick then Input.autoClick() elseif Remotes.Train then Remotes.Train:FireServer() end
+        if (root.Position - spotPos).Magnitude > 6 then
+            root.CFrame = CFrame.new(spotPos)
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+
+        if Input and Input.autoClick then 
+            pcall(Input.autoClick) 
+        elseif Remotes.Train then 
+            pcall(function() Remotes.Train:FireServer() end) 
+        end
         local multVal = (bestSpot.mult or 1)
-        State.StatusText = string.format("ฝึกจักระ: %s (คูณ %.1e x)", bestSpot.name, multVal)
+        State.StatusText = string.format("🧘 ซ้อมจักระรอบอส: %s (คูณ %.1e x)", bestSpot.name, multVal)
         return true
     end
     return false
@@ -437,23 +456,32 @@ task.spawn(function()
                         end
                         task.wait(0.5)
                     else
-                        local orbitAngle = (tick() * 0.45) % (math.pi * 2)
-                        local safeCombatPos = bossCentre + Vector3.new(math.cos(orbitAngle) * 76.5, 18, math.sin(orbitAngle) * 76.5)
-                        root.CFrame = CFrame.new(safeCombatPos, bossCentre + Vector3.new(0, 16, 0))
+                        local orbitAngle = (tick() * 0.5) % (math.pi * 2)
+                        local safeRadius = 74.0
+                        local safeCombatPos = bossCentre + Vector3.new(math.cos(orbitAngle) * safeRadius, 16, math.sin(orbitAngle) * safeRadius)
+                        local bossLookPos = bossCentre + Vector3.new(0, 14, 0)
+                        root.CFrame = CFrame.new(safeCombatPos, bossLookPos)
                         root.AssemblyLinearVelocity = Vector3.zero
 
-                        local bossTarget = { boss = true, id = 2000000000, pos = bossCentre + Vector3.new(0, 16, 0) }
+                        local aimPos = (BossLogic and BossLogic.aimPoint and BossLogic.aimPoint(root.Position.X, root.Position.Z)) or bossLookPos
+                        local bossTarget = { boss = true, id = 2000000000, pos = aimPos }
                         ExecuteAttack(bossTarget)
                         ExecuteSkill(Config.Events.SkillE, bossTarget)
                         ExecuteSkill(Config.Events.SkillR, bossTarget)
                         AuditLogger.Stats.BossAttacks = AuditLogger.Stats.BossAttacks + 1
-                        State.StatusText = string.format("ตีบอสคุรามะ (Safe Orbit 76st) HP: %.1f%%", bossHp * 100)
+                        State.StatusText = string.format("🦊⚔️ ตีบอสคุรามะ (หลบ 74st / โจมตี 100%%) HP: %.1f%%", bossHp * 100)
                     end
                 end)
                 if ok then CircuitBreaker.RecordSuccess("Boss") else CircuitBreaker.RecordFailure("Boss", err) end
 
-            -- Task: Best Training
+            -- Task: Best Training (ระหว่างรอบอสเกิด หรือช่วงบอสจบ ให้ซ้อมจุดที่ดีที่สุด)
             elseif Config.Automation.AutoBestTrain and CircuitBreaker.IsAvailable("BestTrain") then
+                local bossCentre = Vector3.new(-3000, 0, 300)
+                local dist = root and (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossCentre.X, bossCentre.Z)).Magnitude or 999
+                if dist <= 140 and Remotes.Boss then
+                    pcall(function() Remotes.Boss:FireServer(Config.Events.BossLeave) end)
+                    task.wait(0.3)
+                end
                 local ok, err = pcall(TeleportToBestTrainingSpot)
                 if ok then CircuitBreaker.RecordSuccess("BestTrain") else CircuitBreaker.RecordFailure("BestTrain", err) end
 
