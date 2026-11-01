@@ -86,7 +86,7 @@ local Config = {
     Automation = {
         -- 1. Summon
         AutoSummon         = false,
-        SelectedBanner     = "Summer2026",
+        SelectedBanner     = "EventClover",
         SummonMode         = "gems",      -- "gems" (1x) or "gems10" (10x)
 
         -- 2. Rewards
@@ -573,15 +573,29 @@ function SafeUtils.HumanWait(minD: number?, maxD: number?)
 end
 
 local function GetPlayerCurrency(): (number, number)
-    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
     local gems = 0
     local gold = 0
-    if leaderstats then
-        local gVal = leaderstats:FindFirstChild("Gems")
-        local goldVal = leaderstats:FindFirstChild("Gold")
+
+    -- อ่านจาก _stats ของผู้เล่นโดยตรง (Anime Adventures Engine)
+    local stats = LocalPlayer:FindFirstChild("_stats")
+    if stats then
+        local gVal = stats:FindFirstChild("gem_amount")
+        local goldVal = stats:FindFirstChild("gold_amount")
         if gVal and (gVal:IsA("IntValue") or gVal:IsA("NumberValue")) then gems = gVal.Value end
         if goldVal and (goldVal:IsA("IntValue") or goldVal:IsA("NumberValue")) then gold = goldVal.Value end
     end
+
+    -- Fallback สำหรับบางกรณี
+    if gems == 0 then
+        local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+        if leaderstats then
+            local gVal = leaderstats:FindFirstChild("Gems") or leaderstats:FindFirstChild("gem_amount")
+            local goldVal = leaderstats:FindFirstChild("Gold") or leaderstats:FindFirstChild("gold_amount")
+            if gVal and (gVal:IsA("IntValue") or gVal:IsA("NumberValue")) then gems = gVal.Value end
+            if goldVal and (goldVal:IsA("IntValue") or goldVal:IsA("NumberValue")) then gold = goldVal.Value end
+        end
+    end
+
     return gems, gold
 end
 
@@ -634,26 +648,50 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
     end
 
     local summonRemote = SafeUtils.SafeGetRemote(Config.Events.SummonRemote)
-    if not summonRemote then
-        Logger:Log("Summon", "ERROR", "ไม่พบ Remote buy_from_banner ใน endpoints")
-        return false
+    local epClient = nil
+    local summonGuiObj = nil
+    if getgc then
+        for _, v in ipairs(getgc(true)) do
+            if type(v) == "table" then
+                if rawget(v, "invoke_server") and not epClient then
+                    epClient = v
+                end
+                if rawget(v, "current_banner") and not summonGuiObj then
+                    summonGuiObj = v
+                end
+            end
+        end
     end
 
-    Logger:Log("Summon", "INFO", string.format("กำลังสุ่มแบนเนอร์ [%s] จำนวน [%s]...", bannerName, countText))
+    if summonGuiObj then
+        summonGuiObj.current_banner = bannerName
+    end
+
+    Logger:Log("Summon", "INFO", string.format("กำลังส่งคำขอสุ่มแบนเนอร์ [%s] จำนวน [%s]...", bannerName, countText))
     SafeUtils.HumanWait(0.2, 0.4)
 
     local success, res = pcall(function()
-        if summonRemote:IsA("RemoteFunction") then
-            return summonRemote:InvokeServer(bannerName, mode)
+        if epClient and epClient.invoke_server then
+            return epClient.invoke_server("buy_from_banner", bannerName, mode)
+        elseif summonRemote then
+            if summonRemote:IsA("RemoteFunction") then
+                return summonRemote:InvokeServer(bannerName, mode)
+            else
+                summonRemote:FireServer(bannerName, mode)
+                return true
+            end
         else
-            summonRemote:FireServer(bannerName, mode)
-            return true
+            error("ไม่พบ Remote buy_from_banner")
         end
     end)
 
     if success then
         Logger:Log("Summon", "INFO", string.format("สุ่มแบนเนอร์ [%s] จำนวน [%s] สำเร็จ!", bannerName, countText))
         UpdateCurrencyDisplay()
+        task.spawn(function()
+            SafeUtils.HumanWait(1.0, 1.5)
+            TeamService.EquipBestUnits()
+        end)
         return true
     else
         Logger:Log("Summon", "WARN", "การสุ่มล้มเหลว: " .. tostring(res))
@@ -1160,17 +1198,21 @@ Btn10xCorner.CornerRadius = UDim.new(0, 4)
 Btn10xCorner.Parent = Btn10x
 
 Btn1x.MouseButton1Click:Connect(function()
-    Config.Automation.SummonMode = "gems"
-    Btn1x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
-    Btn10x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
-    Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 1 ครั้ง (50 Gems)")
+    task.spawn(function()
+        Config.Automation.SummonMode = "gems"
+        Btn1x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+        Btn10x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
+        Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 1 ครั้ง (50 Gems)")
+    end)
 end)
 
 Btn10x.MouseButton1Click:Connect(function()
-    Config.Automation.SummonMode = "gems10"
-    Btn10x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
-    Btn1x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
-    Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 10 ครั้ง (500 Gems)")
+    task.spawn(function()
+        Config.Automation.SummonMode = "gems10"
+        Btn10x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+        Btn1x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
+        Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 10 ครั้ง (500 Gems)")
+    end)
 end)
 
 -- รายชื่อแบนเนอร์ทั้งหมดพร้อมปุ่มสุ่ม 1x และ 10x แยกกัน
@@ -1226,13 +1268,17 @@ for _, bName in ipairs(availableBanners) do
     b10xCorner.Parent = b10x
 
     b1x.MouseButton1Click:Connect(function()
-        Config.Automation.SelectedBanner = bName
-        SummonService.ExecuteSummon(bName, "gems")
+        task.spawn(function()
+            Config.Automation.SelectedBanner = bName
+            SummonService.ExecuteSummon(bName, "gems")
+        end)
     end)
 
     b10x.MouseButton1Click:Connect(function()
-        Config.Automation.SelectedBanner = bName
-        SummonService.ExecuteSummon(bName, "gems10")
+        task.spawn(function()
+            Config.Automation.SelectedBanner = bName
+            SummonService.ExecuteSummon(bName, "gems10")
+        end)
     end)
 end
 
@@ -1387,11 +1433,55 @@ function Worker:Stop()
     ScreenGui:Destroy()
 end
 
+-- สร้างปุ่มลอย (Floating Toggle Button) สำหรับเปิด/ปิดเมนูได้ตลอดเวลา
+local FloatingBtn = Instance.new("TextButton")
+FloatingBtn.Name = "FloatingHubToggle"
+FloatingBtn.Size = UDim2.new(0, 110, 0, 32)
+FloatingBtn.Position = UDim2.new(0, 15, 0.45, 0)
+FloatingBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 50)
+FloatingBtn.Text = "⚡ KuyKuy Hub"
+FloatingBtn.TextColor3 = Color3.fromRGB(0, 220, 130)
+FloatingBtn.Font = Enum.Font.GothamBold
+FloatingBtn.TextSize = 11
+FloatingBtn.Visible = false
+FloatingBtn.Parent = ScreenGui
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(0, 8)
+FloatCorner.Parent = FloatingBtn
+
+local FloatStroke = Instance.new("UIStroke")
+FloatStroke.Color = Color3.fromRGB(0, 220, 130)
+FloatStroke.Thickness = 1.2
+FloatStroke.Parent = FloatingBtn
+
+local function ToggleHubUI()
+    MainFrame.Visible = not MainFrame.Visible
+    FloatingBtn.Visible = not MainFrame.Visible
+end
+
 CloseBtn.MouseButton1Click:Connect(function()
-    Worker:Stop()
+    task.spawn(function()
+        MainFrame.Visible = false
+        FloatingBtn.Visible = true
+        Logger:Log("System", "INFO", "ย่อหน้าต่างแล้ว สามารถกดปุ่มลอยหรือกด RightShift เพื่อเปิดใหม่")
+    end)
+end)
+
+FloatingBtn.MouseButton1Click:Connect(function()
+    task.spawn(function()
+        ToggleHubUI()
+    end)
+end)
+
+-- คีย์ลัด RightShift หรือ Insert ในการเปิด/ปิดหน้าต่าง
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and (input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightControl) then
+        ToggleHubUI()
+    end
 end)
 
 -- RUN INITIAL
 Worker:Start()
 UpdateCurrencyDisplay()
-Logger:Log("System", "INFO", "Anime Adventures Pro V4 พร้อมใช้งานแล้ว!")
+Logger:Log("System", "INFO", "Anime Adventures Pro V4 พร้อมใช้งานแล้ว! (กด RightShift เพื่อซ่อน/แสดง)")
