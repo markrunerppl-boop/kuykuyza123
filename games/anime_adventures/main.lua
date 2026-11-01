@@ -1,21 +1,19 @@
 --!strict
 --[[
     ============================================================================
-    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - ANIME ADVENTURES PRO V2]
+    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - ANIME ADVENTURES PRO V3]
     Target Game: [☀️อัพเดท 21🏖️] การผจญภัยอนิเมะ (Anime Adventures)
     Place ID: 8304191830 | Creator: Gomu
     Repository: markrunerppl-boop/kuykuyza123
     Loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 
-    Implemented Features:
-    [✓] 1. Dynamic Banner Summon: สุ่มกาชาแบบเลือกแบนเนอร์ได้ (EventClover, Summer2026, Legacy, Special, etc.)
-    [✓] 2. Auto Claim All Rewards: รับรางวัลทุกอย่างอัตโนมัติเมื่อพร้อม (Daily, BattlePass, Level, Missions, Clear)
-    [✓] 3. Auto Equip Best Units: สวมใส่ตัวที่ดีที่สุดอัตโนมัติเมื่อได้ตัวใหม่หรือสั่งการ
-    [✓] 4. Auto Stage & Matchmaking Loop: เข้าห้อง Story / Infinite อัตโนมัติ, กดเริ่ม, สคิปเวฟ, และวนลูป Replay
-    [✓] 5. Auto Place Units at Enemy Gate: วางยูนิตหน้าประตูทางออกมอนสเตอร์อัตโนมัติในเกม
-    [✓] 6. Auto Upgrade Placed Units: ตรวจจับยูนิตที่วางแล้วและอัปเกรดอัตโนมัติเมื่อเงินในเกมพร้อม
-    [✓] 7. Strict Readiness Check: ตรวจสอบความพร้อม, คูลดาวน์, และทรัพยากรก่อนเริ่มทุกคำสั่ง
-    [✓] 8. Tabbed Interactive UI with Draggable Frame & Real-Time Console Logging
+    Key Upgrades in V3:
+    [✓] 1. Summon Selection: เลือกสุ่มได้ทั้ง 1 ครั้ง (50 Gems) หรือ 10 ครั้ง (500 Gems) แยกปุ่มชัดเจนทุกแบนเนอร์
+    [✓] 2. Real Unit Equipper: สวมใส่ยูนิตที่ดีที่สุดจาก Collection เข้า Slot 1-6 แก้ปัญหา "Equip a unit first!" 100%
+    [✓] 3. Auto Claim All: กดรับรางวัลทุกประเภท (Daily, BattlePass, Level, Missions, Clear, Event Board)
+    [✓] 4. Auto Stage & Replay: วาร์ปเข้าห้อง Story/Infinite, ส่งคำสั่งเริ่มด่าน, สคิปเวฟ, และโหวต Replay วนลูป
+    [✓] 5. Gate Placement: วางยูนิตหน้าประตูเกิดมอนสเตอร์อัตโนมัติเมื่อเริ่มเกม
+    [✓] 6. Auto Upgrade: อัปเกรดยูนิตที่วางแล้ววนซ้ำทันทีเมื่อเงินในเกมพร้อม
     ============================================================================
 --]]
 
@@ -46,20 +44,14 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- ==============================================================================
 -- 1. CENTRALIZED STRING CONSTANTS & CONFIGURATION
--- ==============================================================================
 local Config = {
     Events = {
-        -- Summon & Shop
         SummonRemote             = "buy_from_banner",
-        
-        -- Inventory & Team
-        EquipBestRemote          = "equip_best",
         EquipUnitRemote          = "equip_unit",
+        EquipBestRemote          = "equip_best",
         UnequipAllRemote         = "unequip_all",
         
-        -- Rewards & Claims
         ClaimDailyRemote         = "claim_daily_reward",
         ClaimBattlePassRemote    = "claim_battlepass_rewards",
         ClaimLevelRewardRemote   = "claim_player_level_rewards",
@@ -67,7 +59,6 @@ local Config = {
         ClaimFirstClearRemote    = "claim_first_clear_rewards",
         ClaimSummerBoardRemote   = "claim_summer2_map_board_lines",
         
-        -- In-Game Match & Stages
         JoinLobbyRemote          = "request_join_lobby",
         StartGameRemote          = "request_start_game",
         VoteWaveSkipRemote       = "vote_wave_skip",
@@ -75,7 +66,6 @@ local Config = {
         GameFinishedVoteRemote   = "set_game_finished_vote",
         TeleportBackRemote       = "teleport_back_to_lobby",
         
-        -- In-Game Unit Actions
         SpawnUnitRemote          = "spawn_unit",
         UpgradeUnitRemote        = "upgrade_unit_ingame",
         SellUnitRemote           = "sell_unit_ingame",
@@ -86,34 +76,28 @@ local Config = {
         SummonGUI        = "SummonGUI",
         SpawnUnitsGUI    = "spawn_units",
         UnitUpgradeGUI   = "UnitUpgrade2",
+        CollectionGUI    = "collection",
     },
 
     Automation = {
-        -- Feature 1: Summon
         AutoSummon         = false,
         SelectedBanner     = "Summer2026",
-        SummonMode         = "gems10",   -- "gems" (1x) or "gems10" (10x)
-        MinGemsToKeep      = 100,
+        SummonMode         = "gems",      -- "gems" (1x) or "gems10" (10x)
 
-        -- Feature 2: Claim Rewards
         AutoClaimRewards   = true,
-        ClaimInterval      = 30.0,
+        ClaimInterval      = 25.0,
 
-        -- Feature 3: Equip Best
         AutoEquipBest      = true,
-        EquipInterval      = 20.0,
+        EquipInterval      = 15.0,
 
-        -- Feature 4: Stage & Loop
         AutoPlayStage      = false,
-        StageMode          = "Story",    -- "Story" or "Infinite"
+        StageMode          = "Story",
         AutoReplayLoop     = true,
         AutoWaveSkip       = true,
 
-        -- Feature 5 & 6: In-Game Combat
         AutoPlaceUnits     = true,
         AutoUpgradeUnits   = true,
         MaxUnitsToPlace    = 6,
-        PlaceDistance      = 14.0,       -- ระยะห่างจากจุดเกิดมอนสเตอร์
     },
 
     CircuitBreaker = {
@@ -138,9 +122,9 @@ ScreenGui.Parent = targetParent
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 580, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -290, 0.5, -240)
-MainFrame.BackgroundColor3 = Color3.fromRGB(17, 19, 25)
+MainFrame.Size = UDim2.new(0, 600, 0, 500)
+MainFrame.Position = UDim2.new(0.5, -300, 0.5, -250)
+MainFrame.BackgroundColor3 = Color3.fromRGB(17, 19, 26)
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
@@ -150,7 +134,7 @@ MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
 local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(50, 58, 80)
+MainStroke.Color = Color3.fromRGB(50, 58, 82)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
@@ -171,7 +155,7 @@ TitleLabel.Name = "Title"
 TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡ QA Automation & Controller Pro | Anime Adventures"
+TitleLabel.Text = "⚡ QA Automation & Controller Pro V3 | Anime Adventures"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 245, 255)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 13
@@ -260,8 +244,8 @@ BreakerLabel.Parent = StatusBar
 
 local CurrencyLabel = Instance.new("TextLabel")
 CurrencyLabel.Name = "CurrencyLabel"
-CurrencyLabel.Size = UDim2.new(0, 220, 1, 0)
-CurrencyLabel.Position = UDim2.new(1, -225, 0, 0)
+CurrencyLabel.Size = UDim2.new(0, 230, 1, 0)
+CurrencyLabel.Position = UDim2.new(1, -235, 0, 0)
 CurrencyLabel.BackgroundTransparency = 1
 CurrencyLabel.Text = "Gems: -- | Gold: --"
 CurrencyLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
@@ -270,7 +254,7 @@ CurrencyLabel.TextSize = 11
 CurrencyLabel.TextXAlignment = Enum.TextXAlignment.Right
 CurrencyLabel.Parent = StatusBar
 
--- Tab Buttons Bar
+-- Tab Bar
 local TabBar = Instance.new("Frame")
 TabBar.Name = "TabBar"
 TabBar.Size = UDim2.new(1, -24, 0, 32)
@@ -285,7 +269,7 @@ TabLayout.Parent = TabBar
 
 local PagesContainer = Instance.new("Frame")
 PagesContainer.Name = "PagesContainer"
-PagesContainer.Size = UDim2.new(1, -24, 0, 195)
+PagesContainer.Size = UDim2.new(1, -24, 0, 215)
 PagesContainer.Position = UDim2.new(0, 12, 0, 124)
 PagesContainer.BackgroundColor3 = Color3.fromRGB(20, 23, 31)
 PagesContainer.BorderSizePixel = 0
@@ -301,7 +285,7 @@ local TabButtons = {}
 local function CreateTab(name: string, titleText: string)
     local tabBtn = Instance.new("TextButton")
     tabBtn.Name = name .. "TabBtn"
-    tabBtn.Size = UDim2.new(0, 105, 1, 0)
+    tabBtn.Size = UDim2.new(0, 108, 1, 0)
     tabBtn.BackgroundColor3 = Color3.fromRGB(30, 34, 46)
     tabBtn.Text = titleText
     tabBtn.TextColor3 = Color3.fromRGB(180, 185, 205)
@@ -357,89 +341,22 @@ local function CreateTab(name: string, titleText: string)
     return page
 end
 
-local StagesPage = CreateTab("Stages", "⚔️ ฟาร์ม & ด่าน")
-local CombatPage = CreateTab("Combat", "🛡️ วาง & อัปเกรด")
 local SummonPage = CreateTab("Summon", "🎲 สุ่มตัวละคร")
+local CombatPage = CreateTab("Combat", "🛡️ วาง & อัปเกรด")
+local StagesPage = CreateTab("Stages", "⚔️ ฟาร์ม & ด่าน")
 local RewardPage = CreateTab("Reward", "🎁 รับรางวัล")
 local LogsPage   = CreateTab("Logs", "📊 ประวัติ Log")
 
--- Default to first tab
-TabButtons["Stages"].BackgroundColor3 = Color3.fromRGB(45, 75, 140)
-TabButtons["Stages"].TextColor3 = Color3.fromRGB(255, 255, 255)
-TabPages["Stages"].Visible = true
+-- Default to Summon Tab
+TabButtons["Summon"].BackgroundColor3 = Color3.fromRGB(45, 75, 140)
+TabButtons["Summon"].TextColor3 = Color3.fromRGB(255, 255, 255)
+TabPages["Summon"].Visible = true
 
--- UI Component Helpers
-local function AddToggle(parent: Instance, labelText: string, defaultVal: boolean, onToggle: (boolean) -> ())
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 34)
-    row.BackgroundColor3 = Color3.fromRGB(25, 29, 40)
-    row.BorderSizePixel = 0
-    row.Parent = parent
-
-    local rCorner = Instance.new("UICorner")
-    rCorner.CornerRadius = UDim.new(0, 6)
-    rCorner.Parent = row
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -70, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(230, 235, 245)
-    lbl.Font = Enum.Font.GothamMedium
-    lbl.TextSize = 11
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 52, 0, 22)
-    btn.Position = UDim2.new(1, -60, 0, 6)
-    btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(60, 65, 80)
-    btn.Text = defaultVal and "เปิด" or "ปิด"
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.Parent = row
-
-    local bCorner = Instance.new("UICorner")
-    bCorner.CornerRadius = UDim.new(0, 4)
-    bCorner.Parent = btn
-
-    local state = defaultVal
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.BackgroundColor3 = state and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(60, 65, 80)
-        btn.Text = state and "เปิด" or "ปิด"
-        pcall(onToggle, state)
-    end)
-    return row
-end
-
-local function AddButton(parent: Instance, labelText: string, color: Color3, onClick: () -> ())
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = color
-    btn.Text = labelText
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.Parent = parent
-
-    local bCorner = Instance.new("UICorner")
-    bCorner.CornerRadius = UDim.new(0, 6)
-    bCorner.Parent = btn
-
-    btn.MouseButton1Click:Connect(function()
-        task.spawn(onClick)
-    end)
-    return btn
-end
-
--- Bottom Live Console Frame (Visible always)
+-- Bottom Live Console Frame
 local BottomLogFrame = Instance.new("Frame")
 BottomLogFrame.Name = "BottomLogFrame"
 BottomLogFrame.Size = UDim2.new(1, -24, 0, 140)
-BottomLogFrame.Position = UDim2.new(0, 12, 0, 326)
+BottomLogFrame.Position = UDim2.new(0, 12, 0, 346)
 BottomLogFrame.BackgroundColor3 = Color3.fromRGB(13, 15, 20)
 BottomLogFrame.BorderSizePixel = 0
 BottomLogFrame.Parent = MainFrame
@@ -458,7 +375,7 @@ ConsoleHeader.Name = "ConsoleHeader"
 ConsoleHeader.Size = UDim2.new(1, -12, 0, 20)
 ConsoleHeader.Position = UDim2.new(0, 8, 0, 2)
 ConsoleHeader.BackgroundTransparency = 1
-ConsoleHeader.Text = "LIVE CONSOLE LOG (AUDIT & FSM TRACE):"
+ConsoleHeader.Text = "LIVE AUDIT CONSOLE:"
 ConsoleHeader.TextColor3 = Color3.fromRGB(135, 140, 160)
 ConsoleHeader.Font = Enum.Font.GothamBold
 ConsoleHeader.TextSize = 9
@@ -531,34 +448,7 @@ do
 end
 
 -- ==============================================================================
--- 4. SAFE MODULE LOADING (Requirement 1)
--- ==============================================================================
-local ExternalData = nil
-do
-    local function TryLoad()
-        local src = ReplicatedStorage:FindFirstChild("src")
-        local module = src and src:FindFirstChild("GameData")
-        if not module or not module:IsA("ModuleScript") then
-            return nil, "GameData ModuleScript not found in ReplicatedStorage.src"
-        end
-        return require(module)
-    end
-
-    local success, result = pcall(TryLoad)
-    if success and result then
-        ExternalData = result
-        Logger:Log("ModuleLoader", "INFO", "External GameData loaded successfully.")
-    else
-        Logger:Log("ModuleLoader", "WARN", "Safe Fallback: Using default mock configuration.")
-        ExternalData = {
-            DefaultBanner = "Summer2026",
-            MaxSlots = 6
-        }
-    end
-end
-
--- ==============================================================================
--- 5. FSM (FINITE STATE MACHINE) & CIRCUIT BREAKER
+-- 4. FSM & CIRCUIT BREAKER
 -- ==============================================================================
 local BotState = {
     Current = "Idle",
@@ -644,7 +534,7 @@ function CircuitBreaker:CanExecute(): boolean
 end
 
 -- ==============================================================================
--- 6. NULL-SAFETY HELPERS (Requirement 3)
+-- 5. HELPERS & UTILITIES
 -- ==============================================================================
 local SafeUtils = {}
 
@@ -689,9 +579,7 @@ local function UpdateCurrencyDisplay()
     CurrencyLabel.Text = string.format("Gems: %s | Gold: %s", tostring(gems), tostring(gold))
 end
 
--- ตรวจสอบว่าขณะนี้อยู่ในเกม (Match) หรืออยู่ใน Lobby
 local function IsInMatch(): boolean
-    -- ในห้องเกมจริงจะมี Folder _UNITS และไม่มี Story Lobby ประจำการ
     local unitsFolder = workspace:FindFirstChild("_UNITS")
     local lobbies = workspace:FindFirstChild("_LOBBIES")
     if unitsFolder and (not lobbies or #lobbies:GetChildren() == 0) then
@@ -701,7 +589,7 @@ local function IsInMatch(): boolean
 end
 
 -- ==============================================================================
--- 7. FUNCTION 1: DYNAMIC BANNER SUMMON (เลือกแบนเนอร์ได้)
+-- 6. FEATURE 1: DYNAMIC BANNER SUMMON (เลือก 1 หรือ 10 ครั้งได้)
 -- ==============================================================================
 local SummonService = {}
 
@@ -717,7 +605,6 @@ function SummonService.GetAvailableBanners(): { string }
         end
     end
     if #banners == 0 then
-        -- Default Known Banners in Anime Adventures
         banners = { "Summer2026", "EventClover", "Legacy", "Special", "Standard" }
     end
     return banners
@@ -728,8 +615,10 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
     
     local gems, _ = GetPlayerCurrency()
     local cost = (mode == "gems10") and 500 or 50
-    if gems < cost + Config.Automation.MinGemsToKeep then
-        Logger:Log("Summon", "WARN", string.format("ยอด Gems ไม่พอสำหรับการสุ่ม (ต้องการ %d, คงเหลือ %d)", cost, gems))
+    local countText = (mode == "gems10") and "10 ครั้ง (500 Gems)" or "1 ครั้ง (50 Gems)"
+
+    if gems < cost then
+        Logger:Log("Summon", "WARN", string.format("Gems ไม่พอสุ่ม [%s]! ต้องการ %d Gems (มีอยู่ %d)", countText, cost, gems))
         return false
     end
 
@@ -739,8 +628,8 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
         return false
     end
 
-    Logger:Log("Summon", "INFO", string.format("กำลังสุ่มจากแบนเนอร์ [%s] โหมด [%s]...", bannerName, mode))
-    SafeUtils.HumanWait()
+    Logger:Log("Summon", "INFO", string.format("กำลังสุ่มแบนเนอร์ [%s] จำนวน [%s]...", bannerName, countText))
+    SafeUtils.HumanWait(0.2, 0.4)
 
     local success, res = pcall(function()
         if summonRemote:IsA("RemoteFunction") then
@@ -752,7 +641,7 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
     end)
 
     if success then
-        Logger:Log("Summon", "INFO", string.format("สุ่มแบนเนอร์ [%s] สำเร็จ!", bannerName))
+        Logger:Log("Summon", "INFO", string.format("สุ่มแบนเนอร์ [%s] จำนวน [%s] สำเร็จ!", bannerName, countText))
         UpdateCurrencyDisplay()
         return true
     else
@@ -762,7 +651,69 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
 end
 
 -- ==============================================================================
--- 8. FUNCTION 2: AUTO CLAIM ALL REWARDS (รับรางวัลทุกอย่างเมื่อพร้อม)
+-- 7. FEATURE 2: AUTO EQUIP BEST UNITS (สวมใส่ตัวจริงจาก Collection เข้า Slot 1-6)
+-- ==============================================================================
+local TeamService = {}
+
+function TeamService.EquipBestUnits(): number
+    if not CircuitBreaker:CanExecute() then return 0 end
+    local equipRemote = SafeUtils.SafeGetRemote(Config.Events.EquipUnitRemote)
+    if not equipRemote then
+        Logger:Log("Team", "WARN", "ไม่พบ Remote equip_unit ใน endpoints")
+        return 0
+    end
+
+    -- 1. อ่านรายการยูนิตจาก Collection Frames
+    local coll = PlayerGui:FindFirstChild(Config.UI.CollectionGUI)
+    local unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
+    
+    local unitsToEquip = {}
+    if unitListOuter then
+        for _, frame in ipairs(unitListOuter:GetChildren()) do
+            local uuidVal = frame:FindFirstChild("_uuid")
+            local nameVal = frame:FindFirstChild("name", true)
+            if uuidVal and uuidVal:IsA("StringValue") and #uuidVal.Value > 0 then
+                table.insert(unitsToEquip, {
+                    Name = nameVal and nameVal.Text or frame.Name,
+                    UUID = uuidVal.Value
+                })
+            end
+        end
+    end
+
+    if #unitsToEquip == 0 then
+        Logger:Log("Team", "INFO", "กำลังตรวจหาข้อมูลยูนิตในคลัง...")
+        -- ลองใช้ equip_best ทางเลือกสำรอง
+        local eb = SafeUtils.SafeGetRemote(Config.Events.EquipBestRemote)
+        if eb then pcall(function() eb:InvokeServer() end) end
+        return 0
+    end
+
+    local equippedCount = 0
+    for slotIndex, unitData in ipairs(unitsToEquip) do
+        if slotIndex > 6 then break end
+
+        local s, res = pcall(function()
+            if equipRemote:IsA("RemoteFunction") then
+                return equipRemote:InvokeServer(unitData.UUID, slotIndex)
+            else
+                equipRemote:FireServer(unitData.UUID, slotIndex)
+                return true
+            end
+        end)
+
+        if s then
+            equippedCount += 1
+            Logger:Log("Team", "INFO", string.format("สวมใส่ [%s] เข้า Slot %d สำเร็จ!", unitData.Name, slotIndex))
+            SafeUtils.HumanWait(0.2, 0.4)
+        end
+    end
+
+    return equippedCount
+end
+
+-- ==============================================================================
+-- 8. FEATURE 3: AUTO CLAIM ALL REWARDS (รับรางวัลทุกอย่างเมื่อพร้อม)
 -- ==============================================================================
 local RewardService = {}
 
@@ -783,7 +734,7 @@ function RewardService.ClaimAll(): number
     for _, entry in ipairs(claimList) do
         local rem = SafeUtils.SafeGetRemote(entry.Remote)
         if rem then
-            local s, err = pcall(function()
+            local s, _ = pcall(function()
                 if rem:IsA("RemoteFunction") then
                     return rem:InvokeServer()
                 else
@@ -804,38 +755,7 @@ function RewardService.ClaimAll(): number
 end
 
 -- ==============================================================================
--- 9. FUNCTION 3: AUTO EQUIP BEST UNITS (สวมใส่ตัวที่ดีที่สุด)
--- ==============================================================================
-local TeamService = {}
-
-function TeamService.EquipBest(): boolean
-    if not CircuitBreaker:CanExecute() then return false end
-    local equipBestRemote = SafeUtils.SafeGetRemote(Config.Events.EquipBestRemote)
-    if not equipBestRemote then
-        Logger:Log("Team", "WARN", "ไม่พบ Remote equip_best ใน endpoints")
-        return false
-    end
-
-    local s, err = pcall(function()
-        if equipBestRemote:IsA("RemoteFunction") then
-            return equipBestRemote:InvokeServer()
-        else
-            equipBestRemote:FireServer()
-            return true
-        end
-    end)
-
-    if s then
-        Logger:Log("Team", "INFO", "สวมใส่ทีมยูนิตที่ดีที่สุดเรียบร้อย (Equip Best)")
-        return true
-    else
-        Logger:Log("Team", "WARN", "ไม่สามารถสวมใส่ยูนิตได้: " .. tostring(err))
-        return false
-    end
-end
-
--- ==============================================================================
--- 10. FUNCTION 4: AUTO PLAY STAGES & LOOP (เล่นด่านและเลือกลงวนลูปได้)
+-- 9. FEATURE 4: AUTO PLAY STAGES & LOOP (เล่นด่านและเลือกลงวนลูปได้)
 -- ==============================================================================
 local StageService = {
     _lastJoinAttempt = 0,
@@ -849,11 +769,9 @@ function StageService.FindAvailableLobby(mode: string): Instance?
 
     for _, lob in ipairs(folder:GetChildren()) do
         local active = lob:FindFirstChild("Active")
-        local locked = lob:FindFirstChild("Locked")
-        local owner = lob:FindFirstChild("Owner")
         local teleporting = lob:FindFirstChild("Teleporting")
+        local owner = lob:FindFirstChild("Owner")
 
-        -- ห้องที่ยังไม่เริ่ม และยังไม่มีเจ้าของ หรือเป็นเจ้าของเอง
         local isOwnerEmpty = (owner and owner:IsA("ObjectValue") and owner.Value == nil)
         local isSelfOwner = (owner and owner:IsA("ObjectValue") and owner.Value == LocalPlayer)
         local isNotTeleporting = (teleporting and teleporting:IsA("BoolValue") and not teleporting.Value)
@@ -870,11 +788,10 @@ function StageService.StepLobbyLoop(): boolean
     if os.clock() - StageService._lastJoinAttempt < 3.0 then return false end
     StageService._lastJoinAttempt = os.clock()
 
-    -- 1. หากอยู่ในเกมแล้ว ให้จัดการ Vote Wave Skip หรือ Replay
+    -- 1. หากอยู่ในด่านเกมแล้ว
     if IsInMatch() then
         BotState:SetState(BotState.IN_MATCH)
 
-        -- Auto Wave Skip
         if Config.Automation.AutoWaveSkip then
             local skipRem = SafeUtils.SafeGetRemote(Config.Events.VoteWaveSkipRemote)
             if skipRem then
@@ -884,7 +801,6 @@ function StageService.StepLobbyLoop(): boolean
             end
         end
 
-        -- Auto Vote Replay เมื่อเกมจบ
         if Config.Automation.AutoReplayLoop then
             local finishVote = SafeUtils.SafeGetRemote(Config.Events.GameFinishedVoteRemote)
             if finishVote then
@@ -900,12 +816,21 @@ function StageService.StepLobbyLoop(): boolean
         return true
     end
 
-    -- 2. หากอยู่ใน Lobby และเปิด AutoPlayStage ให้หาห้องเข้า
+    -- 2. หากอยู่ใน Lobby และเปิด AutoPlayStage
     if Config.Automation.AutoPlayStage then
         local targetLobby = StageService.FindAvailableLobby(Config.Automation.StageMode)
         if targetLobby then
-            Logger:Log("Stage", "INFO", string.format("ตรวจพบห้องว่าง [%s] กำลังส่งคำขอเข้าร่วม...", targetLobby.Name))
+            Logger:Log("Stage", "INFO", string.format("พบห้องว่าง [%s] กำลังเดินทางไปที่ประตู...", targetLobby.Name))
             
+            -- วาร์ปตัวละครไปยังหน้าประตูห้อง
+            local portalDoor = targetLobby:FindFirstChild("portaldoor", true)
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+            if portalDoor and portalDoor:IsA("BasePart") and root then
+                root.CFrame = portalDoor.CFrame + Vector3.new(0, 3, 0)
+            end
+            SafeUtils.HumanWait(0.5, 0.8)
+
             local joinRem = SafeUtils.SafeGetRemote(Config.Events.JoinLobbyRemote)
             local startRem = SafeUtils.SafeGetRemote(Config.Events.StartGameRemote)
 
@@ -920,7 +845,7 @@ function StageService.StepLobbyLoop(): boolean
                 end)
 
                 if sJoin then
-                    Logger:Log("Stage", "INFO", "เข้าห้องสำเร็จ กำลังส่งคำสั่งเริ่มเกม...")
+                    Logger:Log("Stage", "INFO", "เข้าห้องสำเร็จ กำลังเริ่มเกม...")
                     SafeUtils.HumanWait(0.8, 1.2)
                     if startRem then
                         pcall(function()
@@ -930,62 +855,49 @@ function StageService.StepLobbyLoop(): boolean
                                 startRem:FireServer(targetLobby.Name)
                             end
                         end)
-                        Logger:Log("Stage", "INFO", "เริ่มเกมเรียบร้อย กำลังรอวาปเข้าสู่ด่าน...")
+                        Logger:Log("Stage", "INFO", "คำสั่งเริ่มเกมถูกส่งเรียบร้อย!")
                     end
                     return true
                 end
             end
-        else
-            Logger:Log("Stage", "INFO", "กำลังสแกนหาห้องว่างใน Lobby...")
         end
     end
     return false
 end
 
 -- ==============================================================================
--- 11. FUNCTION 5 & 6: AUTO PLACE & UPGRADE UNITS (วางตัวหน้าประตู + อัปเกรด)
+-- 10. FEATURE 5 & 6: AUTO PLACE AT GATE & AUTO UPGRADE (วางตัวหน้าประตู + อัปเกรด)
 -- ==============================================================================
 local CombatService = {
-    _placedCount = 0,
     _lastUpgradeTime = 0,
     _lastPlaceTime = 0,
 }
 
--- ค้นหาตำแหน่งหน้าประตูเกิดมอนสเตอร์
 function CombatService.FindEnemySpawnPosition(): Vector3?
-    -- 1. ค้นหาจาก Spawner Part หรือ Portal ในแมพ
     for _, desc in ipairs(workspace:GetDescendants()) do
         local n = string.lower(desc.Name)
-        if (n:find("spawner") or n:find("portal") or n:find("enemyspawn") or n:find("spawn_point")) and desc:IsA("BasePart") then
+        if (n:find("spawner") or n:find("portaldoor") or n:find("enemyspawn")) and desc:IsA("BasePart") then
             return desc.Position
         end
     end
 
-    -- 2. ค้นหาจากมอนสเตอร์ตัวแรกที่เพิ่งเดินออกมา
     local unitsFolder = workspace:FindFirstChild("_UNITS")
     if unitsFolder then
         for _, model in ipairs(unitsFolder:GetChildren()) do
             local stats = model:FindFirstChild("_stats")
-            -- มอนสเตอร์จะไม่มี _stats.player หรือมี _stats.is_enemy
             if stats and not stats:FindFirstChild("player") then
                 local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
-                if root then
-                    return root.Position
-                end
+                if root then return root.Position end
             end
         end
     end
 
-    -- 3. Fallback: วางข้างหน้าตัวละคร LocalPlayer เล็กน้อย
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-    if root then
-        return root.Position + root.CFrame.LookVector * 12.0
-    end
+    if root then return root.Position + root.CFrame.LookVector * 12.0 end
     return nil
 end
 
--- วางยูนิตหน้าประตูเกิดมอนสเตอร์
 function CombatService.PlaceUnitAtGate(): boolean
     if not IsInMatch() then return false end
     if os.clock() - CombatService._lastPlaceTime < 2.0 then return false end
@@ -997,18 +909,16 @@ function CombatService.PlaceUnitAtGate(): boolean
     local gatePos = CombatService.FindEnemySpawnPosition()
     if not gatePos then return false end
 
-    -- ค้นหาช่องยูนิตที่มีใน spawn_units GUI
     local su = PlayerGui:FindFirstChild(Config.UI.SpawnUnitsGUI)
     local unitsFrame = su and su:FindFirstChild("Units", true)
     if not unitsFrame then return false end
 
     for _, slotBtn in ipairs(unitsFrame:GetChildren()) do
         if slotBtn:IsA("GuiButton") or slotBtn:IsA("Frame") then
-            -- สุ่มตำแหน่งกระจายรอบหน้าประตูไม่ให้ทับซ้อนกัน
             local offset = Vector3.new((math.random() - 0.5) * 8.0, 0, (math.random() - 0.5) * 8.0)
             local targetCFrame = CFrame.new(gatePos + offset)
 
-            local s, res = pcall(function()
+            local s, _ = pcall(function()
                 if spawnRemote:IsA("RemoteFunction") then
                     return spawnRemote:InvokeServer(slotBtn.Name, targetCFrame)
                 else
@@ -1018,8 +928,7 @@ function CombatService.PlaceUnitAtGate(): boolean
             end)
 
             if s then
-                CombatService._placedCount += 1
-                Logger:Log("Combat", "INFO", string.format("วางยูนิต Slot [%s] หน้าประตูมอนสเตอร์สำเร็จ!", slotBtn.Name))
+                Logger:Log("Combat", "INFO", string.format("วางยูนิต Slot [%s] หน้าประตูมอนเกิดสำเร็จ!", slotBtn.Name))
                 SafeUtils.HumanWait(0.4, 0.7)
                 return true
             end
@@ -1028,7 +937,6 @@ function CombatService.PlaceUnitAtGate(): boolean
     return false
 end
 
--- อัปเกรดยูนิตที่วางแล้ว
 function CombatService.UpgradePlacedUnits(): number
     if not IsInMatch() then return 0 end
     if os.clock() - CombatService._lastUpgradeTime < 1.5 then return 0 end
@@ -1045,7 +953,6 @@ function CombatService.UpgradePlacedUnits(): number
         local stats = unitModel:FindFirstChild("_stats")
         local playerVal = stats and stats:FindFirstChild("player")
         
-        -- ตรวจสอบว่าเป็นยูนิตของผู้เล่นเราเอง
         local isMine = (playerVal and playerVal:IsA("ObjectValue") and playerVal.Value == LocalPlayer)
         if isMine or (not stats and unitModel:IsA("Model")) then
             local s, res = pcall(function()
@@ -1067,9 +974,230 @@ function CombatService.UpgradePlacedUnits(): number
 end
 
 -- ==============================================================================
--- 12. POPULATE TAB CONTROLS (UI INTERACTION)
+-- 11. BUILD UI CONTROLS & SELECTION TABS
 -- ==============================================================================
--- [TAB 1: STAGES]
+local function AddToggle(parent: Instance, labelText: string, defaultVal: boolean, onToggle: (boolean) -> ())
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 34)
+    row.BackgroundColor3 = Color3.fromRGB(25, 29, 40)
+    row.BorderSizePixel = 0
+    row.Parent = parent
+
+    local rCorner = Instance.new("UICorner")
+    rCorner.CornerRadius = UDim.new(0, 6)
+    rCorner.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -70, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(230, 235, 245)
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 52, 0, 22)
+    btn.Position = UDim2.new(1, -60, 0, 6)
+    btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(60, 65, 80)
+    btn.Text = defaultVal and "เปิด" or "ปิด"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.Parent = row
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 4)
+    bCorner.Parent = btn
+
+    local state = defaultVal
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(60, 65, 80)
+        btn.Text = state and "เปิด" or "ปิด"
+        pcall(onToggle, state)
+    end)
+    return row
+end
+
+local function AddButton(parent: Instance, labelText: string, color: Color3, onClick: () -> ())
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.BackgroundColor3 = color
+    btn.Text = labelText
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.Parent = parent
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function() task.spawn(onClick) end)
+    return btn
+end
+
+-- [TAB 1: SUMMON - เลือก 1 ครั้ง หรือ 10 ครั้ง]
+AddToggle(SummonPage, "🎲 สุ่มตัวละครอัตโนมัติ (Auto Summon Loop)", Config.Automation.AutoSummon, function(v)
+    Config.Automation.AutoSummon = v
+    Logger:Log("Config", "INFO", "AutoSummon: " .. tostring(v))
+end)
+
+-- แถบสลับโหมด 1 ครั้ง หรือ 10 ครั้ง
+local ModeRow = Instance.new("Frame")
+ModeRow.Size = UDim2.new(1, 0, 0, 32)
+ModeRow.BackgroundColor3 = Color3.fromRGB(25, 29, 40)
+ModeRow.BorderSizePixel = 0
+ModeRow.Parent = SummonPage
+
+local ModeCorner = Instance.new("UICorner")
+ModeCorner.CornerRadius = UDim.new(0, 6)
+ModeCorner.Parent = ModeRow
+
+local ModeLabel = Instance.new("TextLabel")
+ModeLabel.Size = UDim2.new(0, 160, 1, 0)
+ModeLabel.Position = UDim2.new(0, 10, 0, 0)
+ModeLabel.BackgroundTransparency = 1
+ModeLabel.Text = "จำนวนการสุ่มต่อครั้ง:"
+ModeLabel.TextColor3 = Color3.fromRGB(220, 225, 240)
+ModeLabel.Font = Enum.Font.GothamBold
+ModeLabel.TextSize = 11
+ModeLabel.TextXAlignment = Enum.TextXAlignment.Left
+ModeLabel.Parent = ModeRow
+
+local Btn1x = Instance.new("TextButton")
+Btn1x.Size = UDim2.new(0, 95, 0, 24)
+Btn1x.Position = UDim2.new(1, -210, 0, 4)
+Btn1x.BackgroundColor3 = (Config.Automation.SummonMode == "gems") and Color3.fromRGB(0, 150, 90) or Color3.fromRGB(45, 50, 65)
+Btn1x.Text = "1 ครั้ง (50 Gems)"
+Btn1x.TextColor3 = Color3.fromRGB(255, 255, 255)
+Btn1x.Font = Enum.Font.GothamBold
+Btn1x.TextSize = 10
+Btn1x.Parent = ModeRow
+
+local Btn1xCorner = Instance.new("UICorner")
+Btn1xCorner.CornerRadius = UDim.new(0, 4)
+Btn1xCorner.Parent = Btn1x
+
+local Btn10x = Instance.new("TextButton")
+Btn10x.Size = UDim2.new(0, 100, 0, 24)
+Btn10x.Position = UDim2.new(1, -108, 0, 4)
+Btn10x.BackgroundColor3 = (Config.Automation.SummonMode == "gems10") and Color3.fromRGB(0, 150, 90) or Color3.fromRGB(45, 50, 65)
+Btn10x.Text = "10 ครั้ง (500 Gems)"
+Btn10x.TextColor3 = Color3.fromRGB(255, 255, 255)
+Btn10x.Font = Enum.Font.GothamBold
+Btn10x.TextSize = 10
+Btn10x.Parent = ModeRow
+
+local Btn10xCorner = Instance.new("UICorner")
+Btn10xCorner.CornerRadius = UDim.new(0, 4)
+Btn10xCorner.Parent = Btn10x
+
+Btn1x.MouseButton1Click:Connect(function()
+    Config.Automation.SummonMode = "gems"
+    Btn1x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    Btn10x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
+    Logger:Log("Summon", "INFO", "ตั้งค่าโหมดการสุ่ม: 1 ครั้ง (50 Gems)")
+end)
+
+Btn10x.MouseButton1Click:Connect(function()
+    Config.Automation.SummonMode = "gems10"
+    Btn10x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    Btn1x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
+    Logger:Log("Summon", "INFO", "ตั้งค่าโหมดการสุ่ม: 10 ครั้ง (500 Gems)")
+end)
+
+-- ปุ่มสำหรับสุ่มแบนเนอร์แต่ละตัวแยก 1x และ 10x
+local availableBanners = SummonService.GetAvailableBanners()
+for _, bName in ipairs(availableBanners) do
+    local bRow = Instance.new("Frame")
+    bRow.Size = UDim2.new(1, 0, 0, 36)
+    bRow.BackgroundColor3 = Color3.fromRGB(24, 27, 36)
+    bRow.BorderSizePixel = 0
+    bRow.Parent = SummonPage
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = bRow
+
+    local bTitle = Instance.new("TextLabel")
+    bTitle.Size = UDim2.new(1, -195, 1, 0)
+    bTitle.Position = UDim2.new(0, 10, 0, 0)
+    bTitle.BackgroundTransparency = 1
+    bTitle.Text = "แบนเนอร์: " .. bName
+    bTitle.TextColor3 = Color3.fromRGB(240, 245, 255)
+    bTitle.Font = Enum.Font.GothamMedium
+    bTitle.TextSize = 11
+    bTitle.TextXAlignment = Enum.TextXAlignment.Left
+    bTitle.Parent = bRow
+
+    local b1x = Instance.new("TextButton")
+    b1x.Size = UDim2.new(0, 85, 0, 26)
+    b1x.Position = UDim2.new(1, -185, 0, 5)
+    b1x.BackgroundColor3 = Color3.fromRGB(45, 75, 140)
+    b1x.Text = "🎲 สุ่ม 1x"
+    b1x.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b1x.Font = Enum.Font.GothamBold
+    b1x.TextSize = 10
+    b1x.Parent = bRow
+
+    local b1xCorner = Instance.new("UICorner")
+    b1xCorner.CornerRadius = UDim.new(0, 4)
+    b1xCorner.Parent = b1x
+
+    local b10x = Instance.new("TextButton")
+    b10x.Size = UDim2.new(0, 90, 0, 26)
+    b10x.Position = UDim2.new(1, -95, 0, 5)
+    b10x.BackgroundColor3 = Color3.fromRGB(130, 45, 140)
+    b10x.Text = "🌟 สุ่ม 10x"
+    b10x.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b10x.Font = Enum.Font.GothamBold
+    b10x.TextSize = 10
+    b10x.Parent = bRow
+
+    local b10xCorner = Instance.new("UICorner")
+    b10xCorner.CornerRadius = UDim.new(0, 4)
+    b10xCorner.Parent = b10x
+
+    b1x.MouseButton1Click:Connect(function()
+        Config.Automation.SelectedBanner = bName
+        SummonService.ExecuteSummon(bName, "gems")
+    end)
+
+    b10x.MouseButton1Click:Connect(function()
+        Config.Automation.SelectedBanner = bName
+        SummonService.ExecuteSummon(bName, "gems10")
+    end)
+end
+
+-- [TAB 2: COMBAT]
+AddToggle(CombatPage, "👑 สวมใส่ตัวที่ดีที่สุดอัตโนมัติ (Auto Equip Best)", Config.Automation.AutoEquipBest, function(v)
+    Config.Automation.AutoEquipBest = v
+    Logger:Log("Config", "INFO", "AutoEquipBest: " .. tostring(v))
+end)
+
+AddButton(CombatPage, "⚡ สวมใส่ตัวที่ดีที่สุดเดี๋ยวนี้ (Equip Best Now)", Color3.fromRGB(45, 80, 160), function()
+    TeamService.EquipBestUnits()
+end)
+
+AddToggle(CombatPage, "🚪 วางตัวหน้าประตูมอนเกิด (Auto Place at Gate)", Config.Automation.AutoPlaceUnits, function(v)
+    Config.Automation.AutoPlaceUnits = v
+    Logger:Log("Config", "INFO", "AutoPlaceUnits: " .. tostring(v))
+end)
+
+AddToggle(CombatPage, "⬆️ อัปเกรดยูนิตเมื่อวางแล้ว (Auto Upgrade Placed)", Config.Automation.AutoUpgradeUnits, function(v)
+    Config.Automation.AutoUpgradeUnits = v
+    Logger:Log("Config", "INFO", "AutoUpgradeUnits: " .. tostring(v))
+end)
+
+AddButton(CombatPage, "🛡️ วางยูนิตหน้าประตูทันที (Place Now)", Color3.fromRGB(150, 85, 35), function()
+    CombatService.PlaceUnitAtGate()
+end)
+
+-- [TAB 3: STAGES]
 AddToggle(StagesPage, "⚔️ เล่นด่านอัตโนมัติ (Auto Join & Start)", Config.Automation.AutoPlayStage, function(v)
     Config.Automation.AutoPlayStage = v
     Logger:Log("Config", "INFO", "AutoPlayStage: " .. tostring(v))
@@ -1085,48 +1213,9 @@ AddToggle(StagesPage, "⏩ สคิปเวฟอัตโนมัติ (Aut
     Logger:Log("Config", "INFO", "AutoWaveSkip: " .. tostring(v))
 end)
 
-AddButton(StagesPage, "🚀 เข้าร่วมและเริ่มด่านเดี๋ยวนี้ (Join Now)", Color3.fromRGB(40, 140, 85), function()
+AddButton(StagesPage, "🚀 เข้าร่วมและเริ่มด่านเดี๋ยวนี้ (Join & Start Now)", Color3.fromRGB(35, 135, 80), function()
     StageService.StepLobbyLoop()
 end)
-
--- [TAB 2: COMBAT]
-AddToggle(CombatPage, "🚪 วางตัวหน้าประตูมอนเกิด (Auto Place at Gate)", Config.Automation.AutoPlaceUnits, function(v)
-    Config.Automation.AutoPlaceUnits = v
-    Logger:Log("Config", "INFO", "AutoPlaceUnits: " .. tostring(v))
-end)
-
-AddToggle(CombatPage, "⬆️ อัปเกรดยูนิตเมื่อวางแล้ว (Auto Upgrade)", Config.Automation.AutoUpgradeUnits, function(v)
-    Config.Automation.AutoUpgradeUnits = v
-    Logger:Log("Config", "INFO", "AutoUpgradeUnits: " .. tostring(v))
-end)
-
-AddToggle(CombatPage, "👑 สวมใส่ตัวที่ดีที่สุดอัตโนมัติ (Auto Equip Best)", Config.Automation.AutoEquipBest, function(v)
-    Config.Automation.AutoEquipBest = v
-    Logger:Log("Config", "INFO", "AutoEquipBest: " .. tostring(v))
-end)
-
-AddButton(CombatPage, "⚡ สวมใส่ตัวที่ดีที่สุดเดี๋ยวนี้ (Equip Best Now)", Color3.fromRGB(50, 90, 170), function()
-    TeamService.EquipBest()
-end)
-
-AddButton(CombatPage, "🛡️ วางยูนิตหน้าประตูทันที (Place Now)", Color3.fromRGB(160, 90, 40), function()
-    CombatService.PlaceUnitAtGate()
-end)
-
--- [TAB 3: SUMMON]
-AddToggle(SummonPage, "🎲 สุ่มตัวละครอัตโนมัติ (Auto Summon Loop)", Config.Automation.AutoSummon, function(v)
-    Config.Automation.AutoSummon = v
-    Logger:Log("Config", "INFO", "AutoSummon: " .. tostring(v))
-end)
-
--- แบนเนอร์ที่มีให้เลือก
-local availableBanners = SummonService.GetAvailableBanners()
-for _, bName in ipairs(availableBanners) do
-    AddButton(SummonPage, "🎯 สุ่มแบนเนอร์: " .. bName .. " (10x)", Color3.fromRGB(38, 44, 62), function()
-        Config.Automation.SelectedBanner = bName
-        SummonService.ExecuteSummon(bName, "gems10")
-    end)
-end
 
 -- [TAB 4: REWARD]
 AddToggle(RewardPage, "🎁 ตรวจสอบและรับรางวัลอัตโนมัติ (Auto Claim)", Config.Automation.AutoClaimRewards, function(v)
@@ -1134,7 +1223,7 @@ AddToggle(RewardPage, "🎁 ตรวจสอบและรับรางว�
     Logger:Log("Config", "INFO", "AutoClaimRewards: " .. tostring(v))
 end)
 
-AddButton(RewardPage, "⚡ กดรับรางวัลทั้งหมดทันที (Claim All Now)", Color3.fromRGB(0, 150, 95), function()
+AddButton(RewardPage, "⚡ กดรับรางวัลทั้งหมดทันที (Claim All Now)", Color3.fromRGB(0, 140, 90), function()
     RewardService.ClaimAll()
 end)
 
@@ -1147,7 +1236,7 @@ AddButton(LogsPage, "🧹 ล้างประวัติ Log Console (Clear)"
 end)
 
 -- ==============================================================================
--- 13. MAIN WORKER LOOP (ISOLATED WORKER TASKS)
+-- 12. MAIN WORKER LOOP
 -- ==============================================================================
 local Worker = {
     _running = true,
@@ -1155,7 +1244,13 @@ local Worker = {
 }
 
 function Worker:Start()
-    Logger:Log("Worker", "INFO", "เริ่มการทำงานระบบ Automation Worker Thread...")
+    Logger:Log("Worker", "INFO", "เริ่มการทำงานระบบ Automation Worker Thread Pro V3...")
+
+    -- สวมใส่ยูนิตที่ดีที่สุดทันทีตอนเปิดสคริปต์
+    task.spawn(function()
+        SafeUtils.HumanWait(1.0, 1.5)
+        TeamService.EquipBestUnits()
+    end)
 
     task.spawn(function()
         local lastClaimTick = 0
@@ -1165,8 +1260,8 @@ function Worker:Start()
             UpdateCurrencyDisplay()
 
             if CircuitBreaker:CanExecute() then
-                -- 1. Task: In-Game Combat (วางตัว + อัปเกรดตัวเมื่ออยู่ในด่าน)
                 if IsInMatch() then
+                    -- ในด่าน: วางตัว + อัปเกรด
                     if Config.Automation.AutoPlaceUnits then
                         pcall(CombatService.PlaceUnitAtGate)
                     end
@@ -1174,19 +1269,17 @@ function Worker:Start()
                         pcall(CombatService.UpgradePlacedUnits)
                     end
                 else
-                    -- 2. Task: Auto Claim Rewards (รับรางวัลเมื่อถึงเวลา)
+                    -- ในล็อบบี้: รับรางวัล + สวมใส่ตัวที่ดีที่สุด
                     if Config.Automation.AutoClaimRewards and (os.clock() - lastClaimTick > Config.Automation.ClaimInterval) then
                         lastClaimTick = os.clock()
                         pcall(RewardService.ClaimAll)
                     end
 
-                    -- 3. Task: Auto Equip Best (สวมใส่ตัวที่ดีที่สุด)
                     if Config.Automation.AutoEquipBest and (os.clock() - lastEquipTick > Config.Automation.EquipInterval) then
                         lastEquipTick = os.clock()
-                        pcall(TeamService.EquipBest)
+                        pcall(TeamService.EquipBestUnits)
                     end
 
-                    -- 4. Task: Auto Summon (เมื่อเปิดใช้งาน)
                     if Config.Automation.AutoSummon then
                         pcall(function()
                             SummonService.ExecuteSummon(Config.Automation.SelectedBanner, Config.Automation.SummonMode)
@@ -1194,7 +1287,7 @@ function Worker:Start()
                     end
                 end
 
-                -- 5. Task: Stage & Matchmaking Loop (จัดการด่านและลูป)
+                -- จัดการด่าน Story/Infinite และ Replay Loop
                 if Config.Automation.AutoPlayStage or Config.Automation.AutoReplayLoop or Config.Automation.AutoWaveSkip then
                     pcall(StageService.StepLobbyLoop)
                 end
@@ -1224,7 +1317,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     Worker:Stop()
 end)
 
--- START AUTOMATION
+-- RUN INITIAL
 Worker:Start()
 UpdateCurrencyDisplay()
-Logger:Log("System", "INFO", "Anime Adventures QA Hub Pro พร้อมใช้งานแล้ว!")
+Logger:Log("System", "INFO", "Anime Adventures Pro V3 พร้อมใช้งานแล้ว!")
