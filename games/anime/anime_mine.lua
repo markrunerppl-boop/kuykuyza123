@@ -1,20 +1,30 @@
 --[[
-    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V13 (Robust Architecture & Error Handling Edition)
+    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V14 (Infinity Trial & Petalfall Crate Edition)
     ========================================================================
-    🛡️ ROBUSTNESS & ERROR HANDLING UPGRADES:
-    ✅ 1. Safe Module Loading:
-          - การเรียก require() ดึง Data/Module ห่อหุ้มด้วย pcall (SafeRequire)
-          - หากโมดูลใดโหลดไม่สำเร็จ จะ Log Warning แจ้งเตือนและระบบยังคงทำงานต่อได้โดยไม่พัง
-    ✅ 2. Centralized String Constants (Config.Events):
-          - รวบรวม Hardcoded String และ Event Names ทั้งหมดไว้ใน Config.Events ที่ส่วนหัวของโค้ด
-          - มี Fallback รองรับกรณี Config Modules ฝั่งเกมมีการเปลี่ยนชื่อ
-    ✅ 3. Null-Safety สำหรับ UI & Objects:
-          - ตรวจสอบ nil ทุกจุดที่มีการค้นหา Instance ด้วย FindFirstChild หรือ Chained Objects
-          - แจ้งเตือน Log Warning และข้ามขั้นตอนอย่างปลอดภัยหาก Object ปลายทางหายไป
-    ✅ 4. Isolating Worker Tasks (Main Loop):
-          - แยกครอบ Task ย่อยแต่ละลำดับ (Task 1 - 11) ใน while true do ด้วย pcall แยกกันอย่างอิสระ
-          - หาก Task ใดเกิด Runtime Error (เช่น โครงสร้างตารางเปลี่ยน) จะไม่ทำให้ Worker Loop หยุดทำงาน
-    ✅ 5. Centralized Safe Event Dispatcher (SafeSendEvent) & Safe State Accessors (SafeGetData, SafeGetData2)
+    🔥 อัปเดตใหม่ล่าสุด:
+    ✅ 1. เพิ่มฟังก์ชันลงทดสอบอินฟินิตี้ (Infinity Trial) และรับรางวัลอัตโนมัติ:
+          - ตรวจสอบความพร้อมและปลดล็อกโหมด Infinity Trial
+          - รับรางวัลตามลำดับขั้นความสำเร็จ (Claimable Tiers) เมื่อผ่านเกณฑ์อัตโนมัติ
+          - เริ่มการทดสอบ (Start Trial) เมื่อพร้อม และเน้นตีหิน Infinity Rock ในแปลงก่อนเสมอ
+          - เพิ่มปุ่มกดด่วน [⚡ ลง Infinity Trial ทันที] และ [⚡ รับรางวัล Trial ทันที] บนหน้า UI
+    ✅ 2. เพิ่มฟังก์ชันเปิด Petalfall Crate อัตโนมัติ:
+          - ตรวจสอบจำนวนกล่อง Petalfall Crate ในคลัง (ColossusCrates) ก่อนส่งคำสั่ง 100%
+          - สั่งเปิดกล่องเป็นชุดอย่างปลอดภัย (ครั้งละไม่เกิน 50 กล่อง ป้องกัน Rate Limit)
+          - เพิ่มปุ่มกดด่วน [⚡ เปิด Petalfall Crate ทันที]
+    ✅ 3. จัดหมวดหมู่ UI ใหม่ให้ใช้งานง่าย สะดวก และเป็นระเบียบ (6 หมวดหมู่หลัก):
+          - หมวดที่ 1: 📦 ระบบฟาร์ม & ร้านค้า (Auto Mine, Chest, Sell, Zone)
+          - หมวดที่ 2: ⚔️ ดันเจี้ยน & กล่องรางวัล (Infinity Trial, Petalfall Crate)
+          - หมวดที่ 3: 🌳 อัปเกรด & ขวานคนงาน (Tree, Core, Best Pickaxe, Equip Best)
+          - หมวดที่ 4: 👥 สถิติตัวละคร & กลายพันธุ์ (Stats 1-200, Mutations)
+          - หมวดที่ 5: 🎲 กาชา & รับรางวัล (Dice, Scrolls, Index, Events)
+          - หมวดที่ 6: 🛡️ ระบบเสริม (Anti-AFK)
+    ✅ 4. ลบระบบใช้น้ำยาออกทั้งหมดตามคำสั่ง 100%
+    ✅ 5. รักษามาตรฐานความปลอดภัยและความ Robust ขั้นสูงสุด:
+          - Safe Module Loading (pcall require)
+          - Centralized String Constants (Config.Events)
+          - Null-Safety ตรวจสอบ nil ทุกการค้นหา UI และ Objects
+          - Isolated Worker Tasks ในลูปหลักด้วย pcall
+          - Sequential Single-Thread Pipeline ไม่มียิงคำสั่งซ้ำซ้อน
     ✅ 6. Auto-Save & Auto-Load ลง AnimeMine_Config.json
     ✅ 7. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
           loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
@@ -66,7 +76,8 @@ local MineEnchantCatalog = SafeRequire(modulesFolder, "MineEnchantCatalog")
 local MineSummonCatalog = SafeRequire(modulesFolder, "MineSummonCatalog")
 local MineIndexRewardsConfig = SafeRequire(modulesFolder, "MineIndexRewardsConfig")
 local MineEventsConfig = SafeRequire(modulesFolder, "MineEventsConfig")
-local MinePotionCatalog = SafeRequire(modulesFolder, "MinePotionCatalog")
+local MineTrialConfig = SafeRequire(modulesFolder, "MineTrialConfig")
+local MineCrateConfig = SafeRequire(modulesFolder, "MineCrateConfig")
 
 -- ═══════════════════════════════════════════════
 -- 🛡️ SAFE STATE ACCESSORS & SAFE EVENT DISPATCHER
@@ -200,9 +211,14 @@ local Config = {
         RollMutation = "MineRollMutation",
         RollEnchant = "MineRollEnchant",
         Summon = "MineSummon",
-        UsePotion = "MineUsePotion",
         SelectZone = "MineSelectZone",
         EquipBest = "MineEquipBest",
+
+        -- Infinity Trial & Colossus Crate Events
+        TrialStart = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Start) or "MineTrialStart",
+        TrialClaim = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Claim) or "MineTrialClaim",
+        TrialCancel = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Cancel) or "MineTrialCancel",
+        OpenColossusCrate = "MineOpenColossusCrate",
 
         -- Dynamic / Module-based Event Constants (พร้อม Fallback)
         IndexClaim = (MineIndexRewardsConfig and MineIndexRewardsConfig.Events and MineIndexRewardsConfig.Events.Claim) or "MineIndexRewardsClaim",
@@ -225,31 +241,8 @@ local Config = {
     AutoSummonScrolls = false,  -- สุ่มม้วนอัญเชิญอัตโนมัติ
     AutoClaimIndex = true,      -- รับรางวัลในดัชนี (Index) อัตโนมัติ
     AutoClaimEvents = true,     -- รับรางวัลบอร์ดอีเว้น (Events) อัตโนมัติ
-    AutoUsePotions = false,     -- ใช้น้ำยาอัตโนมัติ
-
-    SelectedPotions = {
-        ["Mutation Luck Potion I"] = true,
-        ["Mutation Luck Potion II"] = true,
-        ["Mutation Luck Potion III"] = true,
-        ["Character Luck Potion"] = true,
-        ["Character Luck Potion II"] = true,
-        ["Enchant Luck Potion"] = true,
-        ["Speed Potion"] = true,
-        ["Damage Potion"] = true,
-        ["Miner's Hourglass"] = true,
-        ["Prospector's Bottle"] = true,
-        ["Prospector's Bottle II"] = true,
-        ["Crit Elixir"] = true,
-        ["Crit Elixir II"] = true,
-        ["Colossus Rally"] = true,
-        ["Colossus Rally II"] = true,
-        ["Regrowth Potion"] = true,
-        ["Deep Focus"] = true,
-        ["Evergreen Charm"] = true,
-        ["Diamondbound Charm"] = true,
-        ["Anchor Stone"] = true,
-        ["Dice Saver"] = true
-    },
+    AutoInfinityTrial = false,  -- ลงทดสอบอินฟินิตี้ & รับรางวัลอัตโนมัติ
+    AutoOpenPetalfallCrate = false, -- เปิด Petalfall Crate อัตโนมัติเมื่อมีในคลัง
 
     MutationSlots = {
         ["M1"] = true,
@@ -291,36 +284,6 @@ local AllMutations = {
     "Bronze"
 }
 
-local AllPotionsList = {
-    "Mutation Luck Potion I",
-    "Mutation Luck Potion II",
-    "Mutation Luck Potion III",
-    "Character Luck Potion",
-    "Character Luck Potion II",
-    "Enchant Luck Potion",
-    "Speed Potion",
-    "Damage Potion",
-    "Miner's Hourglass",
-    "Miner's Hourglass II",
-    "Prospector's Bottle",
-    "Prospector's Bottle II",
-    "Crit Elixir",
-    "Crit Elixir II",
-    "Colossus Rally",
-    "Colossus Rally II",
-    "Regrowth Potion",
-    "Deep Focus",
-    "Evergreen Charm",
-    "Miner's Coffee",
-    "Diamondbound Charm",
-    "Anchor Stone",
-    "Dice Saver",
-    "Haggler's Tonic",
-    "Haste Potion",
-    "Ore Luck Potion",
-    "Ore Elixir I"
-}
-
 -- ตัวแปรเก็บสถานะอีเว้นล่าสุด
 local latestEventsPayload = nil
 local lastEventRequestTime = 0
@@ -353,8 +316,8 @@ local function SaveConfig()
                 AutoSummonScrolls = Config.AutoSummonScrolls,
                 AutoClaimIndex = Config.AutoClaimIndex,
                 AutoClaimEvents = Config.AutoClaimEvents,
-                AutoUsePotions = Config.AutoUsePotions,
-                SelectedPotions = Config.SelectedPotions,
+                AutoInfinityTrial = Config.AutoInfinityTrial,
+                AutoOpenPetalfallCrate = Config.AutoOpenPetalfallCrate,
                 MutationSlots = Config.MutationSlots,
                 TargetLevelDamage = Config.TargetLevelDamage,
                 TargetLevelSpeed = Config.TargetLevelSpeed,
@@ -425,13 +388,13 @@ end
 -- ═══════════════════════════════════════════════
 -- 🎨 UI SYSTEM
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12", "AnimeMineAutoFarmV13"}) do
+for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12", "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14"}) do
     local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV13"
+ScreenGui.Name = "AnimeMineAutoFarmV14"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -496,7 +459,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 175, 1, 0)
 Title.Position = UDim2.new(0, 14, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V12"
+Title.Text = "⛏️ Auto Farm Suite V14"
 Title.TextColor3 = Theme.Text
 Title.TextSize = 15
 Title.Font = Enum.Font.GothamBold
@@ -1094,150 +1057,149 @@ local function AddMultiMutationSelector(order)
     end
 end
 
--- ตัวเลือกน้ำยาเป้าหมาย (เลือกได้หลายชนิดพร้อมกัน)
-local function AddMultiPotionSelector(order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 160)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
+-- ═══════════════════════════════════════════════
+-- 🛠️ ACTION HELPERS (TRIALS, CRATES, EQUIP BEST)
+-- ═══════════════════════════════════════════════
 
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, 200, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "🧪 เลือกน้ำยาที่ต้องการใช้:"
-    lbl.TextColor3 = Theme.Text
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Frame
-
-    local QuickActions = Instance.new("Frame")
-    QuickActions.Size = UDim2.new(0, 130, 0, 20)
-    QuickActions.Position = UDim2.new(1, -140, 0, 6)
-    QuickActions.BackgroundTransparency = 1
-    QuickActions.Parent = Frame
-
-    local qLayout = Instance.new("UIListLayout")
-    qLayout.FillDirection = Enum.FillDirection.Horizontal
-    qLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    qLayout.Padding = UDim.new(0, 4)
-    qLayout.Parent = QuickActions
-
-    local SelectAllBtn = Instance.new("TextButton")
-    SelectAllBtn.Size = UDim2.new(0, 62, 1, 0)
-    SelectAllBtn.BackgroundColor3 = Theme.BadgeBG
-    SelectAllBtn.Text = "เลือกทั้งหมด"
-    SelectAllBtn.TextColor3 = Theme.Accent
-    SelectAllBtn.TextSize = 9
-    SelectAllBtn.Font = Enum.Font.GothamMedium
-    SelectAllBtn.BorderSizePixel = 0
-    SelectAllBtn.Parent = QuickActions
-
-    local saCorner = Instance.new("UICorner")
-    saCorner.CornerRadius = UDim.new(0, 4)
-    saCorner.Parent = SelectAllBtn
-
-    local ClearAllBtn = Instance.new("TextButton")
-    ClearAllBtn.Size = UDim2.new(0, 44, 1, 0)
-    ClearAllBtn.BackgroundColor3 = Theme.BadgeBG
-    ClearAllBtn.Text = "ล้าง"
-    ClearAllBtn.TextColor3 = Theme.SubText
-    ClearAllBtn.TextSize = 9
-    ClearAllBtn.Font = Enum.Font.GothamMedium
-    ClearAllBtn.BorderSizePixel = 0
-    ClearAllBtn.Parent = QuickActions
-
-    local caCorner = Instance.new("UICorner")
-    caCorner.CornerRadius = UDim.new(0, 4)
-    caCorner.Parent = ClearAllBtn
-
-    local PotionScroll = Instance.new("ScrollingFrame")
-    PotionScroll.Size = UDim2.new(1, -24, 0, 122)
-    PotionScroll.Position = UDim2.new(0, 12, 0, 28)
-    PotionScroll.BackgroundTransparency = 1
-    PotionScroll.BorderSizePixel = 0
-    PotionScroll.ScrollBarThickness = 3
-    PotionScroll.ScrollBarImageColor3 = Theme.Accent
-    PotionScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    PotionScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    PotionScroll.Parent = Frame
-
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 158, 0, 26)
-    grid.CellPadding = UDim2.new(0, 6, 0, 6)
-    grid.Parent = PotionScroll
-
-    local potionChips = {}
-
-    local function RefreshChip(potName)
-        local chip = potionChips[potName]
-        if chip then
-            local isSelected = Config.SelectedPotions[potName] == true
-            chip.BackgroundColor3 = isSelected and Theme.ChipActive or Theme.ChipInactive
-            chip.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Theme.SubText
-            chip.Text = (isSelected and "✓ " or "+ ") .. potName
+-- Helper สำหรับตรวจสอบสถานะรางวัลของ Infinity Trial (ตรวจนับจำนวนเทียร์ที่เคลมแล้วและนับถอยหลังรีเซ็ต)
+local function GetTrialRewardStatus(trialData)
+    if not (MineTrialConfig and trialData) then
+        return { allClaimed = false, claimedCount = 0, totalTiers = 12, claimable = {}, claimableCount = 0, resetCountdown = "00:00:00", secondsLeft = 0 }
+    end
+    local totalTiers = (MineTrialConfig.TierCount and MineTrialConfig.TierCount(trialData)) or 12
+    local claimedCount = 0
+    for i = 1, totalTiers do
+        if MineTrialConfig.IsClaimed and MineTrialConfig.IsClaimed(trialData, i) then
+            claimedCount = claimedCount + 1
         end
     end
+    local claimable = (MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)) or {}
+    local allClaimed = (claimedCount >= totalTiers)
+    local secondsLeft = (MineTrialConfig.SecondsToNextDay and MineTrialConfig.SecondsToNextDay()) or 0
+    local resetCountdown = (MineTrialConfig.FormatCountdown and MineTrialConfig.FormatCountdown(secondsLeft)) or string.format("%ds", secondsLeft)
 
-    for _, potName in ipairs(AllPotionsList) do
-        local chip = Instance.new("TextButton")
-        local isSelected = Config.SelectedPotions[potName] == true
-        chip.BackgroundColor3 = isSelected and Theme.ChipActive or Theme.ChipInactive
-        chip.Text = (isSelected and "✓ " or "+ ") .. potName
-        chip.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Theme.SubText
-        chip.TextSize = 9
-        chip.Font = Enum.Font.GothamMedium
-        chip.BorderSizePixel = 0
-        chip.Parent = PotionScroll
+    return {
+        allClaimed = allClaimed,
+        claimedCount = claimedCount,
+        totalTiers = totalTiers,
+        claimable = claimable,
+        claimableCount = #claimable,
+        hasAvailableRewards = not allClaimed,
+        resetCountdown = resetCountdown,
+        secondsLeft = secondsLeft
+    }
+end
 
-        local chCorner = Instance.new("UICorner")
-        chCorner.CornerRadius = UDim.new(0, 5)
-        chCorner.Parent = chip
+-- Helper สำหรับลงทดสอบอินฟินิตี้ (Infinity Trial)
+local function TriggerInfinityTrial(force)
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineTrialConfig) then
+        UpdateStatus("⚠️ ไม่พบข้อมูลโหมด Infinity Trial")
+        return
+    end
+    if MineTrialConfig.Unlocked and not MineTrialConfig.Unlocked(mg) then
+        UpdateStatus("🔒 ยังไม่ปลดล็อกโหมด Infinity Trial")
+        return
+    end
+    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+    local status = GetTrialRewardStatus(trialData)
 
-        potionChips[potName] = chip
+    -- หากเคลมรางวัลครบทุกเทียร์แล้ว และไม่ได้สั่งบังคับลง
+    if not force and status.allClaimed then
+        UpdateStatus(string.format("⏳ รางวัลครบแล้ว (รอรีเซ็ต %s)", status.resetCountdown))
+        return
+    end
 
-        chip.MouseButton1Click:Connect(function()
-            if Config.SelectedPotions[potName] then
-                Config.SelectedPotions[potName] = nil
+    local attempt = trialData.Attempt
+    local now = os.time()
+    local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
+    if isRunning then
+        UpdateStatus("ℹ️ กำลังทดสอบ Infinity Trial อยู่ในขณะนี้")
+    else
+        UpdateStatus("⚔️ เริ่มลงทดสอบอินฟินิตี้ (Infinity Trial)...")
+        SafeSendEvent(Config.Events.TrialStart)
+        HumanWait(0.4, 0.6)
+        UpdateStatus("✅ เริ่มลงทดสอบ Infinity Trial สำเร็จ!")
+    end
+end
+
+-- Helper สำหรับรับรางวัล Infinity Trial
+local function TriggerClaimTrial()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineTrialConfig) then return end
+    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+    local claimable = MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)
+    if claimable and #claimable > 0 then
+        local count = 0
+        for _, tierIdx in ipairs(claimable) do
+            UpdateStatus(string.format("🏆 รับรางวัล Infinity Trial T%d...", tierIdx))
+            SafeSendEvent(Config.Events.TrialClaim, tierIdx)
+            count = count + 1
+            HumanWait(0.35, 0.5)
+        end
+        UpdateStatus(string.format("✅ รับรางวัล Infinity Trial %d รายการสำเร็จ!", count))
+    else
+        UpdateStatus("ℹ️ ไม่มีรางวัล Infinity Trial ที่ค้างรับ")
+    end
+end
+
+-- Helper สำหรับเปิด Petalfall Crate
+local function TriggerOpenPetalfallCrate()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    local cc = mg and mg.ColossusCrates
+    local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
+    if count <= 0 then
+        UpdateStatus("ℹ️ ไม่มี Petalfall Crate ในคลัง")
+        return
+    end
+    local openAmount = math.clamp(count, 1, 50)
+    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
+    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
+    HumanWait(0.4, 0.6)
+    UpdateStatus(string.format("✅ เปิด Petalfall Crate %d กล่องสำเร็จ!", openAmount))
+end
+
+-- Helper สำหรับกดปุ่มสวมใส่ที่ดีที่สุดทั้ง UI และ Server
+local function TriggerEquipBest()
+    UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
+    local mineGui = PlayerGui:FindFirstChild("MineGui")
+    if not mineGui then
+        warn("⚠️ [Null-Safety] ไม่พบ 'MineGui' ใน PlayerGui ข้ามการกดปุ่ม UI")
+    else
+        local invFrame = mineGui:FindFirstChild("InventoryFrame")
+        if not invFrame then
+            warn("⚠️ [Null-Safety] ไม่พบ 'InventoryFrame' ใน MineGui")
+        else
+            local eqBtn = invFrame:FindFirstChild("EquipBestButton", true)
+            if eqBtn then
+                if getconnections then
+                    local conns = getconnections(eqBtn.MouseButton1Click)
+                    if conns and conns[1] then
+                        conns[1]:Fire()
+                    end
+                end
             else
-                Config.SelectedPotions[potName] = true
+                warn("⚠️ [Null-Safety] ไม่พบ 'EquipBestButton' ใน InventoryFrame")
             end
-            RefreshChip(potName)
-            SaveConfig()
-        end)
+        end
     end
-
-    SelectAllBtn.MouseButton1Click:Connect(function()
-        for _, potName in ipairs(AllPotionsList) do
-            Config.SelectedPotions[potName] = true
-            RefreshChip(potName)
-        end
-        SaveConfig()
-    end)
-
-    ClearAllBtn.MouseButton1Click:Connect(function()
-        Config.SelectedPotions = {}
-        for _, potName in ipairs(AllPotionsList) do
-            RefreshChip(potName)
-        end
-        SaveConfig()
-    end)
+    SafeSendEvent(Config.Events.EquipBest)
+    HumanWait(0.25, 0.35)
 end
 
 -- ═══════════════════════════════════════════════
--- 📋 สร้างเมนูจัดหมวดหมู่ตามลำดับ PRIORITY
+-- 📋 สร้างเมนูจัดหมวดหมู่ UI ใหม่ (6 หมวดหมู่ ใช้งานง่าย & สะดวก)
 -- ═══════════════════════════════════════════════
-AddCategory("📦 1. เก็บของ & 💰 2. ขายของ", 1)
-AddToggle("AutoChest", "1. Auto Take Chest (เก็บของ)", "ดูดแร่จากหีบเข้ากระเป๋าเมื่อหินแตก", 2)
-AddToggle("AutoSell", "2. Auto Sell Ores (ขายแร่)", "เมื่อมีแร่ วาร์ปไปขายที่ SellStand รับเงินสด", 3)
-AddToggle("AutoSellOldChars", "3. Auto Sell Old Zone Chars", "ขายตัวละครโซนเก่าทิ้งอัตโนมัติ (เก็บตัวละครโซนปัจจุบันไว้ 100%)", 4)
+
+-- หมวดที่ 1: ระบบฟาร์ม & ร้านค้า
+AddCategory("📦 1. ระบบฟาร์ม & ร้านค้า (Farming & Sell)", 1)
+AddToggle("AutoMine", "Auto Mine (ขุดหินในแปลง)", "ค้นหาและขุดหินในแปลง รวมถึงหินทดสอบอินฟินิตี้ก่อนเสมอ", 2)
+AddToggle("AutoChest", "Auto Take Chest (ดูดแร่จากหีบ)", "ดูดแร่จากหีบเข้ากระเป๋าอัตโนมัติเมื่อหินแตก", 3)
+AddToggle("AutoSell", "Auto Sell Ores (ขายแร่ที่ร้าน)", "เมื่อมีแร่ในกระเป๋า วาร์ปไปขายที่ร้าน SellStand ทันที", 4)
+AddToggle("AutoSellOldChars", "Auto Sell Old Zone Chars", "ขายตัวละครโซนเก่าทิ้งอัตโนมัติ (เก็บตัวละครโซนปัจจุบันไว้ 100%)", 5)
 AddActionButton("⚡ ขายตัวละครโซนเก่าทันที", "วาร์ปไปขายตัวละครในคลังจากโซนเก่าทั้งหมดรอบเดียว", "ขายทันที", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -1274,33 +1236,64 @@ AddActionButton("⚡ ขายตัวละครโซนเก่าทั�
             warn(string.format("⚠️ [Action Error: SellOldChars] %s", tostring(err)))
         end
     end)
-end, 5)
+end, 6)
+AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 7)
 
-AddCategory("🌳 3. อัปเกรดต้นไม้ & แกนหลัก", 10)
-AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", 11)
-AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", 12)
+-- หมวดที่ 2: ดันเจี้ยน & กล่องรางวัล
+AddCategory("⚔️ 2. ดันเจี้ยน & กล่องรางวัล (Trials & Crates)", 10)
+AddToggle("AutoInfinityTrial", "Auto Infinity Trial (ทดสอบอินฟินิตี้)", "ลงทดสอบและเคลมรับรางวัลอินฟินิตี้อัตโนมัติเมื่อพร้อม", 11)
+AddActionButton("⚡ ลง Infinity Trial ทันที", "สั่งเริ่มการทดสอบอินฟินิตี้ (Infinity Trial) รอบใหม่ทันที", "ลง Trial", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerInfinityTrial)
+        if not ok then warn(string.format("⚠️ [Action Error: InfinityTrial] %s", tostring(err))) end
+    end)
+end, 12)
+AddActionButton("⚡ รับรางวัล Trial ทันที", "ตรวจสอบและกดรับรางวัล Infinity Trial ที่ผ่านเกณฑ์ทั้งหมดทันที", "รับรางวัล", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerClaimTrial)
+        if not ok then warn(string.format("⚠️ [Action Error: ClaimTrial] %s", tostring(err))) end
+    end)
+end, 13)
+AddToggle("AutoOpenPetalfallCrate", "Auto Open Petalfall Crate", "เปิดกล่อง Petalfall Crate ในคลังอัตโนมัติเมื่อมีกล่อง", 14)
+AddActionButton("⚡ เปิด Petalfall Crate ทันที", "สั่งเปิดกล่อง Petalfall Crate ในคลังที่มีอยู่ทั้งหมดทันที", "เปิดกล่อง", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerOpenPetalfallCrate)
+        if not ok then warn(string.format("⚠️ [Action Error: OpenPetalfallCrate] %s", tostring(err))) end
+    end)
+end, 15)
 
-AddCategory("🪓 4. ซื้อขวานร้านค้า", 20)
-AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวานขั้นที่แพงและดีที่สุดเมื่อพร้อม (ไม่จำกัดจำนวน)", 21)
+-- หมวดที่ 3: อัปเกรด & ขวานคนงาน
+AddCategory("🌳 3. อัปเกรด & ขวานคนงาน (Upgrades & Gear)", 20)
+AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", 21)
+AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", 22)
+AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวานขั้นที่แพงและดีที่สุดเมื่อพร้อม (ไม่จำกัดจำนวน)", 23)
+AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", 24)
+AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerEquipBest)
+        if ok then
+            UpdateStatus("✅ สวมใส่ตัวที่ดีที่สุดสำเร็จ!")
+        else
+            warn(string.format("⚠️ [Action Error: EquipBest] %s", tostring(err)))
+        end
+    end)
+end, 25)
 
-AddCategory("👥 5. อัปเกรดสถิติ (เรียงตาม Base DMG Lv.1)", 30)
+-- หมวดที่ 4: สถิติตัวละคร & กลายพันธุ์
+AddCategory("👥 4. สถิติตัวละคร & กลายพันธุ์ (Stats & Mutations)", 30)
 AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", 31)
 AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, 32)
 AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, 33)
 AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, 34)
+AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ (ไม่ปิดสวิตช์)", 35)
+AddMultiSlotSelector(36)
+AddMultiMutationSelector(37)
 
-AddCategory("🧬 6. สุ่มการกลายพันธุ์ (เปิดค้างได้ + ล็อคอัตโนมัติ)", 40)
-AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ (ไม่ปิดสวิตช์)", 41)
-AddMultiSlotSelector(42)
-AddMultiMutationSelector(43)
-
-AddCategory("🎲 7. ลูกเต๋าเวทมนต์ & ม้วนอัญเชิญ", 50)
-AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อลูกเต๋าหมด)", 51)
-AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", 52)
-
-AddCategory("🏆 8. รับรางวัล (ดัชนี & บอร์ดอีเว้น)", 60)
-AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", 61)
-AddToggle("AutoClaimEvents", "Auto Claim Events (รับรางวัลอีเว้น)", "รับรางวัล Milestone บนบอร์ดอีเว้นอัตโนมัติ", 62)
+-- หมวดที่ 5: กาชา & รับรางวัล
+AddCategory("🎲 5. กาชา & รับรางวัล (Gacha & Claims)", 40)
+AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อลูกเต๋าหมด)", 41)
+AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", 42)
+AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", 43)
 AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -1337,7 +1330,8 @@ AddActionButton("⚡ รับรางวัล Index ทันที", "ตร
             warn(string.format("⚠️ [Action Error: ClaimIndex] %s", tostring(err)))
         end
     end)
-end, 63)
+end, 44)
+AddToggle("AutoClaimEvents", "Auto Claim Events (รับรางวัลอีเว้น)", "รับรางวัล Milestone บนบอร์ดอีเว้นอัตโนมัติ", 45)
 AddActionButton("⚡ รับรางวัล Event ทันที", "ตรวจสอบและกดรับรางวัลบอร์ด Event ที่ปลดล็อกทั้งหมดทันที", "รับ Event", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -1379,55 +1373,11 @@ AddActionButton("⚡ รับรางวัล Event ทันที", "ตร
             warn(string.format("⚠️ [Action Error: ClaimEvent] %s", tostring(err)))
         end
     end)
-end, 64)
+end, 46)
 
-AddCategory("🧪 9. ใช้น้ำยาอัตโนมัติ (เลือกใช้ได้หลายชนิดพร้อมกัน)", 70)
-AddToggle("AutoUsePotions", "Auto Use Potions (ใช้น้ำยา)", "กดใช้น้ำยาที่เลือกไว้ทันทีเมื่อมีในกระเป๋า (สแตนด์บายเมื่อหมด)", 71)
-AddMultiPotionSelector(72)
-
--- Helper สำหรับกดปุ่มสวมใส่ที่ดีที่สุดทั้ง UI และ Server
-local function TriggerEquipBest()
-    UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
-    local mineGui = PlayerGui:FindFirstChild("MineGui")
-    if not mineGui then
-        warn("⚠️ [Null-Safety] ไม่พบ 'MineGui' ใน PlayerGui ข้ามการกดปุ่ม UI")
-    else
-        local invFrame = mineGui:FindFirstChild("InventoryFrame")
-        if not invFrame then
-            warn("⚠️ [Null-Safety] ไม่พบ 'InventoryFrame' ใน MineGui")
-        else
-            local eqBtn = invFrame:FindFirstChild("EquipBestButton", true)
-            if eqBtn then
-                if getconnections then
-                    local conns = getconnections(eqBtn.MouseButton1Click)
-                    if conns and conns[1] then
-                        conns[1]:Fire()
-                    end
-                end
-            else
-                warn("⚠️ [Null-Safety] ไม่พบ 'EquipBestButton' ใน InventoryFrame")
-            end
-        end
-    end
-    SafeSendEvent(Config.Events.EquipBest)
-    HumanWait(0.25, 0.35)
-end
-
-AddCategory("⛏️ 10. อื่นๆ (ตีหิน, โซนใหม่, สวมใส่, Anti-AFK)", 80)
-AddToggle("AutoMine", "Auto Mine (ตีหินในแปลง)", "ค้นหาและตีหินในแปลงของตัวเองอย่างเป็นระเบียบ", 81)
-AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 82)
-AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", 83)
-AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(TriggerEquipBest)
-        if ok then
-            UpdateStatus("✅ สวมใส่ตัวที่ดีที่สุดสำเร็จ!")
-        else
-            warn(string.format("⚠️ [Action Error: EquipBest] %s", tostring(err)))
-        end
-    end)
-end, 84)
-AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 85)
+-- หมวดที่ 6: ระบบเสริม
+AddCategory("🛡️ 6. ระบบเสริม (System)", 50)
+AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 51)
 
 -- ═══════════════════════════════════════════════
 -- 🖱️ DRAGGING & MINIMIZE & HOTKEY
@@ -2007,42 +1957,80 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- [TASK 10] ใช้น้ำยาอัตโนมัติ (Auto Use Selected Potions)
+        -- [TASK 10] ทดสอบอินฟินิตี้ (Infinity Trial: ตรวจสอบความพร้อม, รับรางวัล, เริ่มลงทดสอบ)
+        -- ทำงานเฉพาะเมื่อรางวัลรีเซ็ตและมีรางวัลให้รับเท่านั้น (ไม่ลงซ้ำหากเคลมครบแล้วหรือติด Cooldown)
         -- -------------------------------------------------------------
         local ok10, err10 = pcall(function()
-            if Config.AutoUsePotions and mg and mg.Potions then
-                for potName, isSelected in pairs(Config.SelectedPotions) do
-                    if isSelected then
-                        local count = tonumber(mg.Potions[potName]) or 0
-                        if count > 0 then
-                            local canUse = true
-                            local pDef = MinePotionCatalog and MinePotionCatalog.ByName and MinePotionCatalog.ByName(potName)
-                            if pDef and pDef.Kind == "Food" and MineConfig and MineConfig.GetFoodRoom then
-                                local room = MineConfig.GetFoodRoom(mg, potName) or 0
-                                if room <= 0 then canUse = false end
-                            end
+            if Config.AutoInfinityTrial and mg and MineTrialConfig then
+                local isUnlocked = MineTrialConfig.Unlocked and MineTrialConfig.Unlocked(mg)
+                if isUnlocked then
+                    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
 
-                            if canUse then
-                                UpdateStatus(string.format("🧪 ใช้น้ำยา: %s (มี %d)", potName, count))
-                                SafeSendEvent(Config.Events.UsePotion, potName, 1)
-                                HumanWait(0.35, 0.5)
-                                d2 = SafeGetData2()
-                                mg = d2 and d2.MineGame
-                            end
+                    -- 10.1 ตรวจสอบและเคลมรางวัลที่ผ่านเกณฑ์ (Claimable Tiers)
+                    local claimable = MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)
+                    if claimable and #claimable > 0 then
+                        for _, tierIdx in ipairs(claimable) do
+                            UpdateStatus(string.format("🏆 รับรางวัล Infinity Trial T%d...", tierIdx))
+                            SafeSendEvent(Config.Events.TrialClaim, tierIdx)
+                            HumanWait(0.35, 0.5)
                         end
+                        -- รีเฟรชข้อมูลหลังรับรางวัล
+                        d2 = SafeGetData2()
+                        mg = d2 and d2.MineGame
+                        trialData = (mg and mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+                    end
+
+                    -- 10.2 ตรวจสอบว่ารางวัลสำหรับวันนี้เคลมครบทุกเทียร์แล้วหรือไม่
+                    local status = GetTrialRewardStatus(trialData)
+                    if status.allClaimed then
+                        -- รางวัลสำหรับวันนี้เคลมครบหมดแล้ว (อยู่ในช่วง Cooldown รอรีเซ็ตวันถัดไป)
+                        -- ไม่ส่งคำสั่งลงทดสอบเด็ดขาดตามเงื่อนไขของผู้ใช้
+                        return
+                    end
+
+                    -- 10.3 ตรวจสอบสถานะการทดสอบปัจจุบัน
+                    local attempt = trialData.Attempt
+                    local now = os.time()
+                    local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
+
+                    if not isRunning then
+                        UpdateStatus(string.format("⚔️ ลงทดสอบอินฟินิตี้ (รางวัลค้าง %d/%d)...", status.totalTiers - status.claimedCount, status.totalTiers))
+                        SafeSendEvent(Config.Events.TrialStart)
+                        HumanWait(0.4, 0.6)
                     end
                 end
             end
         end)
         if not ok10 then
-            warn(string.format("⚠️ [Worker Task 10 Error - AutoUsePotions] %s", tostring(err10)))
+            warn(string.format("⚠️ [Worker Task 10 Error - InfinityTrial] %s", tostring(err10)))
         end
 
         -- -------------------------------------------------------------
-        -- [TASK 11] อื่นๆ (ตีหิน, ซื้อโซน, สวมใส่ตัวดีที่สุด)
+        -- [TASK 11] เปิด Petalfall Crate (เปิดกล่องในคลังอัตโนมัติ)
         -- -------------------------------------------------------------
         local ok11, err11 = pcall(function()
-            -- 11.1 ตีหินในแปลง
+            if Config.AutoOpenPetalfallCrate and mg then
+                local cc = mg.ColossusCrates
+                local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
+                if count > 0 then
+                    local openAmount = math.clamp(count, 1, 50)
+                    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
+                    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
+                    HumanWait(0.4, 0.6)
+                    d2 = SafeGetData2()
+                    mg = d2 and d2.MineGame
+                end
+            end
+        end)
+        if not ok11 then
+            warn(string.format("⚠️ [Worker Task 11 Error - PetalfallCrate] %s", tostring(err11)))
+        end
+
+        -- -------------------------------------------------------------
+        -- [TASK 12] อื่นๆ (ตีหินในแปลงรวมหินอินฟินิตี้, ซื้อโซน, สวมใส่ตัวดีที่สุด)
+        -- -------------------------------------------------------------
+        local ok12, err12 = pcall(function()
+            -- 12.1 ตีหินในแปลง (ให้ความสำคัญกับหิน Infinity Trial ก่อนหากมี)
             if Config.AutoMine and myPlot then
                 local nodesFolder = myPlot:FindFirstChild("Nodes")
                 if nodesFolder then
@@ -2050,11 +2038,24 @@ task.spawn(function()
                         if not Config.AutoMine then break end
 
                         local targetNode = nil
+                        -- ตรวจหาหิน Infinity Trial ก่อนเป็นอันดับแรก
                         for _, node in ipairs(nodesFolder:GetChildren()) do
-                            local hp = node:GetAttribute("NodeHP")
-                            if hp and hp > 0 then
-                                targetNode = node
-                                break
+                            if node:GetAttribute("MineTrial") == true or node:GetAttribute("RaidId") ~= nil or node.Name:find("Trial") or node.Name:find("Infinity") then
+                                local hp = node:GetAttribute("NodeHP")
+                                if hp and hp > 0 then
+                                    targetNode = node
+                                    break
+                                end
+                            end
+                        end
+                        -- หากไม่มีหิน Trial ให้ขุดหินแร่ตามปกติ
+                        if not targetNode then
+                            for _, node in ipairs(nodesFolder:GetChildren()) do
+                                local hp = node:GetAttribute("NodeHP")
+                                if hp and hp > 0 then
+                                    targetNode = node
+                                    break
+                                end
                             end
                         end
 
@@ -2072,7 +2073,7 @@ task.spawn(function()
                 end
             end
 
-            -- 11.2 ซื้อโซนใหม่ที่ ZoneBoard
+            -- 12.2 ซื้อโซนใหม่ที่ ZoneBoard
             if Config.AutoBuyZone and myPlot then
                 local zb = myPlot:FindFirstChild("ZoneBoard")
                 if zb then
@@ -2120,14 +2121,14 @@ task.spawn(function()
                 end
             end
 
-            -- 11.3 สวมใส่ตัวละครที่ดีที่สุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)
+            -- 12.3 สวมใส่ตัวละครที่ดีที่สุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)
             if Config.AutoEquipBest and os.clock() - lastEquipTime > 20 then
                 lastEquipTime = os.clock()
                 TriggerEquipBest()
             end
         end)
-        if not ok11 then
-            warn(string.format("⚠️ [Worker Task 11 Error - AutoOther] %s", tostring(err11)))
+        if not ok12 then
+            warn(string.format("⚠️ [Worker Task 12 Error - AutoOther] %s", tostring(err12)))
         end
 
         task.wait(0.2)
@@ -2146,4 +2147,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("✅ [AnimeMineAutoFarmV13] โหลดสำเร็จ - Robust Architecture & Error Handling Edition พร้อมทำงาน!")
+print("✅ [AnimeMineAutoFarmV14] โหลดสำเร็จ - Infinity Trial & Petalfall Crate Edition พร้อมทำงาน!")
