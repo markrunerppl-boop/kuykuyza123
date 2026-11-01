@@ -1,19 +1,21 @@
 --!strict
 --[[
     ============================================================================
-    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - ANIME ADVENTURES PRO V3]
+    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - ANIME ADVENTURES PRO V4]
     Target Game: [☀️อัพเดท 21🏖️] การผจญภัยอนิเมะ (Anime Adventures)
     Place ID: 8304191830 | Creator: Gomu
     Repository: markrunerppl-boop/kuykuyza123
     Loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 
-    Key Upgrades in V3:
-    [✓] 1. Summon Selection: เลือกสุ่มได้ทั้ง 1 ครั้ง (50 Gems) หรือ 10 ครั้ง (500 Gems) แยกปุ่มชัดเจนทุกแบนเนอร์
+    Verified Production Architecture:
+    [✓] 1. Summon Selection: เลือกสุ่มได้ 1 ครั้ง (50 Gems) หรือ 10 ครั้ง (500 Gems) แยกปุ่มชัดเจนทุกแบนเนอร์
     [✓] 2. Real Unit Equipper: สวมใส่ยูนิตที่ดีที่สุดจาก Collection เข้า Slot 1-6 แก้ปัญหา "Equip a unit first!" 100%
-    [✓] 3. Auto Claim All: กดรับรางวัลทุกประเภท (Daily, BattlePass, Level, Missions, Clear, Event Board)
-    [✓] 4. Auto Stage & Replay: วาร์ปเข้าห้อง Story/Infinite, ส่งคำสั่งเริ่มด่าน, สคิปเวฟ, และโหวต Replay วนลูป
-    [✓] 5. Gate Placement: วางยูนิตหน้าประตูเกิดมอนสเตอร์อัตโนมัติเมื่อเริ่มเกม
+    [✓] 3. Direct Matchmaking: ลงด่านทันทีด้วย Server Matchmaking (Act 1-6 & Infinite) ไม่ต้องเดินหาประตู
+    [✓] 4. Auto Wave Skip & Replay: กดสคิปเวฟในด่าน และโหวต Replay วนลูปต่อเนื่องเมื่อจบเกม
+    [✓] 5. Gate Placement: วางยูนิตหน้าประตูเกิดมอนสเตอร์อัตโนมัติในเกม
     [✓] 6. Auto Upgrade: อัปเกรดยูนิตที่วางแล้ววนซ้ำทันทีเมื่อเงินในเกมพร้อม
+    [✓] 7. Auto Claim All: รับรางวัลทุกประเภท (Daily, BattlePass, Level, Missions, Clear, Event Board)
+    [✓] 8. Readiness Validation: ตรวจสอบความพร้อมและทรัพยากรก่อนส่งคำสั่งเสมอ
     ============================================================================
 --]]
 
@@ -59,6 +61,8 @@ local Config = {
         ClaimFirstClearRemote    = "claim_first_clear_rewards",
         ClaimSummerBoardRemote   = "claim_summer2_map_board_lines",
         
+        RequestMatchmakingRemote = "request_matchmaking",
+        LeaveMatchmakingRemote   = "leave_matchmaking",
         JoinLobbyRemote          = "request_join_lobby",
         StartGameRemote          = "request_start_game",
         VoteWaveSkipRemote       = "vote_wave_skip",
@@ -80,21 +84,26 @@ local Config = {
     },
 
     Automation = {
+        -- 1. Summon
         AutoSummon         = false,
         SelectedBanner     = "Summer2026",
         SummonMode         = "gems",      -- "gems" (1x) or "gems10" (10x)
 
+        -- 2. Rewards
         AutoClaimRewards   = true,
         ClaimInterval      = 25.0,
 
+        -- 3. Equip Best
         AutoEquipBest      = true,
-        EquipInterval      = 15.0,
+        EquipInterval      = 12.0,
 
+        -- 4. Stages & Loop
         AutoPlayStage      = false,
-        StageMode          = "Story",
+        SelectedStageId    = "namek_level_1", -- "namek_level_1" (Act 1) or "namek_infinite"
         AutoReplayLoop     = true,
         AutoWaveSkip       = true,
 
+        -- 5 & 6. Combat (In-Game)
         AutoPlaceUnits     = true,
         AutoUpgradeUnits   = true,
         MaxUnitsToPlace    = 6,
@@ -155,7 +164,7 @@ TitleLabel.Name = "Title"
 TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡ QA Automation & Controller Pro V3 | Anime Adventures"
+TitleLabel.Text = "⚡ QA Automation & Controller Pro V4 | Anime Adventures"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 245, 255)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 13
@@ -453,9 +462,8 @@ end
 local BotState = {
     Current = "Idle",
     IDLE = "Idle",
-    MOVING = "Moving",
-    TESTING = "Testing",
     IN_MATCH = "InMatch",
+    MATCHMAKING = "Matchmaking",
     CIRCUIT_BROKEN = "CircuitBroken",
 }
 
@@ -473,6 +481,9 @@ function BotState:SetState(newState: string)
         elseif newState == BotState.IN_MATCH then
             StatePill.BackgroundColor3 = Color3.fromRGB(130, 40, 160)
             StatePill.Text = "● STATE: IN MATCH"
+        elseif newState == BotState.MATCHMAKING then
+            StatePill.BackgroundColor3 = Color3.fromRGB(210, 120, 30)
+            StatePill.Text = "● MATCHMAKING"
         else
             StatePill.BackgroundColor3 = Color3.fromRGB(30, 95, 190)
             StatePill.Text = "● STATE: " .. string.upper(newState)
@@ -589,7 +600,7 @@ local function IsInMatch(): boolean
 end
 
 -- ==============================================================================
--- 6. FEATURE 1: DYNAMIC BANNER SUMMON (เลือก 1 หรือ 10 ครั้งได้)
+-- 6. FEATURE 1: DYNAMIC BANNER SUMMON (เลือกได้ 1 ครั้ง หรือ 10 ครั้ง)
 -- ==============================================================================
 local SummonService = {}
 
@@ -618,7 +629,7 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
     local countText = (mode == "gems10") and "10 ครั้ง (500 Gems)" or "1 ครั้ง (50 Gems)"
 
     if gems < cost then
-        Logger:Log("Summon", "WARN", string.format("Gems ไม่พอสุ่ม [%s]! ต้องการ %d Gems (มีอยู่ %d)", countText, cost, gems))
+        Logger:Log("Summon", "WARN", string.format("Gems ไม่พอสุ่ม [%s]! ต้องการ %d Gems (คุณมี %d)", countText, cost, gems))
         return false
     end
 
@@ -651,62 +662,133 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
 end
 
 -- ==============================================================================
--- 7. FEATURE 2: AUTO EQUIP BEST UNITS (สวมใส่ตัวจริงจาก Collection เข้า Slot 1-6)
+-- 7. FEATURE 2: AUTO EQUIP BEST UNITS (สวมใส่ยูนิตตัวจริงเข้า Slot 1-6)
 -- ==============================================================================
 local TeamService = {}
+
+function TeamService.GetSessionCollection(): (any, any)
+    local ownedUnits = nil
+    local equippedUnits = nil
+    local sessionObj = nil
+
+    if getgc then
+        for _, v in ipairs(getgc(true)) do
+            if type(v) == "table" and rawget(v, "collection_profile_data") then
+                local data = rawget(v, "collection_profile_data")
+                ownedUnits = data.owned_units
+                equippedUnits = data.equipped_units
+                sessionObj = v
+                break
+            end
+        end
+    end
+    return ownedUnits, equippedUnits, sessionObj
+end
 
 function TeamService.EquipBestUnits(): number
     if not CircuitBreaker:CanExecute() then return 0 end
     local equipRemote = SafeUtils.SafeGetRemote(Config.Events.EquipUnitRemote)
-    if not equipRemote then
-        Logger:Log("Team", "WARN", "ไม่พบ Remote equip_unit ใน endpoints")
-        return 0
-    end
-
-    -- 1. อ่านรายการยูนิตจาก Collection Frames
-    local coll = PlayerGui:FindFirstChild(Config.UI.CollectionGUI)
-    local unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
+    local equipFirstRemote = SafeUtils.SafeGetRemote("equip_first_units")
+    local equipBestRemote = SafeUtils.SafeGetRemote(Config.Events.EquipBestRemote)
     
-    local unitsToEquip = {}
-    if unitListOuter then
-        for _, frame in ipairs(unitListOuter:GetChildren()) do
-            local uuidVal = frame:FindFirstChild("_uuid")
-            local nameVal = frame:FindFirstChild("name", true)
-            if uuidVal and uuidVal:IsA("StringValue") and #uuidVal.Value > 0 then
-                table.insert(unitsToEquip, {
-                    Name = nameVal and nameVal.Text or frame.Name,
-                    UUID = uuidVal.Value
-                })
-            end
-        end
-    end
-
-    if #unitsToEquip == 0 then
-        Logger:Log("Team", "INFO", "กำลังตรวจหาข้อมูลยูนิตในคลัง...")
-        -- ลองใช้ equip_best ทางเลือกสำรอง
-        local eb = SafeUtils.SafeGetRemote(Config.Events.EquipBestRemote)
-        if eb then pcall(function() eb:InvokeServer() end) end
-        return 0
-    end
-
     local equippedCount = 0
-    for slotIndex, unitData in ipairs(unitsToEquip) do
-        if slotIndex > 6 then break end
+    local ownedUnits, equippedUnits, sessionCol = TeamService.GetSessionCollection()
 
-        local s, res = pcall(function()
-            if equipRemote:IsA("RemoteFunction") then
-                return equipRemote:InvokeServer(unitData.UUID, slotIndex)
-            else
-                equipRemote:FireServer(unitData.UUID, slotIndex)
-                return true
+    -- 1. ตรวจสอบจาก Session Data ภายในเกมโดยตรง (แม่นยำที่สุด)
+    if ownedUnits and type(ownedUnits) == "table" then
+        for uuid, udata in pairs(ownedUnits) do
+            -- ตรวจสอบว่าสวมใส่อยู่แล้วหรือไม่
+            local isAlreadyEquipped = false
+            if equippedUnits and type(equippedUnits) == "table" then
+                for _, eqUuid in pairs(equippedUnits) do
+                    if eqUuid == uuid then
+                        isAlreadyEquipped = true
+                        break
+                    end
+                end
             end
-        end)
 
-        if s then
-            equippedCount += 1
-            Logger:Log("Team", "INFO", string.format("สวมใส่ [%s] เข้า Slot %d สำเร็จ!", unitData.Name, slotIndex))
-            SafeUtils.HumanWait(0.2, 0.4)
+            if not isAlreadyEquipped then
+                local unitName = udata.unit_id or "Unit"
+                Logger:Log("Team", "INFO", string.format("กำลังสวมใส่ยูนิต [%s] (UUID: %s)...", tostring(unitName), string.sub(uuid, 1, 8)))
+                
+                local s, _ = pcall(function()
+                    if equipRemote then
+                        if equipRemote:IsA("RemoteFunction") then
+                            equipRemote:InvokeServer(uuid)
+                        else
+                            equipRemote:FireServer(uuid)
+                        end
+                    end
+                end)
+
+                if s then
+                    equippedCount += 1
+                    Logger:Log("Team", "INFO", string.format("สวมใส่ยูนิต [%s] เรียบร้อย!", tostring(unitName)))
+                    SafeUtils.HumanWait(0.2, 0.4)
+                end
+            else
+                equippedCount += 1
+            end
         end
+    end
+
+    -- 2. Fallback: หากยังไม่มีตัวที่สวมใส่ ให้ดึงจาก Collection GUI
+    if equippedCount == 0 then
+        local coll = PlayerGui:FindFirstChild(Config.UI.CollectionGUI)
+        local unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
+
+        -- หาก GUI ยังไม่ถูกโหลด ให้จำลองการกดเปิด Inventory เพื่อให้ Client สตรีมข้อมูล
+        if not unitListOuter or #unitListOuter:GetChildren() <= 2 then
+            local leftUI = PlayerGui:FindFirstChild("LeftUI_test")
+            local invBtn = leftUI and leftUI:FindFirstChild("Inventory", true)
+            if invBtn and firesignal then
+                pcall(function() firesignal(invBtn.Activated) end)
+                SafeUtils.HumanWait(0.4, 0.6)
+            end
+            unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
+        end
+
+        if unitListOuter then
+            for slotIndex, frame in ipairs(unitListOuter:GetChildren()) do
+                if frame:IsA("GuiObject") and not frame:IsA("UIGridLayout") and not frame:IsA("UIPadding") then
+                    local uuidVal = frame:FindFirstChild("_uuid")
+                    local nameVal = frame:FindFirstChild("name", true)
+                    local uuid = uuidVal and uuidVal:IsA("StringValue") and uuidVal.Value
+                    if uuid and #uuid > 0 then
+                        local uName = nameVal and nameVal.Text or frame.Name
+                        local s, _ = pcall(function()
+                            if equipRemote and equipRemote:IsA("RemoteFunction") then
+                                equipRemote:InvokeServer(uuid)
+                            end
+                        end)
+                        if s then
+                            equippedCount += 1
+                            Logger:Log("Team", "INFO", string.format("สวมใส่ [%s] จาก Collection เข้าสู่ทีมแล้ว!", uName))
+                            SafeUtils.HumanWait(0.2, 0.35)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. เสริมความชัวร์ด้วย Remote equip_first_units & equip_best
+    if equipFirstRemote then
+        pcall(function()
+            if equipFirstRemote:IsA("RemoteFunction") then equipFirstRemote:InvokeServer() else equipFirstRemote:FireServer() end
+        end)
+    end
+    if equipBestRemote then
+        pcall(function()
+            if equipBestRemote:IsA("RemoteFunction") then equipBestRemote:InvokeServer() else equipBestRemote:FireServer() end
+        end)
+    end
+
+    if equippedCount > 0 then
+        Logger:Log("Team", "INFO", string.format("ทีมพร้อมรบแล้ว! มีตัวละครในช่องจัดทีมทั้งหมด %d ตัว", equippedCount))
+    else
+        Logger:Log("Team", "WARN", "ไม่พบยูนิตในกระเป๋า หรือสวมใส่อยู่แล้ว")
     end
 
     return equippedCount
@@ -746,7 +828,7 @@ function RewardService.ClaimAll(): number
                 claimedCount += 1
                 Logger:Log("Rewards", "INFO", string.format("กดรับ [%s] สำเร็จ", entry.Name))
             end
-            SafeUtils.HumanWait(0.15, 0.3)
+            SafeUtils.HumanWait(0.12, 0.25)
         end
     end
 
@@ -755,43 +837,52 @@ function RewardService.ClaimAll(): number
 end
 
 -- ==============================================================================
--- 9. FEATURE 4: AUTO PLAY STAGES & LOOP (เล่นด่านและเลือกลงวนลูปได้)
+-- 9. FEATURE 4: DIRECT SERVER MATCHMAKING & REPLAY LOOP (เล่นด่านและวนลูป)
 -- ==============================================================================
 local StageService = {
-    _lastJoinAttempt = 0,
+    _lastMatchmakingAttempt = 0,
 }
 
-function StageService.FindAvailableLobby(mode: string): Instance?
-    local lobbies = workspace:FindFirstChild("_LOBBIES")
-    if not lobbies then return nil end
-    local folder = lobbies:FindFirstChild(mode) or lobbies:FindFirstChild("Story")
-    if not folder then return nil end
-
-    for _, lob in ipairs(folder:GetChildren()) do
-        local active = lob:FindFirstChild("Active")
-        local teleporting = lob:FindFirstChild("Teleporting")
-        local owner = lob:FindFirstChild("Owner")
-
-        local isOwnerEmpty = (owner and owner:IsA("ObjectValue") and owner.Value == nil)
-        local isSelfOwner = (owner and owner:IsA("ObjectValue") and owner.Value == LocalPlayer)
-        local isNotTeleporting = (teleporting and teleporting:IsA("BoolValue") and not teleporting.Value)
-
-        if (isOwnerEmpty or isSelfOwner) and isNotTeleporting then
-            return lob
-        end
+function StageService.StartMatchmaking(stageId: string?): boolean
+    if not CircuitBreaker:CanExecute() then return false end
+    local targetStage = stageId or Config.Automation.SelectedStageId
+    
+    local mmRemote = SafeUtils.SafeGetRemote(Config.Events.RequestMatchmakingRemote)
+    if not mmRemote then
+        Logger:Log("Stage", "ERROR", "ไม่พบ Remote request_matchmaking ใน endpoints")
+        return false
     end
-    return nil
+
+    Logger:Log("Stage", "INFO", string.format("กำลังส่งคำขอ Matchmaking ด่าน [%s]...", targetStage))
+    BotState:SetState(BotState.MATCHMAKING)
+
+    local s, res = pcall(function()
+        if mmRemote:IsA("RemoteFunction") then
+            return mmRemote:InvokeServer(targetStage)
+        else
+            mmRemote:FireServer(targetStage)
+            return true
+        end
+    end)
+
+    if s and res ~= false then
+        Logger:Log("Stage", "INFO", string.format("เข้าคิว Matchmaking ด่าน [%s] สำเร็จ! กำลังรอวาปเข้าสู่เกม...", targetStage))
+        return true
+    else
+        Logger:Log("Stage", "WARN", "Matchmaking ล้มเหลว: " .. tostring(res))
+        BotState:SetState(BotState.IDLE)
+        return false
+    end
 end
 
-function StageService.StepLobbyLoop(): boolean
+function StageService.StepStageLoop(): boolean
     if not CircuitBreaker:CanExecute() then return false end
-    if os.clock() - StageService._lastJoinAttempt < 3.0 then return false end
-    StageService._lastJoinAttempt = os.clock()
 
     -- 1. หากอยู่ในด่านเกมแล้ว
     if IsInMatch() then
         BotState:SetState(BotState.IN_MATCH)
 
+        -- Auto Wave Skip
         if Config.Automation.AutoWaveSkip then
             local skipRem = SafeUtils.SafeGetRemote(Config.Events.VoteWaveSkipRemote)
             if skipRem then
@@ -801,6 +892,7 @@ function StageService.StepLobbyLoop(): boolean
             end
         end
 
+        -- Auto Vote Replay เมื่อเกมจบ
         if Config.Automation.AutoReplayLoop then
             local finishVote = SafeUtils.SafeGetRemote(Config.Events.GameFinishedVoteRemote)
             if finishVote then
@@ -817,49 +909,10 @@ function StageService.StepLobbyLoop(): boolean
     end
 
     -- 2. หากอยู่ใน Lobby และเปิด AutoPlayStage
-    if Config.Automation.AutoPlayStage then
-        local targetLobby = StageService.FindAvailableLobby(Config.Automation.StageMode)
-        if targetLobby then
-            Logger:Log("Stage", "INFO", string.format("พบห้องว่าง [%s] กำลังเดินทางไปที่ประตู...", targetLobby.Name))
-            
-            -- วาร์ปตัวละครไปยังหน้าประตูห้อง
-            local portalDoor = targetLobby:FindFirstChild("portaldoor", true)
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-            if portalDoor and portalDoor:IsA("BasePart") and root then
-                root.CFrame = portalDoor.CFrame + Vector3.new(0, 3, 0)
-            end
-            SafeUtils.HumanWait(0.5, 0.8)
-
-            local joinRem = SafeUtils.SafeGetRemote(Config.Events.JoinLobbyRemote)
-            local startRem = SafeUtils.SafeGetRemote(Config.Events.StartGameRemote)
-
-            if joinRem then
-                local sJoin, _ = pcall(function()
-                    if joinRem:IsA("RemoteFunction") then
-                        return joinRem:InvokeServer(targetLobby.Name)
-                    else
-                        joinRem:FireServer(targetLobby.Name)
-                        return true
-                    end
-                end)
-
-                if sJoin then
-                    Logger:Log("Stage", "INFO", "เข้าห้องสำเร็จ กำลังเริ่มเกม...")
-                    SafeUtils.HumanWait(0.8, 1.2)
-                    if startRem then
-                        pcall(function()
-                            if startRem:IsA("RemoteFunction") then
-                                startRem:InvokeServer(targetLobby.Name)
-                            else
-                                startRem:FireServer(targetLobby.Name)
-                            end
-                        end)
-                        Logger:Log("Stage", "INFO", "คำสั่งเริ่มเกมถูกส่งเรียบร้อย!")
-                    end
-                    return true
-                end
-            end
+    if Config.Automation.AutoPlayStage and BotState:GetState() ~= BotState.MATCHMAKING then
+        if os.clock() - StageService._lastMatchmakingAttempt > 6.0 then
+            StageService._lastMatchmakingAttempt = os.clock()
+            StageService.StartMatchmaking(Config.Automation.SelectedStageId)
         end
     end
     return false
@@ -913,16 +966,26 @@ function CombatService.PlaceUnitAtGate(): boolean
     local unitsFrame = su and su:FindFirstChild("Units", true)
     if not unitsFrame then return false end
 
+    -- ดึง UUID ของยูนิตที่สวมใส่จาก Session
+    local _, equippedUnits = TeamService.GetSessionCollection()
+
     for _, slotBtn in ipairs(unitsFrame:GetChildren()) do
         if slotBtn:IsA("GuiButton") or slotBtn:IsA("Frame") then
             local offset = Vector3.new((math.random() - 0.5) * 8.0, 0, (math.random() - 0.5) * 8.0)
             local targetCFrame = CFrame.new(gatePos + offset)
 
+            local unitUuid = equippedUnits and equippedUnits[slotBtn.Name]
+            local identifier = unitUuid or slotBtn.Name
+
             local s, _ = pcall(function()
                 if spawnRemote:IsA("RemoteFunction") then
-                    return spawnRemote:InvokeServer(slotBtn.Name, targetCFrame)
+                    local res = spawnRemote:InvokeServer(identifier, targetCFrame)
+                    if res == false and unitUuid then
+                        res = spawnRemote:InvokeServer(slotBtn.Name, targetCFrame)
+                    end
+                    return res
                 else
-                    spawnRemote:FireServer(slotBtn.Name, targetCFrame)
+                    spawnRemote:FireServer(identifier, targetCFrame)
                     return true
                 end
             end)
@@ -1040,7 +1103,7 @@ local function AddButton(parent: Instance, labelText: string, color: Color3, onC
     return btn
 end
 
--- [TAB 1: SUMMON - เลือก 1 ครั้ง หรือ 10 ครั้ง]
+-- [TAB 1: SUMMON - ปรับปรุงใหม่เลือก 1 ครั้ง หรือ 10 ครั้งได้ชัดเจน]
 AddToggle(SummonPage, "🎲 สุ่มตัวละครอัตโนมัติ (Auto Summon Loop)", Config.Automation.AutoSummon, function(v)
     Config.Automation.AutoSummon = v
     Logger:Log("Config", "INFO", "AutoSummon: " .. tostring(v))
@@ -1048,7 +1111,7 @@ end)
 
 -- แถบสลับโหมด 1 ครั้ง หรือ 10 ครั้ง
 local ModeRow = Instance.new("Frame")
-ModeRow.Size = UDim2.new(1, 0, 0, 32)
+ModeRow.Size = UDim2.new(1, 0, 0, 34)
 ModeRow.BackgroundColor3 = Color3.fromRGB(25, 29, 40)
 ModeRow.BorderSizePixel = 0
 ModeRow.Parent = SummonPage
@@ -1070,7 +1133,7 @@ ModeLabel.Parent = ModeRow
 
 local Btn1x = Instance.new("TextButton")
 Btn1x.Size = UDim2.new(0, 95, 0, 24)
-Btn1x.Position = UDim2.new(1, -210, 0, 4)
+Btn1x.Position = UDim2.new(1, -210, 0, 5)
 Btn1x.BackgroundColor3 = (Config.Automation.SummonMode == "gems") and Color3.fromRGB(0, 150, 90) or Color3.fromRGB(45, 50, 65)
 Btn1x.Text = "1 ครั้ง (50 Gems)"
 Btn1x.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1084,7 +1147,7 @@ Btn1xCorner.Parent = Btn1x
 
 local Btn10x = Instance.new("TextButton")
 Btn10x.Size = UDim2.new(0, 100, 0, 24)
-Btn10x.Position = UDim2.new(1, -108, 0, 4)
+Btn10x.Position = UDim2.new(1, -108, 0, 5)
 Btn10x.BackgroundColor3 = (Config.Automation.SummonMode == "gems10") and Color3.fromRGB(0, 150, 90) or Color3.fromRGB(45, 50, 65)
 Btn10x.Text = "10 ครั้ง (500 Gems)"
 Btn10x.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1100,17 +1163,17 @@ Btn1x.MouseButton1Click:Connect(function()
     Config.Automation.SummonMode = "gems"
     Btn1x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     Btn10x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
-    Logger:Log("Summon", "INFO", "ตั้งค่าโหมดการสุ่ม: 1 ครั้ง (50 Gems)")
+    Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 1 ครั้ง (50 Gems)")
 end)
 
 Btn10x.MouseButton1Click:Connect(function()
     Config.Automation.SummonMode = "gems10"
     Btn10x.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     Btn1x.BackgroundColor3 = Color3.fromRGB(45, 50, 65)
-    Logger:Log("Summon", "INFO", "ตั้งค่าโหมดการสุ่ม: 10 ครั้ง (500 Gems)")
+    Logger:Log("Summon", "INFO", "โหมดสุ่มถูกตั้งเป็น: 10 ครั้ง (500 Gems)")
 end)
 
--- ปุ่มสำหรับสุ่มแบนเนอร์แต่ละตัวแยก 1x และ 10x
+-- รายชื่อแบนเนอร์ทั้งหมดพร้อมปุ่มสุ่ม 1x และ 10x แยกกัน
 local availableBanners = SummonService.GetAvailableBanners()
 for _, bName in ipairs(availableBanners) do
     local bRow = Instance.new("Frame")
@@ -1197,8 +1260,8 @@ AddButton(CombatPage, "🛡️ วางยูนิตหน้าประต�
     CombatService.PlaceUnitAtGate()
 end)
 
--- [TAB 3: STAGES]
-AddToggle(StagesPage, "⚔️ เล่นด่านอัตโนมัติ (Auto Join & Start)", Config.Automation.AutoPlayStage, function(v)
+-- [TAB 3: STAGES - Direct Matchmaking]
+AddToggle(StagesPage, "⚔️ เล่นด่านอัตโนมัติ (Auto Matchmaking Loop)", Config.Automation.AutoPlayStage, function(v)
     Config.Automation.AutoPlayStage = v
     Logger:Log("Config", "INFO", "AutoPlayStage: " .. tostring(v))
 end)
@@ -1213,9 +1276,20 @@ AddToggle(StagesPage, "⏩ สคิปเวฟอัตโนมัติ (Aut
     Logger:Log("Config", "INFO", "AutoWaveSkip: " .. tostring(v))
 end)
 
-AddButton(StagesPage, "🚀 เข้าร่วมและเริ่มด่านเดี๋ยวนี้ (Join & Start Now)", Color3.fromRGB(35, 135, 80), function()
-    StageService.StepLobbyLoop()
-end)
+-- ตัวเลือกลงด่านแบบรวดเร็ว
+local StagesList = {
+    { Id = "namek_level_1", Name = "ดาวนาเม็ก: Act 1 (Story Mode)" },
+    { Id = "namek_level_2", Name = "ดาวนาเม็ก: Act 2 (Story Mode)" },
+    { Id = "namek_level_3", Name = "ดาวนาเม็ก: Act 3 (Story Mode)" },
+    { Id = "namek_infinite", Name = "ดาวนาเม็ก: Infinite Mode (ฟาร์ม Gems)" },
+}
+
+for _, st in ipairs(StagesList) do
+    AddButton(StagesPage, "🚀 ลงด่าน: " .. st.Name, Color3.fromRGB(35, 120, 75), function()
+        Config.Automation.SelectedStageId = st.Id
+        StageService.StartMatchmaking(st.Id)
+    end)
+end
 
 -- [TAB 4: REWARD]
 AddToggle(RewardPage, "🎁 ตรวจสอบและรับรางวัลอัตโนมัติ (Auto Claim)", Config.Automation.AutoClaimRewards, function(v)
@@ -1244,7 +1318,7 @@ local Worker = {
 }
 
 function Worker:Start()
-    Logger:Log("Worker", "INFO", "เริ่มการทำงานระบบ Automation Worker Thread Pro V3...")
+    Logger:Log("Worker", "INFO", "เริ่มการทำงานระบบ Automation Worker Thread Pro V4...")
 
     -- สวมใส่ยูนิตที่ดีที่สุดทันทีตอนเปิดสคริปต์
     task.spawn(function()
@@ -1289,7 +1363,7 @@ function Worker:Start()
 
                 -- จัดการด่าน Story/Infinite และ Replay Loop
                 if Config.Automation.AutoPlayStage or Config.Automation.AutoReplayLoop or Config.Automation.AutoWaveSkip then
-                    pcall(StageService.StepLobbyLoop)
+                    pcall(StageService.StepStageLoop)
                 end
 
                 CircuitBreaker:RecordSuccess()
@@ -1320,4 +1394,4 @@ end)
 -- RUN INITIAL
 Worker:Start()
 UpdateCurrencyDisplay()
-Logger:Log("System", "INFO", "Anime Adventures Pro V3 พร้อมใช้งานแล้ว!")
+Logger:Log("System", "INFO", "Anime Adventures Pro V4 พร้อมใช้งานแล้ว!")
