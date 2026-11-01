@@ -459,7 +459,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 175, 1, 0)
 Title.Position = UDim2.new(0, 14, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V12"
+Title.Text = "⛏️ Auto Farm Suite V14"
 Title.TextColor3 = Theme.Text
 Title.TextSize = 15
 Title.Font = Enum.Font.GothamBold
@@ -1061,8 +1061,37 @@ end
 -- 🛠️ ACTION HELPERS (TRIALS, CRATES, EQUIP BEST)
 -- ═══════════════════════════════════════════════
 
+-- Helper สำหรับตรวจสอบสถานะรางวัลของ Infinity Trial (ตรวจนับจำนวนเทียร์ที่เคลมแล้วและนับถอยหลังรีเซ็ต)
+local function GetTrialRewardStatus(trialData)
+    if not (MineTrialConfig and trialData) then
+        return { allClaimed = false, claimedCount = 0, totalTiers = 12, claimable = {}, claimableCount = 0, resetCountdown = "00:00:00", secondsLeft = 0 }
+    end
+    local totalTiers = (MineTrialConfig.TierCount and MineTrialConfig.TierCount(trialData)) or 12
+    local claimedCount = 0
+    for i = 1, totalTiers do
+        if MineTrialConfig.IsClaimed and MineTrialConfig.IsClaimed(trialData, i) then
+            claimedCount = claimedCount + 1
+        end
+    end
+    local claimable = (MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)) or {}
+    local allClaimed = (claimedCount >= totalTiers)
+    local secondsLeft = (MineTrialConfig.SecondsToNextDay and MineTrialConfig.SecondsToNextDay()) or 0
+    local resetCountdown = (MineTrialConfig.FormatCountdown and MineTrialConfig.FormatCountdown(secondsLeft)) or string.format("%ds", secondsLeft)
+
+    return {
+        allClaimed = allClaimed,
+        claimedCount = claimedCount,
+        totalTiers = totalTiers,
+        claimable = claimable,
+        claimableCount = #claimable,
+        hasAvailableRewards = not allClaimed,
+        resetCountdown = resetCountdown,
+        secondsLeft = secondsLeft
+    }
+end
+
 -- Helper สำหรับลงทดสอบอินฟินิตี้ (Infinity Trial)
-local function TriggerInfinityTrial()
+local function TriggerInfinityTrial(force)
     local d2 = SafeGetData2()
     local mg = d2 and d2.MineGame
     if not (mg and MineTrialConfig) then
@@ -1074,6 +1103,14 @@ local function TriggerInfinityTrial()
         return
     end
     local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+    local status = GetTrialRewardStatus(trialData)
+
+    -- หากเคลมรางวัลครบทุกเทียร์แล้ว และไม่ได้สั่งบังคับลง
+    if not force and status.allClaimed then
+        UpdateStatus(string.format("⏳ รางวัลครบแล้ว (รอรีเซ็ต %s)", status.resetCountdown))
+        return
+    end
+
     local attempt = trialData.Attempt
     local now = os.time()
     local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
@@ -1921,6 +1958,7 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- [TASK 10] ทดสอบอินฟินิตี้ (Infinity Trial: ตรวจสอบความพร้อม, รับรางวัล, เริ่มลงทดสอบ)
+        -- ทำงานเฉพาะเมื่อรางวัลรีเซ็ตและมีรางวัลให้รับเท่านั้น (ไม่ลงซ้ำหากเคลมครบแล้วหรือติด Cooldown)
         -- -------------------------------------------------------------
         local ok10, err10 = pcall(function()
             if Config.AutoInfinityTrial and mg and MineTrialConfig then
@@ -1936,15 +1974,27 @@ task.spawn(function()
                             SafeSendEvent(Config.Events.TrialClaim, tierIdx)
                             HumanWait(0.35, 0.5)
                         end
+                        -- รีเฟรชข้อมูลหลังรับรางวัล
+                        d2 = SafeGetData2()
+                        mg = d2 and d2.MineGame
+                        trialData = (mg and mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
                     end
 
-                    -- 10.2 ตรวจสอบสถานะการทดสอบปัจจุบัน
+                    -- 10.2 ตรวจสอบว่ารางวัลสำหรับวันนี้เคลมครบทุกเทียร์แล้วหรือไม่
+                    local status = GetTrialRewardStatus(trialData)
+                    if status.allClaimed then
+                        -- รางวัลสำหรับวันนี้เคลมครบหมดแล้ว (อยู่ในช่วง Cooldown รอรีเซ็ตวันถัดไป)
+                        -- ไม่ส่งคำสั่งลงทดสอบเด็ดขาดตามเงื่อนไขของผู้ใช้
+                        return
+                    end
+
+                    -- 10.3 ตรวจสอบสถานะการทดสอบปัจจุบัน
                     local attempt = trialData.Attempt
                     local now = os.time()
                     local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
 
                     if not isRunning then
-                        UpdateStatus("⚔️ ลงทดสอบอินฟินิตี้ (Infinity Trial)...")
+                        UpdateStatus(string.format("⚔️ ลงทดสอบอินฟินิตี้ (รางวัลค้าง %d/%d)...", status.totalTiers - status.claimedCount, status.totalTiers))
                         SafeSendEvent(Config.Events.TrialStart)
                         HumanWait(0.4, 0.6)
                     end
