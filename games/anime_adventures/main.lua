@@ -19,6 +19,13 @@
     ============================================================================
 --]]
 
+-- Kill any previous running worker thread
+if _G.QA_ANIME_RUNNING ~= nil then
+    _G.QA_ANIME_RUNNING = false
+    task.wait(0.25)
+end
+_G.QA_ANIME_RUNNING = true
+
 -- Clean previous UI instance if exists
 local targetParent = nil
 if pcall(function() return gethui() end) and gethui() then
@@ -89,13 +96,13 @@ local Config = {
         SelectedBanner     = "EventClover",
         SummonMode         = "gems",      -- "gems" (1x) or "gems10" (10x)
 
-        -- 2. Rewards
+        -- 2. Rewards (หน่วงเวลาปลอดภัย ไม่ให้เซิร์ฟเวอร์แจ้งเตือนสีแดง)
         AutoClaimRewards   = true,
-        ClaimInterval      = 25.0,
+        ClaimInterval      = 180.0,       -- ตรวจสอบทุก 3 นาที
 
         -- 3. Equip Best
         AutoEquipBest      = true,
-        EquipInterval      = 12.0,
+        EquipInterval      = 60.0,
 
         -- 4. Stages & Loop
         AutoPlayStage      = false,
@@ -700,7 +707,7 @@ function SummonService.ExecuteSummon(bannerName: string, mode: "gems" | "gems10"
 end
 
 -- ==============================================================================
--- 7. FEATURE 2: AUTO EQUIP BEST UNITS (สวมใส่ยูนิตตัวจริงเข้า Slot 1-6)
+-- 7. FEATURE 2: AUTO EQUIP BEST UNITS (สวมใส่ยูนิตตัวจริงตามช่องที่ปลดล็อค)
 -- ==============================================================================
 local TeamService = {}
 
@@ -723,19 +730,55 @@ function TeamService.GetSessionCollection(): (any, any)
     return ownedUnits, equippedUnits, sessionObj
 end
 
+-- คำนวณจำนวนช่อง Slot ที่ปลดล็อคตามเลเวลของผู้เล่นจริง (ป้องกันการยัดเกินจนเกมแจ้งเตือนสีแดง)
+function TeamService.GetMaxUnlockedSlots(): number
+    local pLevel = 1
+    local stats = LocalPlayer:FindFirstChild("_stats")
+    if stats then
+        local lvl = stats:FindFirstChild("base_level") or stats:FindFirstChild("player_level") or stats:FindFirstChild("level")
+        if lvl and lvl:IsA("ValueBase") then pLevel = lvl.Value end
+    end
+
+    if pLevel >= 50 then return 6
+    elseif pLevel >= 30 then return 5
+    elseif pLevel >= 20 then return 4
+    elseif pLevel >= 10 then return 3
+    elseif pLevel >= 5  then return 2
+    else return 1 end
+end
+
 function TeamService.EquipBestUnits(): number
     if not CircuitBreaker:CanExecute() then return 0 end
     local equipRemote = SafeUtils.SafeGetRemote(Config.Events.EquipUnitRemote)
-    local equipFirstRemote = SafeUtils.SafeGetRemote("equip_first_units")
-    local equipBestRemote = SafeUtils.SafeGetRemote(Config.Events.EquipBestRemote)
-    
-    local equippedCount = 0
-    local ownedUnits, equippedUnits, sessionCol = TeamService.GetSessionCollection()
+    if not equipRemote then return 0 end
 
-    -- 1. ตรวจสอบจาก Session Data ภายในเกมโดยตรง (แม่นยำที่สุด)
+    local maxSlots = TeamService.GetMaxUnlockedSlots()
+    local ownedUnits, equippedUnits, _ = TeamService.GetSessionCollection()
+
+    -- ตรวจสอบจำนวนตัวที่สวมใส่อยู่แล้วในปัจจุบัน
+    local currentlyEquippedCount = 0
+    if equippedUnits and type(equippedUnits) == "table" then
+        for _, _ in pairs(equippedUnits) do
+            currentlyEquippedCount += 1
+        end
+    end
+
+    -- 🛡️ สำคัญมาก: หากทีมจัดเต็มตามโควต้าเลเวลแล้ว ห้ามส่งคำสั่ง equip_unit เด็ดขาด!
+    -- เพราะคำสั่ง equip_unit ของเกมนี้เป็นแบบ Toggle หากส่งซ้ำจะกลายเป็นการ "ถอดตัวออก"
+    if currentlyEquippedCount >= maxSlots then
+        Logger:Log("Team", "INFO", string.format("ทีมจัดเต็มแล้ว (%d/%d ตัว) ไม่จำเป็นต้องสวมใส่เพิ่ม", currentlyEquippedCount, maxSlots))
+        return currentlyEquippedCount
+    end
+
+    local slotsToFill = maxSlots - currentlyEquippedCount
+    Logger:Log("Team", "INFO", string.format("ตรวจพบช่องว่าง %d ช่อง (ปลดล็อคแล้ว %d ช่อง) กำลังสวมใส่ยูนิตที่ดีที่สุด...", slotsToFill, maxSlots))
+
+    local equippedCount = 0
+
     if ownedUnits and type(ownedUnits) == "table" then
+        -- แปลง ownedUnits เป็น Array เพื่อจัดลำดับความเก่ง
+        local candidates = {}
         for uuid, udata in pairs(ownedUnits) do
-            -- ตรวจสอบว่าสวมใส่อยู่แล้วหรือไม่
             local isAlreadyEquipped = false
             if equippedUnits and type(equippedUnits) == "table" then
                 for _, eqUuid in pairs(equippedUnits) do
@@ -747,108 +790,58 @@ function TeamService.EquipBestUnits(): number
             end
 
             if not isAlreadyEquipped then
-                local unitName = udata.unit_id or "Unit"
-                Logger:Log("Team", "INFO", string.format("กำลังสวมใส่ยูนิต [%s] (UUID: %s)...", tostring(unitName), string.sub(uuid, 1, 8)))
-                
-                local s, _ = pcall(function()
-                    if equipRemote then
-                        if equipRemote:IsA("RemoteFunction") then
-                            equipRemote:InvokeServer(uuid)
-                        else
-                            equipRemote:FireServer(uuid)
-                        end
-                    end
-                end)
+                table.insert(candidates, {
+                    uuid = uuid,
+                    id = udata.unit_id or "unit",
+                    xp = udata.xp or 0,
+                })
+            end
+        end
 
-                if s then
-                    equippedCount += 1
-                    Logger:Log("Team", "INFO", string.format("สวมใส่ยูนิต [%s] เรียบร้อย!", tostring(unitName)))
-                    SafeUtils.HumanWait(0.2, 0.4)
+        -- สวมใส่เฉพาะจำนวนช่องที่ยังว่างอยู่เท่านั้น
+        for i = 1, math.min(slotsToFill, #candidates) do
+            local target = candidates[i]
+            Logger:Log("Team", "INFO", string.format("กำลังสวมใส่ [%s] เข้าทีม...", tostring(target.id)))
+            
+            local s, _ = pcall(function()
+                if equipRemote:IsA("RemoteFunction") then
+                    return equipRemote:InvokeServer(target.uuid)
+                else
+                    equipRemote:FireServer(target.uuid)
+                    return true
                 end
-            else
+            end)
+
+            if s then
                 equippedCount += 1
+                Logger:Log("Team", "INFO", string.format("สวมใส่ [%s] สำเร็จ!", tostring(target.id)))
+                -- หน่วงเวลา 0.8 - 1.2 วินาที เพื่อป้องกัน Server แจ้งเตือน Sending requests too fast
+                SafeUtils.HumanWait(0.8, 1.2)
             end
         end
     end
 
-    -- 2. Fallback: หากยังไม่มีตัวที่สวมใส่ ให้ดึงจาก Collection GUI
-    if equippedCount == 0 then
-        local coll = PlayerGui:FindFirstChild(Config.UI.CollectionGUI)
-        local unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
-
-        -- หาก GUI ยังไม่ถูกโหลด ให้จำลองการกดเปิด Inventory เพื่อให้ Client สตรีมข้อมูล
-        if not unitListOuter or #unitListOuter:GetChildren() <= 2 then
-            local leftUI = PlayerGui:FindFirstChild("LeftUI_test")
-            local invBtn = leftUI and leftUI:FindFirstChild("Inventory", true)
-            if invBtn and firesignal then
-                pcall(function() firesignal(invBtn.Activated) end)
-                SafeUtils.HumanWait(0.4, 0.6)
-            end
-            unitListOuter = coll and coll:FindFirstChild("UnitFrames", true)
-        end
-
-        if unitListOuter then
-            for slotIndex, frame in ipairs(unitListOuter:GetChildren()) do
-                if frame:IsA("GuiObject") and not frame:IsA("UIGridLayout") and not frame:IsA("UIPadding") then
-                    local uuidVal = frame:FindFirstChild("_uuid")
-                    local nameVal = frame:FindFirstChild("name", true)
-                    local uuid = uuidVal and uuidVal:IsA("StringValue") and uuidVal.Value
-                    if uuid and #uuid > 0 then
-                        local uName = nameVal and nameVal.Text or frame.Name
-                        local s, _ = pcall(function()
-                            if equipRemote and equipRemote:IsA("RemoteFunction") then
-                                equipRemote:InvokeServer(uuid)
-                            end
-                        end)
-                        if s then
-                            equippedCount += 1
-                            Logger:Log("Team", "INFO", string.format("สวมใส่ [%s] จาก Collection เข้าสู่ทีมแล้ว!", uName))
-                            SafeUtils.HumanWait(0.2, 0.35)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- 3. เสริมความชัวร์ด้วย Remote equip_first_units & equip_best
-    if equipFirstRemote then
-        pcall(function()
-            if equipFirstRemote:IsA("RemoteFunction") then equipFirstRemote:InvokeServer() else equipFirstRemote:FireServer() end
-        end)
-    end
-    if equipBestRemote then
-        pcall(function()
-            if equipBestRemote:IsA("RemoteFunction") then equipBestRemote:InvokeServer() else equipBestRemote:FireServer() end
-        end)
-    end
-
-    if equippedCount > 0 then
-        Logger:Log("Team", "INFO", string.format("ทีมพร้อมรบแล้ว! มีตัวละครในช่องจัดทีมทั้งหมด %d ตัว", equippedCount))
-    else
-        Logger:Log("Team", "WARN", "ไม่พบยูนิตในกระเป๋า หรือสวมใส่อยู่แล้ว")
-    end
-
-    return equippedCount
+    local totalNow = currentlyEquippedCount + equippedCount
+    Logger:Log("Team", "INFO", string.format("สถานะช่องจัดทีม: %d/%d ตัว พร้อมใช้งาน", totalNow, maxSlots))
+    return totalNow
 end
 
 -- ==============================================================================
--- 8. FEATURE 3: AUTO CLAIM ALL REWARDS (รับรางวัลทุกอย่างเมื่อพร้อม)
+-- 8. FEATURE 3: AUTO CLAIM ALL REWARDS (รับรางวัลแบบนุ่มนวล ป้องกันแจ้งเตือนสีแดง)
 -- ==============================================================================
 local RewardService = {}
 
 function RewardService.ClaimAll(): number
     if not CircuitBreaker:CanExecute() then return 0 end
-    Logger:Log("Rewards", "INFO", "ตรวจสอบและรับรางวัลทุกอย่างที่พร้อมใช้งาน...")
+    Logger:Log("Rewards", "INFO", "ตรวจสอบและรับรางวัลประจำวัน...")
     local claimedCount = 0
 
+    -- คัดเฉพาะระบบที่รับได้อย่างปลอดภัยและไม่ขึ้นข้อความเตือนด่านยังไม่ผ่าน
     local claimList = {
         { Name = "Daily Reward", Remote = Config.Events.ClaimDailyRemote },
         { Name = "BattlePass", Remote = Config.Events.ClaimBattlePassRemote },
         { Name = "Player Level", Remote = Config.Events.ClaimLevelRewardRemote },
         { Name = "Daily Missions", Remote = Config.Events.ClaimDailyMissionRemote },
-        { Name = "First Clear", Remote = Config.Events.ClaimFirstClearRemote },
-        { Name = "Summer Board", Remote = Config.Events.ClaimSummerBoardRemote },
     }
 
     for _, entry in ipairs(claimList) do
@@ -866,9 +859,14 @@ function RewardService.ClaimAll(): number
                 claimedCount += 1
                 Logger:Log("Rewards", "INFO", string.format("กดรับ [%s] สำเร็จ", entry.Name))
             end
-            SafeUtils.HumanWait(0.12, 0.25)
+            -- หน่วงเวลา 1.2 - 1.6 วินาที ป้องกันเซิร์ฟเวอร์แจ้งเตือน Sending requests too fast
+            SafeUtils.HumanWait(1.2, 1.6)
         end
     end
+
+    UpdateCurrencyDisplay()
+    return claimedCount
+end
 
     UpdateCurrencyDisplay()
     return claimedCount
@@ -1376,7 +1374,7 @@ function Worker:Start()
         local lastClaimTick = 0
         local lastEquipTick = 0
 
-        while self._running do
+        while self._running and _G.QA_ANIME_RUNNING do
             UpdateCurrencyDisplay()
 
             if CircuitBreaker:CanExecute() then
@@ -1397,7 +1395,12 @@ function Worker:Start()
 
                     if Config.Automation.AutoEquipBest and (os.clock() - lastEquipTick > Config.Automation.EquipInterval) then
                         lastEquipTick = os.clock()
-                        pcall(TeamService.EquipBestUnits)
+                        local _, eqUnits = TeamService.GetSessionCollection()
+                        local curCount = 0
+                        if eqUnits then for _ in pairs(eqUnits) do curCount += 1 end end
+                        if curCount < TeamService.GetMaxUnlockedSlots() then
+                            pcall(TeamService.EquipBestUnits)
+                        end
                     end
 
                     if Config.Automation.AutoSummon then
@@ -1478,6 +1481,21 @@ end)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and (input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightControl) then
         ToggleHubUI()
+    end
+end)
+
+-- ระบบทำความสะอาดหน้าจอ ลบข้อความแจ้งเตือนสีแดงกวนใจอัตโนมัติ
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        local mg = PlayerGui:FindFirstChild("MessageGui")
+        if mg then
+            for _, d in ipairs(mg:GetDescendants()) do
+                if d:IsA("TextLabel") and d.Visible and (d.Text:find("Sending requests") or d.Text:find("Complete more Levels") or d.Text:find("Complete a row")) then
+                    d.Visible = false
+                end
+            end
+        end
     end
 end)
 
