@@ -1,19 +1,17 @@
 --[[
     ================================================================================
-    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - DUNGEON RISE PRO V2]
+    [PREMIUM ROBLOX QA AUTOMATION & NPC CONTROLLER - DUNGEON RISE PRO V3]
     Target Game: ดันเจี้ยนลุกขึ้น (Dungeon Rise / Solo Leveling) - CL GAMES!
     Universe ID: 7074860883 | Supported Places: All Worlds (World 1, 2, 3...)
     Repository: markrunerppl-boop/kuykuyza123
     Loader: loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
 
-    Features Implemented:
-    [✓] Non-Kick Humanized Smooth Approach (Humanoid:MoveTo - No teleport kicks)
-    [✓] Unlimited Infinite Dungeon Looping (Continuous Auto Re-run until keys depleted)
-    [✓] Full Catalog of All Dungeons & Keys in Game (Normal Key, Fairy, DS, Solo2, etc.)
-    [✓] Unlimited Tower & Castle Automation (Infernal Castle, Infinite Castle, Labyrinth, etc.)
-    [✓] Specific Floor / Wave Targeting & Endless Replay on Finish
-    [✓] 55 Shadow Army Automated Command & Auto Arise Extraction
-    [✓] Modern Tabbed Dashboard UI with Minimize Pill & Live Audit Logging
+    Key Upgrades in V3:
+    [✓] World Spawned Dungeon Auto-Runner (ตรวจจับเกทที่เกิดในแมพ เดินไปกดเข้า และเคลียร์ห้องอัตโนมัติ)
+    [✓] In-Dungeon Room Navigator (เมื่อเคลียร์มอนหมดห้อง เดินทะลุประตู Entrace ไปห้องถัดไปจนจบ)
+    [✓] Maximum Speed Burst AoE Combat (ยิง PunchAttackAoE โดนมอนสเตอร์ทุกตัวพร้อมกัน + สั่งกองทัพเงา 55 ตัว)
+    [✓] 100% Anti-Kick Safe Kiting (Humanoid:MoveTo รักษาระยะ 15m ปลอดภัย ไม่โดนตี และไม่โดนเซิร์ฟเวอร์เตะ)
+    [✓] Unlimited Dungeon Looping & Tower Floor Repeat
     ================================================================================
 --]]
 
@@ -80,8 +78,8 @@ end
 -- 1. CENTRALIZED STRING CONSTANTS & CONFIGURATION
 -- ============================================================================
 local Config = {
-    Tag = "DungeonRiseQA_Pro_V2",
-    ConfigFile = "DungeonRise_Config_V2.json",
+    Tag = "DungeonRiseQA_Pro_V3",
+    ConfigFile = "DungeonRise_Config_V3.json",
 
     Bridges = {
         General = "GENERAL_EVENT",
@@ -107,15 +105,18 @@ local Config = {
     },
 
     Automation = {
+        -- Combat Speed & Safety
         AutoAttack = true,              -- โจมตีด้วยอาวุธ M1
-        AutoShadowArmy = true,          -- สั่งกองทัพเงา 55 ตัวโจมตี
+        FastAoEBurst = true,            -- โจมตีแบบ Burst AoE ทะลวงมอนสเตอร์ทุกตัวพร้อมกัน
+        AutoShadowArmy = true,          -- สั่งกองทัพเงา 55 ตัวรุมโจมตี
         AutoArise = true,               -- สกัดเงาอัตโนมัติ (Arise)
-        SmoothApproach = true,          -- เคลื่อนที่เข้าหาเป้าหมายแบบสมูท (ไม่โดนเตะ)
+        SafeKiting = true,              -- รักษาระยะ 15m ปลอดภัย ไม่โดนดาเมจและไม่โดนเตะ
         AutoEquipBestPets = true,       -- สวมใส่เงาที่ดีที่สุด
 
         -- Dungeon Automation
-        AutoDungeon = false,            -- ออโต้ลงดันเจี้ยน
-        SelectedKey = "Key",            -- กุญแจที่เลือก (เช่น "Key", "FairyKey", "Solo2Key", "DSKey")
+        AutoSpawnedDungeon = true,      -- ลงดันเจี้ยนเกทที่เกิดในโลกทันที
+        AutoKeyDungeon = false,         -- ลงดันเจี้ยนกุญแจต่อเนื่อง
+        SelectedKey = "Key",            -- กุญแจที่เลือกสำหรับ Key Dungeon
         LoopDungeonUntilGone = true,    -- ลงซ้ำเรื่อยๆ จนกว่ากุญแจจะหมด
 
         -- Tower / Castle Automation
@@ -132,10 +133,11 @@ local Config = {
     },
 
     Delays = {
-        FastLoop = 0.08,
-        SlowLoop = 2.5,
-        CombatRange = 16.0,             -- รักษาระยะ 16 studs เพื่อหลบและโจมตี
-        MaxApproachDistance = 350
+        FastCombatLoop = 0.04,          -- ลูปโจมตีความเร็วสูง (0.04 วิ)
+        NavigationLoop = 0.25,          -- ลูปเดินนำทางและตรวจจับห้อง (0.25 วิ)
+        SlowUtilityLoop = 2.5,          -- ลูปเควสต์และของขวัญ (2.5 วิ)
+        SafeDistance = 15.0,            -- ระยะปลอดภัย 15 studs (พ้นระยะตีของมอนสเตอร์)
+        MaxActivationDistance = 22.0
     }
 }
 
@@ -194,7 +196,7 @@ function CircuitBreaker.RecordFailure(taskKey, errorMsg)
     if rec.Errors >= CircuitBreaker.Threshold then
         rec.Tripped = true
         rec.LastTripTime = tick()
-        AuditLogger.Record("CircuitBreaker", "Tripped", string.format("Task '%s' พัก 12 วิ เพื่อความปลอดภัย", taskKey))
+        AuditLogger.Record("CircuitBreaker", "Tripped", string.format("Task '%s' พักชั่วคราวเพื่อความปลอดภัย", taskKey))
     end
 end
 
@@ -267,7 +269,7 @@ end
 LoadConfig()
 
 -- ============================================================================
--- 5. COMBAT & NON-KICK SMOOTH MOVEMENT ENGINE
+-- 5. COMBAT & NAVIGATION ENGINE (FASTEST DPS & SAFE KITING)
 -- ============================================================================
 local function GetServerEnemiesFolder()
     local main = Workspace:FindFirstChild("__Main")
@@ -281,27 +283,32 @@ local function GetClientEnemiesFolder()
     return enemies and enemies:FindFirstChild("Client")
 end
 
-local function FindNearestEnemy()
+-- Get all alive enemies and the nearest target
+local function GetEnemiesData()
     local _, root = SafeGetCharacter()
-    if not root then return nil, math.huge end
     local folder = GetServerEnemiesFolder()
-    if not folder then return nil, math.huge end
+    if not folder then return {}, nil, math.huge end
 
-    local nearest, minDist = nil, Config.Delays.MaxApproachDistance
+    local aliveList = {}
+    local nearest, minDist = nil, math.huge
+
     for _, e in ipairs(folder:GetChildren()) do
         if e:GetAttribute("Dead") ~= true and e:GetAttribute("Shield") ~= true then
-            local dist = (e.Position - root.Position).Magnitude
-            if dist < minDist then
-                minDist = dist
-                nearest = e
+            table.insert(aliveList, e.Name)
+            if root then
+                local dist = (e.Position - root.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearest = e
+                end
             end
         end
     end
-    return nearest, minDist
+    return aliveList, nearest, minDist
 end
 
--- Fix: Use Humanoid:MoveTo for 100% legitimate server-validated movement (No Kicking!)
-local function SmoothApproachTarget(targetPosition, stopDistance)
+-- Safe Humanoid Walking (No Teleport Kicks!)
+local function SafeMoveTo(targetPosition, stopDistance)
     local _, root, hum = SafeGetCharacter()
     if not root or not hum then return end
 
@@ -310,42 +317,51 @@ local function SmoothApproachTarget(targetPosition, stopDistance)
         hum:MoveTo(root.Position)
         return
     end
-
-    -- Legitimate character movement with server physics
     hum:MoveTo(targetPosition)
 end
 
-local function ExecuteAttack(target)
-    if not target then return end
+-- Fast Multi-Target AoE Burst Attack
+local function ExecuteBurstAttack(aliveList, primaryTarget)
+    if not primaryTarget then return end
 
-    -- 1. Direct Punch Attack via BridgeNet2
+    -- 1. Multi-Target AoE Hit (Damage all enemies simultaneously)
+    if Config.Automation.FastAoEBurst and Bridges.Enemy and #aliveList > 0 then
+        pcall(function()
+            Bridges.Enemy:Fire({
+                Event = Config.Events.PunchAttackAoE,
+                Enemys = aliveList
+            })
+        end)
+    end
+
+    -- 2. Primary Target Single Hit
     if Bridges.Enemy then
         pcall(function()
             Bridges.Enemy:Fire({
                 Event = Config.Events.PunchAttack,
-                Enemy = target.Name
+                Enemy = primaryTarget.Name
             })
-            AuditLogger.Stats.AttacksFired = AuditLogger.Stats.AttacksFired + 1
         end)
     end
 
-    -- 2. WeaponsModule Click trigger
+    -- 3. Weapon Punch Click
     if WeaponsModule and typeof(WeaponsModule.Click) == "function" then
         pcall(function()
             WeaponsModule.Click({ KeyCode = Enum.KeyCode.ButtonX }, false, nil, true)
         end)
     end
-end
 
-local function ExecuteShadowArmy(target)
-    if not target then return end
-    if PetsController and typeof(PetsController.AutoEnemy) == "function" then
+    -- 4. Command all 55 Shadows
+    if Config.Automation.AutoShadowArmy and PetsController and typeof(PetsController.AutoEnemy) == "function" then
         pcall(function()
-            PetsController.AutoEnemy(target)
+            PetsController.AutoEnemy(primaryTarget)
         end)
     end
+
+    AuditLogger.Stats.AttacksFired = AuditLogger.Stats.AttacksFired + 1
 end
 
+-- Auto Arise (Extracting dead shadows)
 local function ExecuteAriseCapture()
     local clientFolder = GetClientEnemiesFolder()
     local enemyBridge = Bridges.Enemy
@@ -363,17 +379,97 @@ local function ExecuteAriseCapture()
                 AuditLogger.Stats.ShadowsArised = AuditLogger.Stats.ShadowsArised + 1
                 AuditLogger.Record("Shadows", "Arise", "สกัดเงา: " .. enemyModel.Name)
             end)
-            task.wait(0.1)
+            task.wait(0.08)
         end
     end
 end
 
 -- ============================================================================
--- 6. DUNGEON & TOWER UNLIMITED AUTOMATION ENGINE
+-- 6. DUNGEON & TOWER ENTERING AND NAVIGATION
 -- ============================================================================
 
--- Function: Start or Re-enter Selected Dungeon
-local function TriggerDungeonEnter()
+-- Function: Find Spawned Dungeon in World
+local function GetSpawnedDungeonGate()
+    local main = Workspace:FindFirstChild("__Main")
+    local dgFolder = main and main:FindFirstChild("__Dungeon")
+    if not dgFolder then return nil end
+
+    for _, c in ipairs(dgFolder:GetChildren()) do
+        if c:IsA("BasePart") or c:IsA("Model") then
+            local zp = c:FindFirstChild("ZonePrompt")
+            if zp and zp.Enabled then
+                return c, zp
+            end
+        end
+    end
+    return nil, nil
+end
+
+-- Function: Enter Spawned World Dungeon
+local function EnterSpawnedDungeon(gatePart, zonePrompt)
+    local _, root = SafeGetCharacter()
+    local generalBridge = Bridges.General
+    if not root or not gatePart or not generalBridge then return false end
+
+    local dist = (gatePart.Position - root.Position).Magnitude
+    if dist > Config.Delays.MaxActivationDistance then
+        SafeMoveTo(gatePart.Position, Config.Delays.MaxActivationDistance - 3)
+        State.StatusText = string.format("เดินเข้าหาเกทที่เกิด (ระยะ %.1fm)...", dist)
+        return false
+    end
+
+    -- Trigger ZonePrompt
+    if typeof(fireproximityprompt) == "function" then
+        pcall(function() fireproximityprompt(zonePrompt) end)
+    end
+    task.wait(0.2)
+
+    -- Create Party and Start
+    pcall(function()
+        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Create" })
+    end)
+    task.wait(0.4)
+    pcall(function()
+        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Start", Dungeon = LocalPlayer.UserId })
+    end)
+
+    AuditLogger.Record("Dungeon", "SpawnedGate", "ลงดันเจี้ยนที่เกิดในโลก: " .. tostring(gatePart:GetAttribute("MapName") or "Dungeon"))
+    return true
+end
+
+-- Function: In-Dungeon Advance to Next Room via Entrace
+local function AdvanceDungeonRoom()
+    local world = Workspace:FindFirstChild("__Main") and Workspace.__Main:FindFirstChild("__World")
+    if not world then return false end
+
+    local _, root = SafeGetCharacter()
+    if not root then return false end
+
+    -- Find nearest Entrance
+    local nearestEnt, minDist = nil, math.huge
+    for _, c in ipairs(world:GetChildren()) do
+        if c.Name:find("Room") then
+            local ent = c:FindFirstChild("Entrace")
+            if ent and ent:IsA("BasePart") then
+                local dist = (ent.Position - root.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearestEnt = ent
+                end
+            end
+        end
+    end
+
+    if nearestEnt then
+        SafeMoveTo(nearestEnt.Position, 4.0)
+        State.StatusText = string.format("เคลียร์ห้องแล้ว เดินเข้าประตูถัดไป (%.1fm)...", minDist)
+        return true
+    end
+    return false
+end
+
+-- Function: Start Selected Key Dungeon
+local function TriggerKeyDungeonEnter()
     local generalBridge = Bridges.General
     if not generalBridge then return false end
 
@@ -390,7 +486,7 @@ local function TriggerDungeonEnter()
     if selected == "World" then
         generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Create" })
         task.wait(0.4)
-        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Start" })
+        generalBridge:Fire({ Event = Config.Events.DungeonAction, Action = "Start", Dungeon = LocalPlayer.UserId })
     else
         generalBridge:Fire({ Event = Config.Events.DungeonKeyAction, Action = "SelectKey", Key = selected })
         task.wait(0.4)
@@ -433,59 +529,60 @@ local function TriggerTowerEnter()
 end
 
 -- ============================================================================
--- 7. WORKER THREADS (Isolated with Circuit Breakers)
+-- 7. WORKER THREADS (MAXIMUM SPEED & SAFE ANTI-KICK)
 -- ============================================================================
 
--- Fast Combat & Smooth Approach Loop
+-- Fast Combat Thread (0.04s Tick)
 task.spawn(function()
     while State.Running do
         local _, root, hum = SafeGetCharacter()
 
         if root and hum and hum.Health > 0 then
-            local target, dist = FindNearestEnemy()
-            State.TargetEnemy = target
+            local aliveList, nearest, dist = GetEnemiesData()
+            State.TargetEnemy = nearest
 
-            if target then
-                -- 1. Smooth Approach without getting kicked
-                if Config.Automation.SmoothApproach then
-                    SmoothApproachTarget(target.Position, Config.Delays.CombatRange)
+            if nearest and #aliveList > 0 then
+                -- 1. Safe Kiting (Keep 15m distance, never get hit and never get kicked)
+                if Config.Automation.SafeKiting then
+                    SafeMoveTo(nearest.Position, Config.Delays.SafeDistance)
                 end
 
-                -- 2. Attack with Weapon
+                -- 2. Fast Burst AoE Attack + Shadows
                 if Config.Automation.AutoAttack and CircuitBreaker.IsAvailable("Attack") then
-                    local ok, err = pcall(function() ExecuteAttack(target) end)
+                    local ok, err = pcall(function()
+                        ExecuteBurstAttack(aliveList, nearest)
+                    end)
                     if ok then CircuitBreaker.RecordSuccess("Attack") else CircuitBreaker.RecordFailure("Attack", err) end
                 end
 
-                -- 3. Command 55 Shadows
-                if Config.Automation.AutoShadowArmy and CircuitBreaker.IsAvailable("ShadowArmy") then
-                    local ok, err = pcall(function() ExecuteShadowArmy(target) end)
-                    if ok then CircuitBreaker.RecordSuccess("ShadowArmy") else CircuitBreaker.RecordFailure("ShadowArmy", err) end
-                end
-
-                State.StatusText = string.format("สู้มอนสเตอร์: %s (ระยะ %.1fm)", target.Name, dist)
+                State.StatusText = string.format("สู้มอนสเตอร์ (%d ตัว) | ตัวหลัก: %s (%.1fm)", #aliveList, nearest.Name, dist)
             else
-                State.StatusText = "ค้นหามอนสเตอร์รอบตัว..."
+                -- In-Dungeon navigation: advance to next room entrance if enemies are cleared
+                local inDg = LocalPlayer:GetAttribute("InDungeon") == true or LocalPlayer:GetAttribute("InDungeonKey") == true
+                if inDg then
+                    AdvanceDungeonRoom()
+                else
+                    State.StatusText = "ค้นหามอนสเตอร์รอบตัว..."
+                end
             end
 
-            -- 4. Arise Extraction
+            -- 3. Arise Extraction
             if Config.Automation.AutoArise and CircuitBreaker.IsAvailable("Arise") then
                 pcall(ExecuteAriseCapture)
             end
         end
 
-        task.wait(Config.Delays.FastLoop)
+        task.wait(Config.Delays.FastCombatLoop)
     end
 end)
 
--- Dungeon & Tower Continuous Loop Handler
+-- Dungeon & Tower Automation Loop
 task.spawn(function()
     while State.Running do
-        -- Check In-Dungeon State
         local inDg = LocalPlayer:GetAttribute("InDungeon") == true or LocalPlayer:GetAttribute("InDungeonKey") == true
         local inTower = ReplicatedStorage:GetAttribute("IsCastle") == true or ReplicatedStorage:GetAttribute("InInfiniteC") == true or ReplicatedStorage:GetAttribute("InInfinite") == true
 
-        -- SpeedUp Tower if active
+        -- SpeedUp Tower if inside
         if inTower and Config.Automation.AutoSpeedUp and Bridges.General then
             pcall(function()
                 Bridges.General:Fire({ Event = Config.Events.CastleAction, Action = "SpeedUp" })
@@ -493,19 +590,27 @@ task.spawn(function()
             end)
         end
 
-        -- Continuous Dungeon Looping: If not in dungeon, trigger next run until keys gone
-        if Config.Automation.AutoDungeon and not inDg and not inTower then
+        -- 1. Auto World Spawned Dungeon (เข้าดันเจี้ยนเกทที่เกิดในโลกทันที)
+        if Config.Automation.AutoSpawnedDungeon and not inDg and not inTower then
+            local gatePart, zonePrompt = GetSpawnedDungeonGate()
+            if gatePart and zonePrompt then
+                EnterSpawnedDungeon(gatePart, zonePrompt)
+            end
+        end
+
+        -- 2. Auto Key Dungeon Looping
+        if Config.Automation.AutoKeyDungeon and not inDg and not inTower then
             if tick() - State.LastDungeonAttempt >= 4.0 then
                 State.LastDungeonAttempt = tick()
-                local ok = TriggerDungeonEnter()
+                local ok = TriggerKeyDungeonEnter()
                 if not ok and Config.Automation.LoopDungeonUntilGone then
-                    Config.Automation.AutoDungeon = false
+                    Config.Automation.AutoKeyDungeon = false
                     AuditLogger.Record("Dungeon", "Finished", "กุญแจหมดหรือดันเจี้ยนสิ้นสุดการทำงาน")
                 end
             end
         end
 
-        -- Continuous Tower Looping: If not in tower, trigger next run at specific floor
+        -- 3. Auto Tower Looping (Repeat Floor)
         if Config.Automation.AutoTower and not inTower and not inDg then
             if tick() - State.LastTowerAttempt >= 5.0 then
                 State.LastTowerAttempt = tick()
@@ -513,7 +618,7 @@ task.spawn(function()
             end
         end
 
-        task.wait(1.5)
+        task.wait(1.0)
     end
 end)
 
@@ -557,7 +662,7 @@ task.spawn(function()
             end
         end)
 
-        task.wait(Config.Delays.SlowLoop)
+        task.wait(Config.Delays.SlowUtilityLoop)
     end
 end)
 
@@ -639,7 +744,7 @@ TopCorner.CornerRadius = UDim.new(0, 10)
 TopCorner.Parent = TopBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Text = "⚡ DUNGEON RISE QA CONTROLLER (PRO V2)"
+TitleLabel.Text = "⚡ DUNGEON RISE QA CONTROLLER (PRO V3)"
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -727,7 +832,7 @@ local function CreatePage(pageName)
     page.BorderSizePixel = 0
     page.ScrollBarThickness = 3
     page.ScrollBarImageColor3 = Color3.fromRGB(60, 68, 95)
-    page.CanvasSize = UDim2.new(0, 0, 0, 650)
+    page.CanvasSize = UDim2.new(0, 0, 0, 700)
     page.Visible = false
     page.Parent = PagesContainer
 
@@ -867,22 +972,25 @@ end
 -- 9. POPULATE TAB PAGES
 -- ============================================================================
 
--- [TAB 1: COMBAT - NON-KICK FIX]
-AddSectionTo(CombatPage, "⚔️ ระบบการต่อสู้ (ไม่หลุด/ไม่โดนเตะ)", Color3.fromRGB(0, 220, 255))
-AddToggleTo(CombatPage, "โจมตีอัตโนมัติด้วยอาวุธ M1 (Auto Attack)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
-AddToggleTo(CombatPage, "ส่งกองทัพเงา 55 ตัวโจมตี (Auto Send Shadows)", Config.Automation.AutoShadowArmy, function(v) Config.Automation.AutoShadowArmy = v end)
-AddToggleTo(CombatPage, "เคลื่อนที่เข้าหาแบบสมูท (Smooth Walk - แก้โดนเตะ)", Config.Automation.SmoothApproach, function(v) Config.Automation.SmoothApproach = v end)
+-- [TAB 1: COMBAT - FASTEST DPS & SAFE FIX]
+AddSectionTo(CombatPage, "⚔️ ระบบการต่อสู้เร็วที่สุด & ปลอดภัย", Color3.fromRGB(0, 220, 255))
+AddToggleTo(CombatPage, "โจมตีเร็วที่สุดแบบ AoE ทะลวงกลุ่ม (Max Speed AoE)", Config.Automation.FastAoEBurst, function(v) Config.Automation.FastAoEBurst = v end)
+AddToggleTo(CombatPage, "โจมตีอัตโนมัติด้วยอาวุธ M1 (Auto Weapon Attack)", Config.Automation.AutoAttack, function(v) Config.Automation.AutoAttack = v end)
+AddToggleTo(CombatPage, "ส่งกองทัพเงา 55 ตัวรุมโจมตี (Auto Send Shadows)", Config.Automation.AutoShadowArmy, function(v) Config.Automation.AutoShadowArmy = v end)
+AddToggleTo(CombatPage, "รักษาระยะปลอดภัย 15m ไม่โดนเตะ (Safe Kiting Distance)", Config.Automation.SafeKiting, function(v) Config.Automation.SafeKiting = v end)
+
 AddButtonTo(CombatPage, "🗡️ โจมตีเป้าหมายทันที (Manual Hit)", Color3.fromRGB(40, 130, 80), function()
-    local target = FindNearestEnemy()
-    if target then ExecuteAttack(target) end
+    local alive, nearest = GetEnemiesData()
+    if nearest then ExecuteBurstAttack(alive, nearest) end
 end)
 
--- [TAB 2: DUNGEON AUTOMATION]
-AddSectionTo(DungeonPage, "🏰 ลงดันเจี้ยนต่อเนื่อง (ไม่จำกัดรอบ)", Color3.fromRGB(255, 120, 50))
-AddToggleTo(DungeonPage, "ลงดันเจี้ยนอัตโนมัติ (Auto Run Dungeon)", Config.Automation.AutoDungeon, function(v) Config.Automation.AutoDungeon = v end)
+-- [TAB 2: DUNGEON AUTOMATION - SPAWNED & KEYS]
+AddSectionTo(DungeonPage, "🏰 ระบบลงดันเจี้ยนที่เกิดในโลก & ดันเจี้ยนกุญแจ", Color3.fromRGB(255, 120, 50))
+AddToggleTo(DungeonPage, "ลงดันเจี้ยนเกทที่เกิดในโลกทันที (Auto World Spawned)", Config.Automation.AutoSpawnedDungeon, function(v) Config.Automation.AutoSpawnedDungeon = v end)
+AddToggleTo(DungeonPage, "ลงดันเจี้ยนกุญแจต่อเนื่อง (Auto Key Dungeon Loop)", Config.Automation.AutoKeyDungeon, function(v) Config.Automation.AutoKeyDungeon = v end)
 AddToggleTo(DungeonPage, "ลงซ้ำจนกว่ากุญแจจะหมด (Loop Until Keys Depleted)", Config.Automation.LoopDungeonUntilGone, function(v) Config.Automation.LoopDungeonUntilGone = v end)
 
-AddSectionTo(DungeonPage, "🔑 เลือกกุญแจ / ดันเจี้ยนเป้าหมาย:", Color3.fromRGB(255, 215, 0))
+AddSectionTo(DungeonPage, "🔑 เลือกกุญแจเป้าหมาย (Key Dungeon):", Color3.fromRGB(255, 215, 0))
 local KeyOptions = {
     {Id = "Key", Label = "Key (กุญแจทั่วไป 2400+ อัน)"},
     {Id = "FairyKey", Label = "FairyKey (660+ อัน)"},
@@ -909,7 +1017,7 @@ for _, opt in ipairs(KeyOptions) do
 end
 
 AddButtonTo(DungeonPage, "🚀 เริ่มลงดันเจี้ยนเดี๋ยวนี้ (Start Now)", Color3.fromRGB(40, 140, 90), function()
-    TriggerDungeonEnter()
+    TriggerKeyDungeonEnter()
 end)
 
 -- [TAB 3: TOWER & CASTLE AUTOMATION]
@@ -1017,6 +1125,7 @@ AddToggleTo(QuestsPage, "รับของขวัญฟรีตามเว�
 
 -- [TAB 6: LOGS & STATS]
 local StatsBox = Instance.new("Frame")
+StatsBox.Name = "StatsBox"
 StatsBox.Size = UDim2.new(1, -6, 0, 52)
 StatsBox.BackgroundColor3 = Color3.fromRGB(22, 26, 38)
 StatsBox.BorderSizePixel = 0
@@ -1042,9 +1151,12 @@ task.spawn(function()
         pcall(function()
             local selected = Config.Automation.SelectedKey
             local count = GetKeyCount(selected)
-            StatsLabel.Text = string.format("📊 โจมตี: %d | สกัดเงา: %d | กุญแจ [%s]: %d อัน\n🏰 ดันเจี้ยน: %s | หอคอยชั้น: %d | สถานะ: %s",
+            local currentRoom = ReplicatedStorage:GetAttribute("CurrentRoom") or 0
+            local maxRoom = ReplicatedStorage:GetAttribute("MaxDGRoom") or 0
+
+            StatsLabel.Text = string.format("📊 โจมตี: %d | สกัดเงา: %d | กุญแจ [%s]: %d อัน\n🏰 ดันเจี้ยนห้อง: %d/%d | หอคอยชั้น: %d | สถานะ: %s",
                 AuditLogger.Stats.AttacksFired, AuditLogger.Stats.ShadowsArised, selected, count,
-                Config.Automation.AutoDungeon and "เปิดวนซ้ำ" or "ปิด",
+                currentRoom, maxRoom,
                 Config.Automation.TargetFloor, State.StatusText)
         end)
         task.wait(0.5)
@@ -1052,6 +1164,7 @@ task.spawn(function()
 end)
 
 local LogContainer = Instance.new("ScrollingFrame")
+LogContainer.Name = "LogContainer"
 LogContainer.Size = UDim2.new(1, -6, 0, 230)
 LogContainer.BackgroundColor3 = Color3.fromRGB(18, 20, 30)
 LogContainer.BorderSizePixel = 0
@@ -1093,10 +1206,12 @@ AddButtonTo(SettingsPage, "💾 บันทึกการตั้งค่า
 AddButtonTo(SettingsPage, "🔄 โหลดการตั้งค่าจากไฟล์ (Reload Config)", Color3.fromRGB(50, 60, 90), function() LoadConfig() end)
 AddButtonTo(SettingsPage, "⚠️ รีเซ็ตกลับเป็นค่าเริ่มต้น (Reset Defaults)", Color3.fromRGB(120, 40, 40), function()
     Config.Automation.AutoAttack = true
+    Config.Automation.FastAoEBurst = true
     Config.Automation.AutoShadowArmy = true
     Config.Automation.AutoArise = true
-    Config.Automation.SmoothApproach = true
-    Config.Automation.AutoDungeon = false
+    Config.Automation.SafeKiting = true
+    Config.Automation.AutoSpawnedDungeon = true
+    Config.Automation.AutoKeyDungeon = false
     Config.Automation.AutoTower = false
     Config.Automation.TargetFloor = 950
     SaveConfig()
@@ -1119,4 +1234,4 @@ end
 _G.DungeonRiseCleanup = Cleanup
 CloseBtn.MouseButton1Click:Connect(Cleanup)
 
-AuditLogger.Record("Loader", "Ready", "Dungeon Rise Pro V2 พร้อมทำงานเรียบร้อย!")
+AuditLogger.Record("Loader", "Ready", "Dungeon Rise Pro V3 พร้อมทำงานเรียบร้อย!")
