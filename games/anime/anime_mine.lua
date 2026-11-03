@@ -1750,7 +1750,7 @@ do
     HeaderCorner.Parent = TradeHeader
     
     local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, -75, 1, 0)
+    Title.Size = UDim2.new(1, -100, 1, 0)
     Title.Position = UDim2.new(0, 12, 0, 0)
     Title.BackgroundTransparency = 1
     Title.Text = "🤝 Trade & Selective Transfer V7.1 Pro"
@@ -1760,6 +1760,29 @@ do
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = TradeHeader
     
+    local TradeMinBtn = Instance.new("TextButton")
+    TradeMinBtn.Size = UDim2.new(0, 26, 0, 26)
+    TradeMinBtn.Position = UDim2.new(1, -64, 0, 8)
+    TradeMinBtn.BackgroundColor3 = Color3.fromRGB(48, 48, 65)
+    TradeMinBtn.Text = "—"
+    TradeMinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TradeMinBtn.Font = Enum.Font.GothamBold
+    TradeMinBtn.TextSize = 13
+    TradeMinBtn.Parent = TradeHeader
+
+    local TradeMinCorner = Instance.new("UICorner")
+    TradeMinCorner.CornerRadius = UDim.new(0, 6)
+    TradeMinCorner.Parent = TradeMinBtn
+
+    local isTradeMinimized = false
+    TradeMinBtn.MouseButton1Click:Connect(function()
+        isTradeMinimized = not isTradeMinimized
+        TradeMinBtn.Text = isTradeMinimized and "+" or "—"
+        TweenService:Create(TradeMainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+            Size = isTradeMinimized and UDim2.new(0, 420, 0, 42) or UDim2.new(0, 420, 0, 570)
+        }):Play()
+    end)
+
     local TradeCloseBtn = Instance.new("TextButton")
     TradeCloseBtn.Size = UDim2.new(0, 26, 0, 26)
     TradeCloseBtn.Position = UDim2.new(1, -34, 0, 8)
