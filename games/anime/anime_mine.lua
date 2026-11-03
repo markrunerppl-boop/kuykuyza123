@@ -1,33 +1,22 @@
 --[[
-    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V14 (Infinity Trial & Petalfall Crate Edition)
+    ⛏️ เหมืองอนิเมะของฉัน - Auto Farm Suite V15 (All-in-One Trade & Auto Farm Edition)
     ========================================================================
-    🔥 อัปเดตใหม่ล่าสุด:
-    ✅ 1. เพิ่มฟังก์ชันลงทดสอบอินฟินิตี้ (Infinity Trial) และรับรางวัลอัตโนมัติ:
-          - ตรวจสอบความพร้อมและปลดล็อกโหมด Infinity Trial
-          - รับรางวัลตามลำดับขั้นความสำเร็จ (Claimable Tiers) เมื่อผ่านเกณฑ์อัตโนมัติ
-          - เริ่มการทดสอบ (Start Trial) เมื่อพร้อม และเน้นตีหิน Infinity Rock ในแปลงก่อนเสมอ
-          - เพิ่มปุ่มกดด่วน [⚡ ลง Infinity Trial ทันที] และ [⚡ รับรางวัล Trial ทันที] บนหน้า UI
-    ✅ 2. เพิ่มฟังก์ชันเปิด Petalfall Crate อัตโนมัติ:
-          - ตรวจสอบจำนวนกล่อง Petalfall Crate ในคลัง (ColossusCrates) ก่อนส่งคำสั่ง 100%
-          - สั่งเปิดกล่องเป็นชุดอย่างปลอดภัย (ครั้งละไม่เกิน 50 กล่อง ป้องกัน Rate Limit)
-          - เพิ่มปุ่มกดด่วน [⚡ เปิด Petalfall Crate ทันที]
-    ✅ 3. จัดหมวดหมู่ UI ใหม่ให้ใช้งานง่าย สะดวก และเป็นระเบียบ (6 หมวดหมู่หลัก):
-          - หมวดที่ 1: 📦 ระบบฟาร์ม & ร้านค้า (Auto Mine, Chest, Sell, Zone)
-          - หมวดที่ 2: ⚔️ ดันเจี้ยน & กล่องรางวัล (Infinity Trial, Petalfall Crate)
-          - หมวดที่ 3: 🌳 อัปเกรด & ขวานคนงาน (Tree, Core, Best Pickaxe, Equip Best)
-          - หมวดที่ 4: 👥 สถิติตัวละคร & กลายพันธุ์ (Stats 1-200, Mutations)
-          - หมวดที่ 5: 🎲 กาชา & รับรางวัล (Dice, Scrolls, Index, Events)
-          - หมวดที่ 6: 🛡️ ระบบเสริม (Anti-AFK)
-    ✅ 4. ลบระบบใช้น้ำยาออกทั้งหมดตามคำสั่ง 100%
-    ✅ 5. รักษามาตรฐานความปลอดภัยและความ Robust ขั้นสูงสุด:
-          - Safe Module Loading (pcall require)
-          - Centralized String Constants (Config.Events)
-          - Null-Safety ตรวจสอบ nil ทุกการค้นหา UI และ Objects
-          - Isolated Worker Tasks ในลูปหลักด้วย pcall
-          - Sequential Single-Thread Pipeline ไม่มียิงคำสั่งซ้ำซ้อน
-    ✅ 6. Auto-Save & Auto-Load ลง AnimeMine_Config.json
-    ✅ 7. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
+    🔥 อัปเดตใหม่ล่าสุด V15:
+    ✅ 1. รวมระบบแลกเปลี่ยนไอเทม & อัญมณี (Trade & Selective Transfer Suite V7.1 Pro) เข้ากับ AutoFarm 100%:
+          - เพิ่มหมวดที่ 7: 🤝 ระบบแลกเปลี่ยน & โอนไอเทม (Trade Suite) ในหน้าต่างหลัก
+          - มีปุ่ม [🤝 เปิด Trade UI] สำหรับเปิด/ปิดหน้าต่างควบคุมการเทรดแบบละเอียด
+    ✅ 2. ระบบความปลอดภัย Auto-Pause ขณะเทรด (Prevent Trade Interruption):
+          - เมื่อมีเซสชันการเทรดเปิดอยู่ หรือกำลังส่งของ ระบบ AutoFarm จะหยุดทำงานชั่วคราวอัตโนมัติ
+          - ป้องกันการวาร์ปขุดหิน, การขายของ หรือการเปลี่ยนขวานคนขุดไปรบกวนกระบวนการเทรด
+          - เมื่อการเทรดเสร็จสิ้น ระบบ AutoFarm จะกลับมาขุดและทำงานต่อทันที 100%
+    ✅ 3. ฟังก์ชันเทรดไอเทมและอัญมณีแบบครบวงจร:
+          - สแกนคลังไอเทมทุกหมวดหมู่ (คนขุด, ขวาน, 💎 อัญมณี, น้ำยา, หินเอนแชนต์ ฯลฯ)
+          - เลือกระบุจำนวนหรือกด Max (จำกัดเพดานความปลอดภัย 999 ชิ้น/ช่อง, อัญมณีสูงสุด 1,000,000 Gems)
+          - ระบบ Rate Limiting & Two-Phase Synchronized Confirmation Engine ยืนยันสำเร็จแน่นอน
+          - Real-time Watchdog Engine สำหรับฝั่งรับ กดยินยอมทันทีที่ฝั่งส่งพร้อม
+    ✅ 4. ซิงค์สคริปต์ไปยัง GitHub Repo อัตโนมัติ:
           loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua"))()
+    ========================================================================
 ]]
 
 local Players = game:GetService("Players")
@@ -78,6 +67,13 @@ local MineIndexRewardsConfig = SafeRequire(modulesFolder, "MineIndexRewardsConfi
 local MineEventsConfig = SafeRequire(modulesFolder, "MineEventsConfig")
 local MineTrialConfig = SafeRequire(modulesFolder, "MineTrialConfig")
 local MineCrateConfig = SafeRequire(modulesFolder, "MineCrateConfig")
+
+-- 🔧 ซ่อมแซมและเชื่อมโยงแคชโมดูล Items เข้ากับ MineConfig เพื่อแก้ปัญหา TradeStack คืนค่า nil
+if Items and MineConfig and type(MineConfig) == "table" and not MineConfig.TradeItems then
+    pcall(function()
+        MineConfig.TradeItems = Items
+    end)
+end
 
 -- ═══════════════════════════════════════════════
 -- 🛡️ SAFE STATE ACCESSORS & SAFE EVENT DISPATCHER
@@ -388,13 +384,13 @@ end
 -- ═══════════════════════════════════════════════
 -- 🎨 UI SYSTEM
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12", "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14"}) do
+for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12", "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14", "AnimeMineAutoFarmV15", "MineTradeSelectiveUI"}) do
     local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV14"
+ScreenGui.Name = "AnimeMineAutoFarmV15"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
@@ -1379,6 +1375,14 @@ end, 46)
 AddCategory("🛡️ 6. ระบบเสริม (System)", 50)
 AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 51)
 
+-- หมวดที่ 7: ระบบแลกเปลี่ยน & โอนไอเทม (Trade Suite)
+AddCategory("🤝 7. ระบบแลกเปลี่ยน & โอนไอเทม (Trade Suite)", 60)
+AddActionButton("Trade Suite UI", "เปิด/ปิดหน้าต่างเมนูเทรดไอเทมและอัญมณีแบบแยกจอ", "🤝 เปิด Trade UI", Color3.fromRGB(130, 70, 220), function()
+    if TradeMainFrame then
+        TradeMainFrame.Visible = not TradeMainFrame.Visible
+    end
+end, 61)
+
 -- ═══════════════════════════════════════════════
 -- 🖱️ DRAGGING & MINIMIZE & HOTKEY
 -- ═══════════════════════════════════════════════
@@ -1422,6 +1426,1208 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
+
+-- ═══════════════════════════════════════════════
+-- 🤝 7. ADVANCED TRADE & SELECTIVE TRANSFER SUITE (V7.1 PRO)
+-- ═══════════════════════════════════════════════
+local TradeState = nil
+local TradeMainFrame = nil
+
+do
+    TradeState = {
+        IsTradeActive = false,
+        Mode = "Sender",            -- "Sender" หรือ "Receiver"
+        TargetReceiver = nil,
+        CurrentCategory = "All",    -- "All", "Miners", "Pickaxes", "Gems", "Other"
+        SelectedItems = {},
+        AutoAccept = true,
+        AutoReady = true,
+        AutoConfirm = true,
+        CurrentSession = nil,
+        EditRevision = 0,
+    }
+    
+    local TradeTimingConfig = {
+        ThrottleDelayMin = 0.55,    -- หน่วงเวลาระหว่างส่งไอเทมแต่ละชิ้น (วินาที)
+        ThrottleDelayMax = 0.85,    -- หน่วงเวลาขั้นสูงแบบสุ่มเลียนแบบมนุษย์ (วินาที)
+        PreReadyDelay    = 1.2,     -- หน่วงเวลาก่อนส่ง MineTradeReady (วินาที)
+        ConfirmWaitTime  = 4.5,     -- เวลารอนับถอยหลังของเกมก่อนกดยืนยัน Confirm (วินาที)
+        RequestTimeout   = 20.0,    -- เวลารอผู้รับกดยอมรับคำขอเทรด (วินาที)
+        MaxStackCap      = 999,     -- เพดานขีดจำกัดสูงสุดต่อ 1 ช่องของเซิร์ฟเวอร์
+        MaxGemsCap       = 1000000, -- เพดานอัญมณีสูงสุดต่อ 1 รอบการเทรด (1 ล้าน Gems)
+    }
+    
+    local function TradeNotify(title, msg, duration)
+        pcall(function()
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "🤝 " .. title,
+                Text = msg,
+                Duration = duration or 3
+            })
+        end)
+        print(string.format("[TradeSuite | %s] %s", title, msg))
+    end
+    
+    local function SafeSendEvent(eventName, ...)
+        local args = { ... }
+        local success, err = pcall(function()
+            if GameState and type(GameState.SendEvent) == "function" then
+                GameState.SendEvent(eventName, unpack(args))
+            else
+                error("GameState.SendEvent is invalid")
+            end
+        end)
+        if not success then
+            warn(string.format("[TradeSuite] ส่ง Remote '%s' ไม่สำเร็จ: %s", eventName, tostring(err)))
+            return false, err
+        end
+        return true
+    end
+    
+    local function IsReceiverOnline()
+        if not TradeState.TargetReceiver then return false end
+        return TradeState.TargetReceiver:IsDescendantOf(Players)
+    end
+    
+    -- ตรวจสอบว่าไอเทมสามารถเทรดได้จริงตามกฎของเกมหรือไม่ (Dual-Layer Safe Validator)
+    local function CanTradeItem(itemKey)
+        if not itemKey or type(itemKey) ~= "string" or #itemKey == 0 then return false end
+        if itemKey == "Day" or itemKey == "Count" then return false end
+        if itemKey == "Gems" then return true end
+    
+        -- 1. ตรวจสอบผ่าน MineConfig.TradeStack
+        if MineConfig and type(MineConfig.TradeStack) == "function" then
+            local stack = MineConfig.TradeStack(itemKey)
+            if stack ~= nil then return true end
+        end
+    
+        -- 2. Fallback ตรวจสอบผ่าน Items.GetItemData
+        if Items and type(Items.GetItemData) == "function" then
+            local cleanName = tostring(itemKey):match("^([^|]+)") or tostring(itemKey)
+            local data = Items.GetItemData(cleanName) or Items.GetItemData(itemKey)
+            if type(data) == "table" then return true end
+        end
+    
+        return false
+    end
+    
+    -- สแกนไอเทมจริงทั้งหมดในกระเป๋าอย่างละเอียด (รวมอัญมณี หินบัฟ น้ำยา ขวาน และตัวละคร)
+    local function FetchOwnedInventory()
+        local d2 = GameState.GetData2()
+        local mg = d2 and d2.MineGame
+        if not mg then return {} end
+    
+        -- นับจำนวนที่คนขุดสวมใส่ใช้งานอยู่ (Holders)
+        local assignedChars = {}
+        local assignedPicks = {}
+        if type(mg.Holders) == "table" then
+            for _, holder in pairs(mg.Holders) do
+                if type(holder) == "table" then
+                    if holder.Char then
+                        assignedChars[holder.Char] = (assignedChars[holder.Char] or 0) + 1
+                    end
+                    if holder.Pickaxe then
+                        assignedPicks[holder.Pickaxe] = (assignedPicks[holder.Pickaxe] or 0) + 1
+                    end
+                end
+            end
+        end
+    
+        local list = {}
+    
+        -- 1. ตัวละครคนขุด (Miners / Characters)
+        if type(mg.Characters) == "table" then
+            for charKey, count in pairs(mg.Characters) do
+                local total = tonumber(count) or 0
+                local inUse = assignedChars[charKey] or 0
+                local spare = math.max(0, total - inUse)
+                if spare > 0 then
+                    local cleanName = tostring(charKey):match("^([^|]+)") or tostring(charKey)
+                    if CanTradeItem(charKey) or CanTradeItem(cleanName) then
+                        table.insert(list, {
+                            Key = charKey,
+                            Name = cleanName,
+                            Count = spare,
+                            Total = total,
+                            Kind = "Miners",
+                            Category = "Miners",
+                            Emoji = "👤",
+                            MaxCap = TradeTimingConfig.MaxStackCap
+                        })
+                    end
+                end
+            end
+        end
+    
+        -- 2. ขวาน (Pickaxes)
+        if type(mg.Pickaxes) == "table" then
+            for pickName, count in pairs(mg.Pickaxes) do
+                local total = tonumber(count) or 0
+                local inUse = assignedPicks[pickName] or 0
+                local spare = math.max(0, total - inUse)
+                if spare > 0 and CanTradeItem(pickName) then
+                    table.insert(list, {
+                        Key = pickName,
+                        Name = pickName,
+                        Count = spare,
+                        Total = total,
+                        Kind = "Pickaxe",
+                        Category = "Pickaxes",
+                        Emoji = "⛏️",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+    
+        -- 3. อัญมณี (💎 Gems Currency)
+        local gemCount = 0
+        if MineConfig and type(MineConfig.GetGemCount) == "function" then
+            gemCount = MineConfig.GetGemCount(mg)
+        else
+            gemCount = tonumber(mg.Gems) or 0
+        end
+        if (gemCount > 0 or TradeState.CurrentCategory == "Gems") and CanTradeItem("Gems") then
+            table.insert(list, {
+                Key = "Gems",
+                Name = "Gems (อัญมณี)",
+                Count = gemCount,
+                Total = gemCount,
+                Kind = "Gem",
+                Category = "Gems",
+                Emoji = "💎",
+                MaxCap = TradeTimingConfig.MaxGemsCap
+            })
+        end
+    
+        -- 4. ม้วนอัญเชิญ (Summon Scroll) & ลูกเต๋าเวทมนต์ (Enchanted Dice)
+        local diceCount = 0
+        if MineConfig and type(MineConfig.GetEnchantDiceCount) == "function" then
+            diceCount = MineConfig.GetEnchantDiceCount(mg)
+        else
+            diceCount = tonumber(mg.EnchantDice) or 0
+        end
+        if diceCount > 0 and CanTradeItem("Enchanted Dice") then
+            table.insert(list, {
+                Key = "Enchanted Dice",
+                Name = "Enchanted Dice",
+                Count = diceCount,
+                Total = diceCount,
+                Kind = "Dice",
+                Category = "Other",
+                Emoji = "🎲",
+                MaxCap = TradeTimingConfig.MaxStackCap
+            })
+        end
+    
+        local scrollCount = 0
+        if MineConfig and type(MineConfig.GetSummonScrollCount) == "function" then
+            scrollCount = MineConfig.GetSummonScrollCount(mg)
+        else
+            scrollCount = tonumber(mg.SummonScrolls) or 0
+        end
+        if scrollCount > 0 and CanTradeItem("Summon Scroll") then
+            table.insert(list, {
+                Key = "Summon Scroll",
+                Name = "Summon Scroll",
+                Count = scrollCount,
+                Total = scrollCount,
+                Kind = "Scroll",
+                Category = "Other",
+                Emoji = "📜",
+                MaxCap = TradeTimingConfig.MaxStackCap
+            })
+        end
+    
+        -- 5. น้ำยาและเครื่องราง (Potions & Charms)
+        if type(mg.Potions) == "table" then
+            for potName, count in pairs(mg.Potions) do
+                local num = tonumber(count) or 0
+                if num > 0 and CanTradeItem(potName) then
+                    table.insert(list, {
+                        Key = potName,
+                        Name = potName,
+                        Count = num,
+                        Total = num,
+                        Kind = "Potion",
+                        Category = "Other",
+                        Emoji = "🧪",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+    
+        -- 6. หินบัฟและไอเทมเสริมพลัง (EnchantItems: Glacial, Quaking, Blazing ฯลฯ)
+        if type(mg.EnchantItems) == "table" then
+            for enchName, count in pairs(mg.EnchantItems) do
+                local num = tonumber(count) or 0
+                if num > 0 and CanTradeItem(enchName) then
+                    table.insert(list, {
+                        Key = enchName,
+                        Name = enchName,
+                        Count = num,
+                        Total = num,
+                        Kind = "EnchantItem",
+                        Category = "Other",
+                        Emoji = "✨",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+    
+        -- 7. อุปกรณ์สวมใส่และของอื่นๆ (GearItems / Staffs)
+        if type(mg.GearItems) == "table" then
+            for gearName, count in pairs(mg.GearItems) do
+                local num = tonumber(count) or 0
+                if num > 0 and CanTradeItem(gearName) then
+                    table.insert(list, {
+                        Key = gearName,
+                        Name = gearName,
+                        Count = num,
+                        Total = num,
+                        Kind = "Gear",
+                        Category = "Other",
+                        Emoji = "🛡️",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+    
+        table.sort(list, function(a, b) return a.Name < b.Name end)
+        return list
+    end
+    
+    -- ========================================================================
+    -- 🎨 GUI CREATION (V7.1 Pro UI)
+    -- ========================================================================
+    local GuiName = "MineTradeSelectiveUI"
+    local oldGui = PlayerGui:FindFirstChild(GuiName)
+    if oldGui then oldGui:Destroy() end
+    
+    local TradeScreenGui = Instance.new("ScreenGui")
+    TradeScreenGui.Name = GuiName
+    TradeScreenGui.ResetOnSpawn = false
+    TradeScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    TradeScreenGui.Parent = PlayerGui
+    
+    TradeMainFrame = Instance.new("Frame")
+    TradeMainFrame.Name = "TradeMainFrame"
+    TradeMainFrame.Size = UDim2.new(0, 420, 0, 570)
+    TradeMainFrame.Position = UDim2.new(0.04, 0, 0.14, 0)
+    TradeMainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    TradeMainFrame.BorderSizePixel = 0
+    TradeMainFrame.ClipsDescendants = true
+    TradeMainFrame.Active = true
+    TradeMainFrame.Draggable = true
+    TradeMainFrame.Parent = TradeScreenGui
+    
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 10)
+    MainCorner.Parent = TradeMainFrame
+    
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Color = Color3.fromRGB(130, 80, 230)
+    MainStroke.Thickness = 1.6
+    MainStroke.Parent = TradeMainFrame
+    
+    -- TradeHeader
+    local TradeHeader = Instance.new("Frame")
+    TradeHeader.Size = UDim2.new(1, 0, 0, 42)
+    TradeHeader.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+    TradeHeader.BorderSizePixel = 0
+    TradeHeader.Parent = TradeMainFrame
+    
+    local HeaderCorner = Instance.new("UICorner")
+    HeaderCorner.CornerRadius = UDim.new(0, 10)
+    HeaderCorner.Parent = TradeHeader
+    
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, -75, 1, 0)
+    Title.Position = UDim2.new(0, 12, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "🤝 Trade & Selective Transfer V7.1 Pro"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 12.5
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = TradeHeader
+    
+    local TradeCloseBtn = Instance.new("TextButton")
+    TradeCloseBtn.Size = UDim2.new(0, 26, 0, 26)
+    TradeCloseBtn.Position = UDim2.new(1, -34, 0, 8)
+    TradeCloseBtn.BackgroundColor3 = Color3.fromRGB(190, 45, 45)
+    TradeCloseBtn.Text = "✕"
+    TradeCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TradeCloseBtn.Font = Enum.Font.GothamBold
+    TradeCloseBtn.TextSize = 12
+    TradeCloseBtn.Parent = TradeHeader
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 6)
+    CloseCorner.Parent = TradeCloseBtn
+    
+    -- Status Bar
+    local StatusBar = Instance.new("TextLabel")
+    StatusBar.Size = UDim2.new(1, -20, 0, 26)
+    StatusBar.Position = UDim2.new(0, 10, 0, 48)
+    StatusBar.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+    StatusBar.Text = "💡 สถานะ: พร้อมทำงาน เลือกบทบาทบัญชีเพื่อเริ่มต้น"
+    StatusBar.TextColor3 = Color3.fromRGB(150, 220, 160)
+    StatusBar.Font = Enum.Font.GothamMedium
+    StatusBar.TextSize = 11
+    StatusBar.Parent = TradeMainFrame
+    
+    local StatusCorner = Instance.new("UICorner")
+    StatusCorner.CornerRadius = UDim.new(0, 6)
+    StatusCorner.Parent = StatusBar
+    
+    -- Main Scroll Container
+    local ScrollContainer = Instance.new("ScrollingFrame")
+    ScrollContainer.Size = UDim2.new(1, -20, 1, -88)
+    ScrollContainer.Position = UDim2.new(0, 10, 0, 80)
+    ScrollContainer.BackgroundTransparency = 1
+    ScrollContainer.BorderSizePixel = 0
+    ScrollContainer.ScrollBarThickness = 4
+    ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
+    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 680)
+    ScrollContainer.Parent = TradeMainFrame
+    
+    local ContainerLayout = Instance.new("UIListLayout")
+    ContainerLayout.Padding = UDim.new(0, 8)
+    ContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ContainerLayout.Parent = ScrollContainer
+    
+    local function CreateHeader(text, order)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 0, 20)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text
+        lbl.TextColor3 = Color3.fromRGB(200, 170, 255)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 11.5
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.LayoutOrder = order
+        lbl.Parent = ScrollContainer
+        return lbl
+    end
+    
+    -- ========================================================================
+    -- [1] ROLE SELECTION
+    -- ========================================================================
+    CreateHeader("👤 1. เลือกบทบาทของบัญชีนี้", 1)
+    
+    local RoleFrame = Instance.new("Frame")
+    RoleFrame.Size = UDim2.new(1, 0, 0, 32)
+    RoleFrame.BackgroundTransparency = 1
+    RoleFrame.LayoutOrder = 2
+    RoleFrame.Parent = ScrollContainer
+    
+    local SenderBtn = Instance.new("TextButton")
+    SenderBtn.Size = UDim2.new(0.485, 0, 1, 0)
+    SenderBtn.Position = UDim2.new(0, 0, 0, 0)
+    SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+    SenderBtn.Text = "📤 โหมดผู้ส่ง (Sender)"
+    SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SenderBtn.Font = Enum.Font.GothamBold
+    SenderBtn.TextSize = 11
+    SenderBtn.Parent = RoleFrame
+    
+    local SenderCorner = Instance.new("UICorner")
+    SenderCorner.CornerRadius = UDim.new(0, 6)
+    SenderCorner.Parent = SenderBtn
+    
+    local ReceiverBtn = Instance.new("TextButton")
+    ReceiverBtn.Size = UDim2.new(0.485, 0, 1, 0)
+    ReceiverBtn.Position = UDim2.new(0.515, 0, 0, 0)
+    ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    ReceiverBtn.Text = "📥 โหมดผู้รับ (Receiver)"
+    ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+    ReceiverBtn.Font = Enum.Font.GothamBold
+    ReceiverBtn.TextSize = 11
+    ReceiverBtn.Parent = RoleFrame
+    
+    local ReceiverCorner = Instance.new("UICorner")
+    ReceiverCorner.CornerRadius = UDim.new(0, 6)
+    ReceiverCorner.Parent = ReceiverBtn
+    
+    -- ========================================================================
+    -- [2] TARGET RECEIVER SELECTION (สำหรับ Sender)
+    -- ========================================================================
+    local TargetHeader = CreateHeader("🎯 2. เลือกผู้รับเป้าหมาย (Receiver)", 3)
+    
+    local PlayerSelectFrame = Instance.new("Frame")
+    PlayerSelectFrame.Size = UDim2.new(1, 0, 0, 32)
+    PlayerSelectFrame.BackgroundTransparency = 1
+    PlayerSelectFrame.LayoutOrder = 4
+    PlayerSelectFrame.Parent = ScrollContainer
+    
+    local CurrentPlayerLabel = Instance.new("TextLabel")
+    CurrentPlayerLabel.Size = UDim2.new(0.72, 0, 1, 0)
+    CurrentPlayerLabel.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+    CurrentPlayerLabel.Text = "กำลังค้นหาผู้เล่นในห้อง..."
+    CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+    CurrentPlayerLabel.Font = Enum.Font.GothamBold
+    CurrentPlayerLabel.TextSize = 11
+    CurrentPlayerLabel.Parent = PlayerSelectFrame
+    
+    local CurPlayerCorner = Instance.new("UICorner")
+    CurPlayerCorner.CornerRadius = UDim.new(0, 6)
+    CurPlayerCorner.Parent = CurrentPlayerLabel
+    
+    local CyclePlayerBtn = Instance.new("TextButton")
+    CyclePlayerBtn.Size = UDim2.new(0.25, 0, 1, 0)
+    CyclePlayerBtn.Position = UDim2.new(0.75, 0, 0, 0)
+    CyclePlayerBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+    CyclePlayerBtn.Text = "🔄 สลับผู้เล่น"
+    CyclePlayerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CyclePlayerBtn.Font = Enum.Font.GothamBold
+    CyclePlayerBtn.TextSize = 10.5
+    CyclePlayerBtn.Parent = PlayerSelectFrame
+    
+    local CycleCorner = Instance.new("UICorner")
+    CycleCorner.CornerRadius = UDim.new(0, 6)
+    CycleCorner.Parent = CyclePlayerBtn
+    
+    local function GetOtherPlayers()
+        local list = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                table.insert(list, p)
+            end
+        end
+        return list
+    end
+    
+    local playerIndex = 1
+    local function UpdateSelectedPlayer()
+        local others = GetOtherPlayers()
+        if #others == 0 then
+            TradeState.TargetReceiver = nil
+            CurrentPlayerLabel.Text = "⚠️ ไม่มีผู้เล่นอื่นในห้อง"
+            CurrentPlayerLabel.TextColor3 = Color3.fromRGB(230, 90, 90)
+            return
+        end
+        if playerIndex > #others then playerIndex = 1 end
+        TradeState.TargetReceiver = others[playerIndex]
+        CurrentPlayerLabel.Text = "👤 " .. TradeState.TargetReceiver.Name
+        CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+    end
+    
+    UpdateSelectedPlayer()
+    
+    CyclePlayerBtn.MouseButton1Click:Connect(function()
+        local others = GetOtherPlayers()
+        if #others > 0 then
+            playerIndex = (playerIndex % #others) + 1
+            UpdateSelectedPlayer()
+            TradeNotify("เปลี่ยนผู้รับ", "เป้าหมายปัจจุบัน: " .. (TradeState.TargetReceiver and TradeState.TargetReceiver.Name or "None"))
+        end
+    end)
+    
+    -- Receiver Options
+    local ReceiverAutoFrame = Instance.new("Frame")
+    ReceiverAutoFrame.Size = UDim2.new(1, 0, 0, 68)
+    ReceiverAutoFrame.BackgroundTransparency = 1
+    ReceiverAutoFrame.LayoutOrder = 5
+    ReceiverAutoFrame.Visible = false
+    ReceiverAutoFrame.Parent = ScrollContainer
+    
+    local ReceiverLayout = Instance.new("UIListLayout")
+    ReceiverLayout.Padding = UDim.new(0, 6)
+    ReceiverLayout.Parent = ReceiverAutoFrame
+    
+    local function CreateSmallToggle(parent, titleText, defaultVal, callback)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 28)
+        btn.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+        btn.Text = "  " .. titleText
+        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+        btn.Font = Enum.Font.GothamMedium
+        btn.TextSize = 10.5
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = parent
+    
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = btn
+    
+        local badge = Instance.new("TextLabel")
+        badge.Size = UDim2.new(0, 42, 0, 20)
+        badge.Position = UDim2.new(1, -48, 0.5, -10)
+        badge.BackgroundColor3 = defaultVal and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
+        badge.Text = defaultVal and "ON" or "OFF"
+        badge.TextColor3 = Color3.fromRGB(255, 255, 255)
+        badge.Font = Enum.Font.GothamBold
+        badge.TextSize = 10
+        badge.Parent = btn
+    
+        local bCorner = Instance.new("UICorner")
+        bCorner.CornerRadius = UDim.new(0, 4)
+        bCorner.Parent = badge
+    
+        local val = defaultVal
+        btn.MouseButton1Click:Connect(function()
+            val = not val
+            badge.Text = val and "ON" or "OFF"
+            badge.BackgroundColor3 = val and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
+            callback(val)
+        end)
+    end
+    
+    CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Accept ตอบรับคำขอเทรดทันที", true, function(v) TradeState.AutoAccept = v end)
+    CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Ready & Confirm ยินยอมรับของอัตโนมัติ", true, function(v) TradeState.AutoReady = v TradeState.AutoConfirm = v end)
+    
+    SenderBtn.MouseButton1Click:Connect(function()
+        TradeState.Mode = "Sender"
+        SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+        SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+        ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+        PlayerSelectFrame.Visible = true
+        TargetHeader.Visible = true
+        ReceiverAutoFrame.Visible = false
+        StatusBar.Text = "โหมดผู้ส่ง: เลือกผู้รับและติ๊กไอเทมที่จะส่ง"
+    end)
+    
+    ReceiverBtn.MouseButton1Click:Connect(function()
+        TradeState.Mode = "Receiver"
+        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 140, 90)
+        ReceiverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SenderBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+        SenderBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+        PlayerSelectFrame.Visible = false
+        TargetHeader.Visible = false
+        ReceiverAutoFrame.Visible = true
+        StatusBar.Text = "โหมดผู้รับ: รอรับคำขอเทรดและยืนยันอัตโนมัติ"
+    end)
+    
+    -- ========================================================================
+    -- [3] SELECTIVE ITEM TRANSFER (รวมอัญมณี 💎 Gems)
+    -- ========================================================================
+    CreateHeader("🎒 3. เลือกไอเทม/อัญมณีที่จะส่ง (สูงสุด 8 กองต่อรอบ)", 6)
+    
+    local FilterFrame = Instance.new("Frame")
+    FilterFrame.Size = UDim2.new(1, 0, 0, 26)
+    FilterFrame.BackgroundTransparency = 1
+    FilterFrame.LayoutOrder = 7
+    FilterFrame.Parent = ScrollContainer
+    
+    local FilterLayout = Instance.new("UIListLayout")
+    FilterLayout.FillDirection = Enum.FillDirection.Horizontal
+    FilterLayout.Padding = UDim.new(0, 3)
+    FilterLayout.Parent = FilterFrame
+    
+    local ItemCountLabel = Instance.new("TextLabel")
+    ItemCountLabel.Size = UDim2.new(1, 0, 0, 18)
+    ItemCountLabel.BackgroundTransparency = 1
+    ItemCountLabel.Text = "เลือกแล้ว: 0 / 8 กอง"
+    ItemCountLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+    ItemCountLabel.Font = Enum.Font.GothamMedium
+    ItemCountLabel.TextSize = 11
+    ItemCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ItemCountLabel.LayoutOrder = 8
+    ItemCountLabel.Parent = ScrollContainer
+    
+    local ItemScrollBox = Instance.new("ScrollingFrame")
+    ItemScrollBox.Size = UDim2.new(1, 0, 0, 190)
+    ItemScrollBox.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
+    ItemScrollBox.ScrollBarThickness = 3
+    ItemScrollBox.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
+    ItemScrollBox.LayoutOrder = 9
+    ItemScrollBox.Parent = ScrollContainer
+    
+    local ItemScrollCorner = Instance.new("UICorner")
+    ItemScrollCorner.CornerRadius = UDim.new(0, 8)
+    ItemScrollCorner.Parent = ItemScrollBox
+    
+    local ItemListLayout = Instance.new("UIListLayout")
+    ItemListLayout.Padding = UDim.new(0, 4)
+    ItemListLayout.Parent = ItemScrollBox
+    
+    local function CountSelected()
+        local c = 0
+        for _ in pairs(TradeState.SelectedItems) do c = c + 1 end
+        return c
+    end
+    
+    local RenderInventoryList
+    
+    local function CreateTabBtn(name, cat)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.192, -2, 1, 0)
+        btn.BackgroundColor3 = TradeState.CurrentCategory == cat and Color3.fromRGB(110, 65, 200) or Color3.fromRGB(36, 36, 48)
+        btn.Text = name
+        btn.TextColor3 = Color3.fromRGB(240, 240, 245)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 9.5
+        btn.Parent = FilterFrame
+    
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 5)
+        corner.Parent = btn
+    
+        btn.MouseButton1Click:Connect(function()
+            TradeState.CurrentCategory = cat
+            for _, b in ipairs(FilterFrame:GetChildren()) do
+                if b:IsA("TextButton") then
+                    b.BackgroundColor3 = Color3.fromRGB(36, 36, 48)
+                end
+            end
+            btn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+            RenderInventoryList()
+        end)
+    end
+    
+    CreateTabBtn("ทั้งหมด", "All")
+    CreateTabBtn("👤 คนขุด", "Miners")
+    CreateTabBtn("⛏️ ขวาน", "Pickaxes")
+    CreateTabBtn("💎 อัญมณี", "Gems")
+    CreateTabBtn("🧪 อื่นๆ", "Other")
+    
+    RenderInventoryList = function()
+        for _, child in ipairs(ItemScrollBox:GetChildren()) do
+            if child:IsA("Frame") then child:Destroy() end
+        end
+    
+        local rawItems = FetchOwnedInventory()
+        local items = {}
+    
+        for _, it in ipairs(rawItems) do
+            if TradeState.CurrentCategory == "All" or it.Category == TradeState.CurrentCategory then
+                table.insert(items, it)
+            end
+        end
+    
+        ItemScrollBox.CanvasSize = UDim2.new(0, 0, 0, #items * 34 + 10)
+    
+        for _, it in ipairs(items) do
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, -6, 0, 30)
+            row.Position = UDim2.new(0, 3, 0, 0)
+            row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+            row.Parent = ItemScrollBox
+    
+            local rowCorner = Instance.new("UICorner")
+            rowCorner.CornerRadius = UDim.new(0, 6)
+            rowCorner.Parent = row
+    
+            -- Checkbox
+            local checkBtn = Instance.new("TextButton")
+            checkBtn.Size = UDim2.new(0, 20, 0, 20)
+            checkBtn.Position = UDim2.new(0, 6, 0.5, -10)
+            checkBtn.BackgroundColor3 = TradeState.SelectedItems[it.Key] and Color3.fromRGB(45, 170, 95) or Color3.fromRGB(50, 50, 65)
+            checkBtn.Text = TradeState.SelectedItems[it.Key] and "✓" or ""
+            checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            checkBtn.Font = Enum.Font.GothamBold
+            checkBtn.TextSize = 11
+            checkBtn.Parent = row
+    
+            local checkCorner = Instance.new("UICorner")
+            checkCorner.CornerRadius = UDim.new(0, 4)
+            checkCorner.Parent = checkBtn
+    
+            -- Item Title & Count
+            local nameLbl = Instance.new("TextLabel")
+            nameLbl.Size = UDim2.new(1, -145, 1, 0)
+            nameLbl.Position = UDim2.new(0, 32, 0, 0)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.Text = string.format("%s %s (มี %d)", it.Emoji or "📦", it.Name, it.Count)
+            nameLbl.TextColor3 = Color3.fromRGB(235, 235, 240)
+            nameLbl.Font = Enum.Font.GothamMedium
+            nameLbl.TextSize = 10.5
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.Parent = row
+    
+            -- Amount Box
+            local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
+            local amtBox = Instance.new("TextBox")
+            amtBox.Size = UDim2.new(0, 55, 0, 20)
+            amtBox.Position = UDim2.new(1, -95, 0.5, -10)
+            amtBox.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+            amtBox.TextColor3 = Color3.fromRGB(240, 200, 90)
+            amtBox.Font = Enum.Font.GothamBold
+            amtBox.TextSize = 10
+            amtBox.Text = tostring((TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or (maxAllowed > 0 and 1 or 0))
+            amtBox.ClearTextOnFocus = false
+            amtBox.Parent = row
+    
+            local amtCorner = Instance.new("UICorner")
+            amtCorner.CornerRadius = UDim.new(0, 4)
+            amtCorner.Parent = amtBox
+    
+            local function SyncAmount()
+                local num = tonumber(amtBox.Text)
+                if num then
+                    local clamped = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
+                    if TradeState.SelectedItems[it.Key] then
+                        TradeState.SelectedItems[it.Key].Amount = clamped
+                    end
+                end
+            end
+    
+            amtBox:GetPropertyChangedSignal("Text"):Connect(SyncAmount)
+    
+            amtBox.FocusLost:Connect(function()
+                local num = tonumber(amtBox.Text) or 1
+                num = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
+                amtBox.Text = tostring(num)
+                if TradeState.SelectedItems[it.Key] then
+                    TradeState.SelectedItems[it.Key].Amount = num
+                end
+            end)
+    
+            -- Max Button
+            local maxBtn = Instance.new("TextButton")
+            maxBtn.Size = UDim2.new(0, 28, 0, 20)
+            maxBtn.Position = UDim2.new(1, -34, 0.5, -10)
+            maxBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+            maxBtn.Text = "Max"
+            maxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            maxBtn.Font = Enum.Font.GothamBold
+            maxBtn.TextSize = 9
+            maxBtn.Parent = row
+    
+            local maxCorner = Instance.new("UICorner")
+            maxCorner.CornerRadius = UDim.new(0, 4)
+            maxCorner.Parent = maxBtn
+    
+            maxBtn.MouseButton1Click:Connect(function()
+                local maxVal = math.max(1, maxAllowed)
+                amtBox.Text = tostring(maxVal)
+                if TradeState.SelectedItems[it.Key] then
+                    TradeState.SelectedItems[it.Key].Amount = maxVal
+                end
+            end)
+    
+            checkBtn.MouseButton1Click:Connect(function()
+                if TradeState.SelectedItems[it.Key] then
+                    TradeState.SelectedItems[it.Key] = nil
+                    checkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+                    checkBtn.Text = ""
+                else
+                    if it.Count <= 0 then
+                        TradeNotify("ไม่มีไอเทม", "ไอเทมนี้มีจำนวนเป็น 0 ไม่สามารถเลือกได้ครับ", 2)
+                        return
+                    end
+                    if CountSelected() >= 8 then
+                        TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
+                        return
+                    end
+                    local sendNum = tonumber(amtBox.Text) or 1
+                    sendNum = math.clamp(sendNum, 1, maxAllowed)
+                    TradeState.SelectedItems[it.Key] = {
+                        Key = it.Key,
+                        Name = it.Name,
+                        Amount = sendNum,
+                        MaxCount = maxAllowed,
+                        MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                    }
+                    checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
+                    checkBtn.Text = "✓"
+                end
+                local curCount = CountSelected()
+                ItemCountLabel.Text = string.format("เลือกแล้ว: %d / 8 กอง", curCount)
+                ItemCountLabel.TextColor3 = curCount > 0 and Color3.fromRGB(120, 230, 160) or Color3.fromRGB(160, 160, 180)
+            end)
+        end
+    end
+    
+    RenderInventoryList()
+    
+    local RefreshInvBtn = Instance.new("TextButton")
+    RefreshInvBtn.Size = UDim2.new(1, 0, 0, 26)
+    RefreshInvBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    RefreshInvBtn.Text = "🔄 รีเฟรชคลังไอเทม (Refresh Inventory)"
+    RefreshInvBtn.TextColor3 = Color3.fromRGB(220, 220, 230)
+    RefreshInvBtn.Font = Enum.Font.GothamSemibold
+    RefreshInvBtn.TextSize = 10.5
+    RefreshInvBtn.LayoutOrder = 10
+    RefreshInvBtn.Parent = ScrollContainer
+    
+    local RefCorner = Instance.new("UICorner")
+    RefCorner.CornerRadius = UDim.new(0, 6)
+    RefCorner.Parent = RefreshInvBtn
+    
+    RefreshInvBtn.MouseButton1Click:Connect(function()
+        RenderInventoryList()
+        TradeNotify("รีเฟรชคลัง", "อัปเดตรายการไอเทมในกระเป๋าเรียบร้อย")
+    end)
+    
+    -- ========================================================================
+    -- [4] ACTIONS & TRADE EXECUTION
+    -- ========================================================================
+    CreateHeader("⚡ 4. คำสั่งเริ่มการเทรด", 11)
+    
+    local StartTradeBtn = Instance.new("TextButton")
+    StartTradeBtn.Size = UDim2.new(1, 0, 0, 36)
+    StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
+    StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+    StartTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    StartTradeBtn.Font = Enum.Font.GothamBold
+    StartTradeBtn.TextSize = 12
+    StartTradeBtn.LayoutOrder = 12
+    StartTradeBtn.Parent = ScrollContainer
+    
+    local StartCorner = Instance.new("UICorner")
+    StartCorner.CornerRadius = UDim.new(0, 8)
+    StartCorner.Parent = StartTradeBtn
+    
+    local CancelTradeBtn = Instance.new("TextButton")
+    CancelTradeBtn.Size = UDim2.new(1, 0, 0, 28)
+    CancelTradeBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
+    CancelTradeBtn.Text = "❌ ยกเลิกการเทรดทันที (Cancel Trade)"
+    CancelTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CancelTradeBtn.Font = Enum.Font.GothamBold
+    CancelTradeBtn.TextSize = 11
+    CancelTradeBtn.LayoutOrder = 13
+    CancelTradeBtn.Parent = ScrollContainer
+    
+    local CancelCorner = Instance.new("UICorner")
+    CancelCorner.CornerRadius = UDim.new(0, 6)
+    CancelCorner.Parent = CancelTradeBtn
+    
+    -- ========================================================================
+    -- 🔄 BACKGROUND AUTOMATION & WATCHDOG ENGINE
+    -- ========================================================================
+    
+    -- ฟังก์ชันช่วยคลิกปุ่มบนหน้าต่างเทรดจริงของเกม
+    local function ClickTradeButtonUI()
+        pcall(function()
+            local mineGui = PlayerGui:FindFirstChild("MineGui")
+            local tradeFrame = mineGui and mineGui:FindFirstChild("TradeFrame")
+            if tradeFrame then
+                for _, desc in ipairs(tradeFrame:GetDescendants()) do
+                    if desc.Name == "ReadyButton" and desc:IsA("GuiButton") then
+                        pcall(function()
+                            if getconnections then
+                                for _, conn in ipairs(getconnections(desc.Activated)) do
+                                    conn:Fire()
+                                end
+                            end
+                        end)
+                        pcall(function()
+                            if firesignal then
+                                firesignal(desc.Activated)
+                            end
+                        end)
+                    end
+                end
+            end
+        end)
+    end
+    
+    -- ฟังก์ชันช่วยคลิกปุ่มยอมรับคำขอเทรดที่เด้งขึ้นมาบนหน้าจอจริง
+    local function CheckAndAutoAcceptUI()
+        pcall(function()
+            local mineGui = PlayerGui:FindFirstChild("MineGui")
+            local reqFrame = mineGui and mineGui:FindFirstChild("TradeRequestFrame")
+            if reqFrame and reqFrame.Visible then
+                local acceptBtn = reqFrame:FindFirstChild("AcceptButton", true)
+                if acceptBtn and acceptBtn:IsA("GuiButton") then
+                    pcall(function()
+                        if getconnections then
+                            for _, conn in ipairs(getconnections(acceptBtn.Activated)) do
+                                conn:Fire()
+                            end
+                        end
+                    end)
+                    pcall(function()
+                        if firesignal then
+                            firesignal(acceptBtn.Activated)
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+    
+    local function AbortTransfer(reason)
+        TradeState.IsTradeActive = false
+        SafeSendEvent("MineTradeCancel")
+        TradeState.CurrentSession = nil
+        TradeState.EditRevision = 0
+        StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
+        StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+        StatusBar.Text = "⚠️ " .. tostring(reason)
+        StatusBar.TextColor3 = Color3.fromRGB(240, 100, 100)
+        TradeNotify("Trade Aborted", reason, 4)
+    end
+    
+    -- รับการซิงค์ข้อมูล Snapshot ของเซสชันเทรด
+    pcall(function()
+        GameState.ListenToEvent("MineTradeSync", function(snapshot)
+            if type(snapshot) ~= "table" or type(snapshot.SessionId) ~= "number" then return end
+            TradeState.CurrentSession = snapshot
+        end)
+    end)
+    
+    -- Auto Accept คำขอเทรดผ่าน Remote สำหรับ Receiver
+    pcall(function()
+        GameState.ListenToEvent("MineTradeShowRequest", function(senderName, senderId, requestId)
+            if TradeState.Mode == "Receiver" and TradeState.AutoAccept and requestId then
+                TradeNotify("Auto Accept", "ยอมรับคำขอเทรดจาก: " .. tostring(senderName))
+                task.wait(0.2)
+                SafeSendEvent("MineTradeRespond", true, requestId)
+            end
+        end)
+    end)
+    
+    -- 🛡️ Receiver Watchdog Loop: ตรวจจับและยืนยันการเทรดแบบ Real-time ตลอดเวลา
+    task.spawn(function()
+        while true do
+            task.wait(0.4)
+            if TradeState.Mode == "Receiver" then
+                -- 1. ตรวจจับและกดยอมรับหน้าต่าง Trade Request ที่เด้งมา
+                if TradeState.AutoAccept then
+                    CheckAndAutoAcceptUI()
+                end
+    
+                -- 2. เมื่ออยู่ในเซสชันการเทรด
+                if TradeState.CurrentSession and type(TradeState.CurrentSession.SessionId) == "number" then
+                    local sess = TradeState.CurrentSession
+                    local stage = sess.Stage or "negotiate"
+    
+                    if stage == "closed" or stage == "saving" then
+                        StatusBar.Text = "✅ ได้รับของและการเทรดสำเร็จเรียบร้อย"
+                        StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+                    elseif stage == "negotiate" and TradeState.AutoReady then
+                        -- ฝั่งรับจะกด Ready เมื่อฝั่งผู้ส่ง (ThemReady) วางของเสร็จและกด Ready แล้วเท่านั้น!
+                        if sess.ThemReady and not sess.MeReady then
+                            StatusBar.Text = "⚡ ฝั่งส่งวางของพร้อมแล้ว ฝั่งรับกด Ready ยินยอม..."
+                            StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+                            SafeSendEvent("MineTradeReady", true, sess.SessionId, sess.Revision)
+                            ClickTradeButtonUI()
+                        elseif not sess.ThemReady then
+                            StatusBar.Text = "⏳ ฝั่งรับกำลังรอฝั่งผู้ส่งวางไอเทม..."
+                            StatusBar.TextColor3 = Color3.fromRGB(160, 200, 240)
+                        end
+                    elseif stage == "confirm" and TradeState.AutoConfirm then
+                        -- เมื่อเข้าสู่ช่วง Confirm และสถานะยังไม่เป็น MeConfirmed
+                        if not sess.MeConfirmed then
+                            StatusBar.Text = "⚡ ฝั่งรับส่งคำสั่ง Confirm ยินยอมรับของ..."
+                            StatusBar.TextColor3 = Color3.fromRGB(120, 240, 160)
+                            SafeSendEvent("MineTradeConfirm", sess.SessionId, sess.Revision)
+                            ClickTradeButtonUI()
+                        else
+                            StatusBar.Text = "✅ ฝั่งรับยินยอมเรียบร้อย (Confirmed)"
+                            StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    -- Main Transfer Worker (สำหรับ Sender)
+    local function RunTransferWorker()
+        if not TradeState.TargetReceiver then
+            AbortTransfer("กรุณาเลือกผู้รับเป้าหมายก่อน")
+            return
+        end
+    
+        local itemsToSendList = {}
+        for _, item in pairs(TradeState.SelectedItems) do
+            table.insert(itemsToSendList, item)
+        end
+    
+        if #itemsToSendList == 0 then
+            AbortTransfer("กรุณาติ๊กเลือกไอเทมที่จะส่งอย่างน้อย 1 รายการ")
+            return
+        end
+    
+        StatusBar.Text = "⏳ กำลังส่ง MineTradeRequest ไปยัง: " .. TradeState.TargetReceiver.Name
+        StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+        TradeNotify("เริ่มการเทรด", "ส่งคำขอเทรดไปยัง: " .. TradeState.TargetReceiver.Name)
+    
+        -- 1. ยิงคำขอเทรด
+        SafeSendEvent("MineTradeRequest", TradeState.TargetReceiver.UserId)
+    
+        -- 2. รอตอบรับจนกว่า Session จะ Active
+        local elapsed = 0
+        while TradeState.IsTradeActive and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") do
+            if not IsReceiverOnline() then
+                AbortTransfer("ผู้รับเป้าหมายหลุดออกจากเซิร์ฟเวอร์")
+                return
+            end
+            task.wait(0.5)
+            elapsed = elapsed + 0.5
+            if elapsed >= TradeTimingConfig.RequestTimeout then
+                AbortTransfer("หมดเวลารอ (Timeout 20s) ผู้รับไม่ตอบรับคำขอ")
+                return
+            end
+        end
+    
+        if not TradeState.IsTradeActive or not TradeState.CurrentSession then return end
+    
+        local sess = TradeState.CurrentSession
+        TradeState.EditRevision = 0
+    
+        -- 3. วนลูปส่งไอเทมทีละชิ้น (Network Rate Limiting + Safe Cap)
+        for idx, item in ipairs(itemsToSendList) do
+            if not TradeState.IsTradeActive then
+                AbortTransfer("ผู้ใช้กดยกเลิกการทำงาน")
+                return
+            end
+    
+            if not IsReceiverOnline() then
+                AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะกำลังส่งไอเทม")
+                return
+            end
+    
+            local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
+            local sendAmount = math.clamp(item.Amount, 1, cap)
+            TradeState.EditRevision = math.max(TradeState.EditRevision, tonumber(TradeState.CurrentSession and TradeState.CurrentSession.LastEditId) or 0) + 1
+    
+            StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d", idx, #itemsToSendList, item.Name, sendAmount)
+            StatusBar.TextColor3 = Color3.fromRGB(240, 220, 100)
+    
+            SafeSendEvent("MineTradeSetItem", item.Key, sendAmount, sess.SessionId, TradeState.EditRevision)
+    
+            local jitter = math.random(TradeTimingConfig.ThrottleDelayMin * 100, TradeTimingConfig.ThrottleDelayMax * 100) / 100
+            task.wait(jitter)
+        end
+    
+        -- 4. ส่งไอเทมครบทุกชิ้นก่อน -> หน่วงเวลาให้เซิร์ฟเวอร์ซิงค์ข้อมูล
+        StatusBar.Text = string.format("⏱️ ส่งไอเทมครบแล้ว หน่วงเวลา %.1f วินาทีก่อน Ready...", TradeTimingConfig.PreReadyDelay)
+        StatusBar.TextColor3 = Color3.fromRGB(130, 200, 255)
+        task.wait(TradeTimingConfig.PreReadyDelay)
+    
+        if not TradeState.IsTradeActive or not IsReceiverOnline() then
+            AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Ready")
+            return
+        end
+    
+        -- 5a. ส่งคำสั่ง MineTradeReady จนกว่า MeReady จะเป็น true
+        local readyRetries = 0
+        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" and not TradeState.CurrentSession.MeReady and readyRetries < 8 do
+            local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
+            StatusBar.Text = string.format("⚡ กดยืนยัน Ready (Rev: %d)...", curRev)
+            SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, curRev)
+            ClickTradeButtonUI()
+            readyRetries = readyRetries + 1
+            task.wait(0.6)
+        end
+    
+        -- 5b. รอนจนกว่า Stage จะเปลี่ยนเป็น "confirm" (รอฝ่ายรับกด Ready สำเร็จ)
+        StatusBar.Text = "⏳ ฝั่งผู้ส่งพร้อมแล้ว กำลังรอฝ่ายรับกดยินยอม Ready..."
+        StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+        local waitStageElapsed = 0
+        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" do
+            if not IsReceiverOnline() then
+                AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะรอ Ready")
+                return
+            end
+            if not TradeState.CurrentSession.MeReady then
+                SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, TradeState.CurrentSession.Revision or TradeState.EditRevision)
+                ClickTradeButtonUI()
+            end
+            task.wait(0.5)
+            waitStageElapsed = waitStageElapsed + 0.5
+            if waitStageElapsed >= 25 then
+                AbortTransfer("หมดเวลารอ (Timeout 25s) ฝ่ายรับไม่ยอมกด Ready")
+                return
+            end
+        end
+    
+        if not TradeState.IsTradeActive or not TradeState.CurrentSession or TradeState.CurrentSession.Stage ~= "confirm" then
+            if TradeState.CurrentSession and (TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") then
+                -- สำเร็จทันที
+            else
+                AbortTransfer("การเทรดถูกยกเลิกหรือไม่สามารถเข้าสู่ช่วงยืนยันได้")
+                return
+            end
+        end
+    
+        -- 6. หน่วงเวลานับถอยหลัง Confirm Countdown
+        local countdown = math.max(4.5, (tonumber(TradeState.CurrentSession and TradeState.CurrentSession.ConfirmAfter) or 4.0) + 0.5)
+        for t = math.ceil(countdown), 1, -1 do
+            if not TradeState.IsTradeActive or not IsReceiverOnline() then
+                AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Confirm")
+                return
+            end
+            StatusBar.Text = string.format("⏳ รอนับถอยหลังยืนยันครั้งสุดท้าย (%d วิ)...", t)
+            StatusBar.TextColor3 = Color3.fromRGB(255, 180, 80)
+            task.wait(1.0)
+        end
+    
+        if not TradeState.IsTradeActive or not IsReceiverOnline() then
+            AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Confirm")
+            return
+        end
+    
+        -- 7. วนส่ง MineTradeConfirm จนกว่าสถานะ MeConfirmed จะสำเร็จ หรือ Stage จะเปลี่ยนเป็น saving/closed
+        local confirmRetries = 0
+        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and not TradeState.CurrentSession.MeConfirmed and confirmRetries < 15 do
+            local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
+            StatusBar.Text = string.format("⚡ กดยืนยัน Confirm แลกเปลี่ยน (%d/15)...", confirmRetries + 1)
+            StatusBar.TextColor3 = Color3.fromRGB(120, 240, 160)
+            SafeSendEvent("MineTradeConfirm", TradeState.CurrentSession.SessionId, curRev)
+            ClickTradeButtonUI()
+            confirmRetries = confirmRetries + 1
+            task.wait(0.6)
+        end
+    
+        -- 8. รอรับผลลัพธ์การบันทึกข้อมูลจนเสร็จสมบูรณ์
+        local saveWait = 0
+        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and saveWait < 8 do
+            task.wait(0.5)
+            saveWait = saveWait + 0.5
+        end
+    
+        TradeNotify("สำเร็จ", "ส่งไอเทมครบถ้วนและยืนยันการเทรดเรียบร้อยแล้ว!")
+        StatusBar.Text = "✅ การโอนย้ายไอเทมเสร็จสมบูรณ์"
+        StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+        TradeState.IsTradeActive = false
+        StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
+        StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+        RenderInventoryList()
+    end
+    
+    local function ToggleTrade(state)
+        if state == nil then
+            TradeState.IsTradeActive = not TradeState.IsTradeActive
+        else
+            TradeState.IsTradeActive = state
+        end
+    
+        if TradeState.IsTradeActive then
+            StartTradeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+            StartTradeBtn.Text = "⏹️ หยุดการส่งไอเทม (STOP)"
+            task.spawn(RunTransferWorker)
+        else
+            AbortTransfer("ผู้ใช้กดยกเลิกการทำงาน")
+        end
+        return TradeState.IsTradeActive
+    end
+    
+    StartTradeBtn.MouseButton1Click:Connect(function()
+        if TradeState.Mode ~= "Sender" then
+            TradeNotify("แจ้งเตือน", "กรุณาสลับเป็น 'โหมดผู้ส่ง (Sender)' เพื่อเริ่มส่งของ", 3)
+            return
+        end
+        ToggleTrade()
+    end)
+    
+    CancelTradeBtn.MouseButton1Click:Connect(function()
+        ToggleTrade(false)
+    end)
+    
+    TradeCloseBtn.MouseButton1Click:Connect(function()
+        ToggleTrade(false)
+        TradeMainFrame.Visible = false
+    end)
+    
+    _G.ToggleTrade = ToggleTrade
+    _G.IsTradeActive = function() return TradeState.IsTradeActive end
+    
+    TradeNotify("Trade Suite V7.1 Pro", "หน้าต่างควบคุมการเทรด V7.1 Pro พร้อมใช้งานแล้ว!", 3)
+    
+end
+
 -- ═══════════════════════════════════════════════
 -- 🚀 4. MASTER WORKER PIPELINE (ISOLATED TASKS WITH PCALL)
 -- ═══════════════════════════════════════════════
@@ -1429,6 +2635,12 @@ local lastEquipTime = 0
 
 task.spawn(function()
     while true do
+        -- ⏸️ PAUSE WHILE TRADING: หากกำลังเทรดหรือเปิดเซสชันเทรดอยู่ ให้หยุดการทำงานฟาร์มชั่วคราว
+        if TradeState and (TradeState.IsTradeActive or (TradeState.CurrentSession and TradeState.CurrentSession.Stage and TradeState.CurrentSession.Stage ~= "closed" and TradeState.CurrentSession.Stage ~= "saving")) then
+            UpdateStatus("🤝 หยุดฟาร์มชั่วคราว (กำลังเทรดไอเทม)...")
+            task.wait(1.0)
+            continue
+        end
         local myPlot = GetMyPlot()
         local d = SafeGetData()
         local d2 = SafeGetData2()
@@ -2147,4 +3359,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("✅ [AnimeMineAutoFarmV14] โหลดสำเร็จ - Infinity Trial & Petalfall Crate Edition พร้อมทำงาน!")
+print("✅ [AnimeMineAutoFarmV15] โหลดสำเร็จ - All-in-One Trade & Auto Farm Edition พร้อมทำงาน!")

@@ -126,8 +126,8 @@ task.spawn(function()
     if gameInfo then
         Log("KuyKuy Hub", string.format("ตรวจพบ: %s [%s]", gameInfo.Name, gameInfo.Category), 3)
         
-        -- ป้องกัน GitHub Cache โดยการใส่ Timestamp
-        local fullUrl = BaseUrl .. gameInfo.Path .. "?nocache=" .. tostring(os.time())
+        -- ป้องกัน GitHub CDN Cache อย่างเด็ดขาดด้วย Timestamp + Random Salt
+        local fullUrl = BaseUrl .. gameInfo.Path .. "?v=" .. tostring(os.time()) .. "&salt=" .. tostring(math.random(100000, 999999))
         
         local fetchSuccess, scriptSource = pcall(function()
             return game:HttpGet(fullUrl)

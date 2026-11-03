@@ -798,6 +798,25 @@ function TeamService.EquipBestUnits(): number
             end
         end
 
+        -- จัดเรียงตามความเก่งของยูนิต (Mythic > Legendary > Epic > Rare)
+        table.sort(candidates, function(a, b)
+            local priority = {
+                ["sasuke"] = 10,
+                ["luffy"] = 9,
+                ["goku"] = 8,
+                ["speedwagon"] = 7,
+                ["crocodile"] = 6,
+                ["naruto"] = 5,
+                ["sanji"] = 4,
+                ["sakura"] = 3,
+                ["usopp"] = 2,
+                ["krillin"] = 1,
+            }
+            local pA = priority[a.id] or 0
+            local pB = priority[b.id] or 0
+            return pA > pB
+        end)
+
         -- สวมใส่เฉพาะจำนวนช่องที่ยังว่างอยู่เท่านั้น
         for i = 1, math.min(slotsToFill, #candidates) do
             local target = candidates[i]
@@ -1484,17 +1503,22 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ระบบทำความสะอาดหน้าจอ ลบข้อความแจ้งเตือนสีแดงกวนใจอัตโนมัติ
+-- ระบบดักทำลายข้อความแจ้งเตือนสีแดงทันทีแบบ Real-Time (Instant Error Suppressor)
 task.spawn(function()
-    while true do
-        task.wait(1.5)
-        local mg = PlayerGui:FindFirstChild("MessageGui")
-        if mg then
-            for _, d in ipairs(mg:GetDescendants()) do
-                if d:IsA("TextLabel") and d.Visible and (d.Text:find("Sending requests") or d.Text:find("Complete more Levels") or d.Text:find("Complete a row")) then
-                    d.Visible = false
-                end
+    local mg = PlayerGui:WaitForChild("MessageGui", 10)
+    if mg then
+        local msgs = mg:WaitForChild("messages", 5)
+        if msgs then
+            for _, c in ipairs(msgs:GetChildren()) do
+                if c.Name == "Error" then c:Destroy() end
             end
+            msgs.ChildAdded:Connect(function(c)
+                if c.Name == "Error" then
+                    task.defer(function()
+                        if c and c.Parent then c:Destroy() end
+                    end)
+                end
+            end)
         end
     end
 end)
