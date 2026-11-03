@@ -28,7 +28,11 @@ local VirtualUser = game:GetService("VirtualUser")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+while not LocalPlayer do
+    task.wait(0.2)
+    LocalPlayer = Players.LocalPlayer
+end
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 
 -- ═══════════════════════════════════════════════
 -- 🛡️ 1. SAFE MODULE LOADING (SafeRequire with pcall)
@@ -51,7 +55,7 @@ local function SafeRequire(parent, moduleName)
     return result
 end
 
-local modulesFolder = ReplicatedStorage:WaitForChild("Modules", 5)
+local modulesFolder = ReplicatedStorage:WaitForChild("Modules", 15)
 if not modulesFolder then
     warn("⚠️ [SafeRequire Warning] ไม่พบโฟลเดอร์ 'Modules' ใน ReplicatedStorage!")
 end
