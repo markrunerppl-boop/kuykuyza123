@@ -1387,6 +1387,16 @@ AddActionButton("Trade Suite UI", "เปิด/ปิดหน้าต่า�
     end
 end, 61)
 
+local TradeMainToggleBtn
+local TradeMainToggleFrame = AddActionButton("สวิตช์ระบบเทรด (Trade Switch)", "กดเปิดเพื่อเริ่มส่งของ หรือกดปิดเพื่อหยุดการเทรด", "🚀 ปิด (OFF)", Color3.fromRGB(50, 50, 70), function()
+    if _G.ToggleTrade then
+        _G.ToggleTrade()
+    end
+end, 62)
+if TradeMainToggleFrame then
+    TradeMainToggleBtn = TradeMainToggleFrame:FindFirstChildWhichIsA("TextButton", true)
+end
+
 -- ═══════════════════════════════════════════════
 -- 🖱️ DRAGGING & MINIMIZE & HOTKEY
 -- ═══════════════════════════════════════════════
@@ -2287,12 +2297,47 @@ do
     -- ========================================================================
     -- [4] ACTIONS & TRADE EXECUTION
     -- ========================================================================
-    CreateHeader("⚡ 4. คำสั่งเริ่มการเทรด", 11)
+    CreateHeader("⚡ 4. คำสั่งเปิด-ปิดการเทรด (Trade Controls)", 11)
     
+    local TradeToggleFrame = Instance.new("Frame")
+    TradeToggleFrame.Size = UDim2.new(1, 0, 0, 32)
+    TradeToggleFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+    TradeToggleFrame.LayoutOrder = 12
+    TradeToggleFrame.Parent = ScrollContainer
+    
+    local ToggleFrameCorner = Instance.new("UICorner")
+    ToggleFrameCorner.CornerRadius = UDim.new(0, 6)
+    ToggleFrameCorner.Parent = TradeToggleFrame
+    
+    local ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Size = UDim2.new(1, -70, 1, 0)
+    ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Text = "🔄 สวิตช์เปิด-ปิดระบบเทรด (Toggle Trade)"
+    ToggleLabel.TextColor3 = Color3.fromRGB(220, 220, 235)
+    ToggleLabel.Font = Enum.Font.GothamMedium
+    ToggleLabel.TextSize = 11
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = TradeToggleFrame
+    
+    local TradeSwitchBadge = Instance.new("TextButton")
+    TradeSwitchBadge.Size = UDim2.new(0, 52, 0, 22)
+    TradeSwitchBadge.Position = UDim2.new(1, -58, 0.5, -11)
+    TradeSwitchBadge.BackgroundColor3 = Color3.fromRGB(65, 65, 80)
+    TradeSwitchBadge.Text = "OFF"
+    TradeSwitchBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TradeSwitchBadge.Font = Enum.Font.GothamBold
+    TradeSwitchBadge.TextSize = 10.5
+    TradeSwitchBadge.Parent = TradeToggleFrame
+    
+    local SwitchCorner = Instance.new("UICorner")
+    SwitchCorner.CornerRadius = UDim.new(0, 4)
+    SwitchCorner.Parent = TradeSwitchBadge
+
     local StartTradeBtn = Instance.new("TextButton")
     StartTradeBtn.Size = UDim2.new(1, 0, 0, 36)
-    StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
-    StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+    StartTradeBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+    StartTradeBtn.Text = "🚀 เปิด/เริ่มส่งไอเทมที่เลือก (Start Transfer)"
     StartTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     StartTradeBtn.Font = Enum.Font.GothamBold
     StartTradeBtn.TextSize = 12
@@ -2310,7 +2355,7 @@ do
     CancelTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     CancelTradeBtn.Font = Enum.Font.GothamBold
     CancelTradeBtn.TextSize = 11
-    CancelTradeBtn.LayoutOrder = 13
+    CancelTradeBtn.LayoutOrder = 14
     CancelTradeBtn.Parent = ScrollContainer
     
     local CancelCorner = Instance.new("UICorner")
@@ -2377,8 +2422,7 @@ do
         SafeSendEvent("MineTradeCancel")
         TradeState.CurrentSession = nil
         TradeState.EditRevision = 0
-        StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
-        StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+        UpdateTradeUIState(false)
         StatusBar.Text = "⚠️ " .. tostring(reason)
         StatusBar.TextColor3 = Color3.fromRGB(240, 100, 100)
         TradeNotify("Trade Aborted", reason, 4)
@@ -2614,28 +2658,49 @@ do
         RenderInventoryList()
     end
     
+    local function UpdateTradeUIState(isActive)
+        if TradeSwitchBadge then
+            TradeSwitchBadge.Text = isActive and "ON" or "OFF"
+            TradeSwitchBadge.BackgroundColor3 = isActive and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(65, 65, 80)
+        end
+        if StartTradeBtn then
+            StartTradeBtn.BackgroundColor3 = isActive and Color3.fromRGB(190, 45, 45) or Color3.fromRGB(110, 65, 200)
+            StartTradeBtn.Text = isActive and "⏹️ ปิด/หยุดการส่งไอเทม (STOP)" or "🚀 เปิด/เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+        end
+        if TradeMainToggleBtn then
+            TradeMainToggleBtn.Text = isActive and "⏹️ เปิด (ON)" or "🚀 ปิด (OFF)"
+            TradeMainToggleBtn.BackgroundColor3 = isActive and Color3.fromRGB(46, 204, 113) or Color3.fromRGB(50, 50, 70)
+        end
+    end
+
     local function ToggleTrade(state)
         if state == nil then
             TradeState.IsTradeActive = not TradeState.IsTradeActive
         else
             TradeState.IsTradeActive = state
         end
-    
+
+        UpdateTradeUIState(TradeState.IsTradeActive)
+
         if TradeState.IsTradeActive then
-            StartTradeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-            StartTradeBtn.Text = "⏹️ หยุดการส่งไอเทม (STOP)"
+            if TradeState.Mode ~= "Sender" then
+                TradeNotify("แจ้งเตือน", "กรุณาสลับเป็น 'โหมดผู้ส่ง (Sender)' เพื่อเริ่มส่งของ", 3)
+                TradeState.IsTradeActive = false
+                UpdateTradeUIState(false)
+                return false
+            end
             task.spawn(RunTransferWorker)
         else
-            AbortTransfer("ผู้ใช้กดยกเลิกการทำงาน")
+            AbortTransfer("ผู้ใช้สั่งปิด/หยุดการทำงาน")
         end
         return TradeState.IsTradeActive
     end
+
+    TradeSwitchBadge.MouseButton1Click:Connect(function()
+        ToggleTrade()
+    end)
     
     StartTradeBtn.MouseButton1Click:Connect(function()
-        if TradeState.Mode ~= "Sender" then
-            TradeNotify("แจ้งเตือน", "กรุณาสลับเป็น 'โหมดผู้ส่ง (Sender)' เพื่อเริ่มส่งของ", 3)
-            return
-        end
         ToggleTrade()
     end)
     
