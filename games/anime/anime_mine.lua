@@ -1452,6 +1452,7 @@ do
         IsTradeActive = false,
         Mode = "Sender",            -- "Sender" หรือ "Receiver"
         TargetReceiver = nil,
+        SavedReceiverName = "",     -- ชื่อผู้รับที่บันทึกไว้
         CurrentCategory = "All",    -- "All", "Miners", "Pickaxes", "Gems", "Other"
         SelectedItems = {},
         AutoAccept = true,
@@ -1460,6 +1461,61 @@ do
         CurrentSession = nil,
         EditRevision = 0,
     }
+    
+    local TRADE_CONFIG_FILE = "AnimeMine_TradeConfig.json"
+    local SavedTradeItems = {}
+
+    local function SaveTradeConfig(notifyUser)
+        pcall(function()
+            if writefile then
+                local itemsToSave = {}
+                for k, v in pairs(TradeState.SelectedItems or {}) do
+                    if type(v) == "table" and v.Key then
+                        itemsToSave[v.Key] = tonumber(v.Amount) or 1
+                    elseif type(v) == "number" then
+                        itemsToSave[k] = v
+                    end
+                end
+                local data = {
+                    Mode = TradeState.Mode or "Sender",
+                    TargetReceiverName = (TradeState.TargetReceiver and TradeState.TargetReceiver.Name) or TradeState.SavedReceiverName or "",
+                    AutoAccept = TradeState.AutoAccept,
+                    AutoReady = TradeState.AutoReady,
+                    AutoConfirm = TradeState.AutoConfirm,
+                    CurrentCategory = TradeState.CurrentCategory or "All",
+                    SelectedItems = itemsToSave
+                }
+                writefile(TRADE_CONFIG_FILE, HttpService:JSONEncode(data))
+                if notifyUser then
+                    TradeNotify("บันทึกสำเร็จ", "บันทึกการตั้งค่าระบบเทรดและไอเทมเรียบร้อยแล้ว", 3)
+                end
+            end
+        end)
+    end
+
+    local function LoadTradeConfig()
+        pcall(function()
+            if isfile and readfile and isfile(TRADE_CONFIG_FILE) then
+                local raw = readfile(TRADE_CONFIG_FILE)
+                local decoded = HttpService:JSONDecode(raw)
+                if type(decoded) == "table" then
+                    if decoded.Mode then TradeState.Mode = decoded.Mode end
+                    if decoded.TargetReceiverName and #decoded.TargetReceiverName > 0 then
+                        TradeState.SavedReceiverName = decoded.TargetReceiverName
+                    end
+                    if decoded.AutoAccept ~= nil then TradeState.AutoAccept = decoded.AutoAccept end
+                    if decoded.AutoReady ~= nil then TradeState.AutoReady = decoded.AutoReady end
+                    if decoded.AutoConfirm ~= nil then TradeState.AutoConfirm = decoded.AutoConfirm end
+                    if decoded.CurrentCategory then TradeState.CurrentCategory = decoded.CurrentCategory end
+                    if type(decoded.SelectedItems) == "table" then
+                        SavedTradeItems = decoded.SelectedItems
+                    end
+                end
+            end
+        end)
+    end
+
+    LoadTradeConfig()
     
     local TradeTimingConfig = {
         ThrottleDelayMin = 0.55,    -- หน่วงเวลาระหว่างส่งไอเทมแต่ละชิ้น (วินาที)
@@ -1830,7 +1886,7 @@ do
     ScrollContainer.BorderSizePixel = 0
     ScrollContainer.ScrollBarThickness = 4
     ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
-    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 680)
+    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 720)
     ScrollContainer.Parent = TradeMainFrame
     
     local ContainerLayout = Instance.new("UIListLayout")
@@ -1940,7 +1996,7 @@ do
     end
     
     local playerIndex = 1
-    local function UpdateSelectedPlayer()
+    local function UpdateSelectedPlayer(preferSaved)
         local others = GetOtherPlayers()
         if #others == 0 then
             TradeState.TargetReceiver = nil
@@ -1948,13 +2004,22 @@ do
             CurrentPlayerLabel.TextColor3 = Color3.fromRGB(230, 90, 90)
             return
         end
+        if preferSaved and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
+            for idx, p in ipairs(others) do
+                if p.Name == TradeState.SavedReceiverName then
+                    playerIndex = idx
+                    break
+                end
+            end
+        end
         if playerIndex > #others then playerIndex = 1 end
         TradeState.TargetReceiver = others[playerIndex]
+        TradeState.SavedReceiverName = TradeState.TargetReceiver and TradeState.TargetReceiver.Name or TradeState.SavedReceiverName
         CurrentPlayerLabel.Text = "👤 " .. TradeState.TargetReceiver.Name
         CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
     end
     
-    UpdateSelectedPlayer()
+    UpdateSelectedPlayer(true)
     
     CyclePlayerBtn.MouseButton1Click:Connect(function()
         local others = GetOtherPlayers()
@@ -1962,6 +2027,7 @@ do
             playerIndex = (playerIndex % #others) + 1
             UpdateSelectedPlayer()
             TradeNotify("เปลี่ยนผู้รับ", "เป้าหมายปัจจุบัน: " .. (TradeState.TargetReceiver and TradeState.TargetReceiver.Name or "None"))
+            SaveTradeConfig()
         end
     end)
     
@@ -2012,35 +2078,48 @@ do
             badge.Text = val and "ON" or "OFF"
             badge.BackgroundColor3 = val and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
             callback(val)
+            SaveTradeConfig()
         end)
     end
     
     CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Accept ตอบรับคำขอเทรดทันที", true, function(v) TradeState.AutoAccept = v end)
     CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Ready & Confirm ยินยอมรับของอัตโนมัติ", true, function(v) TradeState.AutoReady = v TradeState.AutoConfirm = v end)
     
+    local function SetRole(mode, skipSave)
+        TradeState.Mode = mode or "Sender"
+        if TradeState.Mode == "Sender" then
+            SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+            SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+            ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+            PlayerSelectFrame.Visible = true
+            TargetHeader.Visible = true
+            ReceiverAutoFrame.Visible = false
+            StatusBar.Text = "โหมดผู้ส่ง: เลือกผู้รับและติ๊กไอเทมที่จะส่ง"
+        else
+            ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 140, 90)
+            ReceiverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SenderBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+            SenderBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+            PlayerSelectFrame.Visible = false
+            TargetHeader.Visible = false
+            ReceiverAutoFrame.Visible = true
+            StatusBar.Text = "โหมดผู้รับ: รอรับคำขอเทรดและยืนยันอัตโนมัติ"
+        end
+        if not skipSave then
+            SaveTradeConfig()
+        end
+    end
+
     SenderBtn.MouseButton1Click:Connect(function()
-        TradeState.Mode = "Sender"
-        SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
-        SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-        ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
-        PlayerSelectFrame.Visible = true
-        TargetHeader.Visible = true
-        ReceiverAutoFrame.Visible = false
-        StatusBar.Text = "โหมดผู้ส่ง: เลือกผู้รับและติ๊กไอเทมที่จะส่ง"
+        SetRole("Sender")
     end)
     
     ReceiverBtn.MouseButton1Click:Connect(function()
-        TradeState.Mode = "Receiver"
-        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 140, 90)
-        ReceiverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        SenderBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-        SenderBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
-        PlayerSelectFrame.Visible = false
-        TargetHeader.Visible = false
-        ReceiverAutoFrame.Visible = true
-        StatusBar.Text = "โหมดผู้รับ: รอรับคำขอเทรดและยืนยันอัตโนมัติ"
+        SetRole("Receiver")
     end)
+
+    SetRole(TradeState.Mode, true)
     
     -- ========================================================================
     -- [3] SELECTIVE ITEM TRANSFER (รวมอัญมณี 💎 Gems)
@@ -2109,6 +2188,7 @@ do
     
         btn.MouseButton1Click:Connect(function()
             TradeState.CurrentCategory = cat
+            SaveTradeConfig()
             for _, b in ipairs(FilterFrame:GetChildren()) do
                 if b:IsA("TextButton") then
                     b.BackgroundColor3 = Color3.fromRGB(36, 36, 48)
@@ -2142,6 +2222,19 @@ do
         ItemScrollBox.CanvasSize = UDim2.new(0, 0, 0, #items * 34 + 10)
     
         for _, it in ipairs(items) do
+            -- คืนค่าไอเทมและจำนวนที่เคยบันทึกไว้ใน Config อัตโนมัติ
+            local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
+            if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and it.Count > 0 and not TradeState.SelectedItems[it.Key] then
+                local savedAmt = math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
+                TradeState.SelectedItems[it.Key] = {
+                    Key = it.Key,
+                    Name = it.Name,
+                    Amount = savedAmt,
+                    MaxCount = maxAllowed,
+                    MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                }
+            end
+
             local row = Instance.new("Frame")
             row.Size = UDim2.new(1, -6, 0, 30)
             row.Position = UDim2.new(0, 3, 0, 0)
@@ -2214,6 +2307,8 @@ do
                 amtBox.Text = tostring(num)
                 if TradeState.SelectedItems[it.Key] then
                     TradeState.SelectedItems[it.Key].Amount = num
+                    SavedTradeItems[it.Key] = num
+                    SaveTradeConfig()
                 end
             end)
     
@@ -2237,12 +2332,16 @@ do
                 amtBox.Text = tostring(maxVal)
                 if TradeState.SelectedItems[it.Key] then
                     TradeState.SelectedItems[it.Key].Amount = maxVal
+                    SavedTradeItems[it.Key] = maxVal
+                    SaveTradeConfig()
                 end
             end)
     
             checkBtn.MouseButton1Click:Connect(function()
                 if TradeState.SelectedItems[it.Key] then
                     TradeState.SelectedItems[it.Key] = nil
+                    SavedTradeItems[it.Key] = nil
+                    SaveTradeConfig()
                     checkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
                     checkBtn.Text = ""
                 else
@@ -2263,6 +2362,8 @@ do
                         MaxCount = maxAllowed,
                         MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
                     }
+                    SavedTradeItems[it.Key] = sendNum
+                    SaveTradeConfig()
                     checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
                     checkBtn.Text = "✓"
                 end
@@ -2361,6 +2462,24 @@ do
     local CancelCorner = Instance.new("UICorner")
     CancelCorner.CornerRadius = UDim.new(0, 6)
     CancelCorner.Parent = CancelTradeBtn
+
+    local SaveConfigBtn = Instance.new("TextButton")
+    SaveConfigBtn.Size = UDim2.new(1, 0, 0, 26)
+    SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(38, 55, 80)
+    SaveConfigBtn.Text = "💾 บันทึกการตั้งค่าเทรด (Save Trade Config)"
+    SaveConfigBtn.TextColor3 = Color3.fromRGB(200, 230, 255)
+    SaveConfigBtn.Font = Enum.Font.GothamSemibold
+    SaveConfigBtn.TextSize = 10.5
+    SaveConfigBtn.LayoutOrder = 15
+    SaveConfigBtn.Parent = ScrollContainer
+    
+    local SaveCorner = Instance.new("UICorner")
+    SaveCorner.CornerRadius = UDim.new(0, 6)
+    SaveCorner.Parent = SaveConfigBtn
+
+    SaveConfigBtn.MouseButton1Click:Connect(function()
+        SaveTradeConfig(true)
+    end)
     
     -- ========================================================================
     -- 🔄 BACKGROUND AUTOMATION & WATCHDOG ENGINE
