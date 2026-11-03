@@ -119,10 +119,35 @@ local SupportedUniverses = {
 -- 🚀 LOADER ENGINE (ดาวน์โหลดและสั่งรันแบบปลอดภัยสูงสุด)
 -- ========================================================================
 task.spawn(function()
-    -- 1. รอเกมโหลดเสร็จสมบูรณ์
+    -- 1. รอเกมโหลดเสร็จสมบูรณ์ + ป้องกันการแย่ง CPU เธรดตอนโหลด
     if not game:IsLoaded() then
         pcall(function() game.Loaded:Wait() end)
     end
+    task.wait(1.5) -- หน่วงเวลาสั้นๆ เพื่อให้ ReplicatedFirst และ Data Init เริ่มต้นอย่างปลอดภัย
+
+    -- 🛡️ ระบบเฝ้าระวังแก้ปัญหาหน้าจอโหลดค้าง (Auto-Dismiss Stuck Loading Screen)
+    task.spawn(function()
+        local watchStart = os.clock()
+        while (os.clock() - watchStart < 20) do
+            task.wait(1)
+            pcall(function()
+                local lp = game:GetService("Players").LocalPlayer
+                local pGui = lp and lp:FindFirstChild("PlayerGui")
+                if pGui then
+                    -- ปลดล็อคหน้าจอโหลดของ Anime Mine ถ้าค้างเกิน 5 วินาที
+                    local ls = pGui:FindFirstChild("LoadingScreen")
+                    if ls and ls.Enabled and (os.clock() - watchStart >= 5) then
+                        ls.Enabled = false
+                    end
+                    local fade = pGui:FindFirstChild("MineFadeGui")
+                    if fade and (os.clock() - watchStart >= 5) then
+                        local f = fade:FindFirstChild("Fade", true)
+                        if f and f.Visible then f.Visible = false end
+                    end
+                end
+            end)
+        end
+    end)
 
     -- 2. รอ PlaceId และ GameId ให้พร้อมใช้งาน
     local startWait = os.clock()

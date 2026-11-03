@@ -34,6 +34,23 @@ while not LocalPlayer do
 end
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 
+-- 🛡️ ป้องกันหน้าจอโหลดค้าง (Auto-Dismiss Stuck Loading Screen)
+task.spawn(function()
+    pcall(function()
+        if PlayerGui then
+            local ls = PlayerGui:FindFirstChild("LoadingScreen")
+            if ls and ls.Enabled then
+                ls.Enabled = false
+            end
+            local fade = PlayerGui:FindFirstChild("MineFadeGui")
+            if fade then
+                local f = fade:FindFirstChild("Fade", true)
+                if f and f.Visible then f.Visible = false end
+            end
+        end
+    end)
+end)
+
 -- ═══════════════════════════════════════════════
 -- 🛡️ 1. SAFE MODULE LOADING (SafeRequire with pcall)
 -- ═══════════════════════════════════════════════
