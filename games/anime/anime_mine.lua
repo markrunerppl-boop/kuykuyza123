@@ -1455,6 +1455,8 @@ do
         SavedReceiverName = "",     -- ชื่อผู้รับที่บันทึกไว้
         CurrentCategory = "All",    -- "All", "Miners", "Pickaxes", "Gems", "Other"
         SelectedItems = {},
+        SendAllAlways = true,       -- ⚡ ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง (Auto-Max Always)
+        AutoLoopUntilEmpty = true,  -- 🔁 ส่งวนซ้ำอัตโนมัติจนกว่าของที่เลือกจะหมดกระเป๋า
         AutoAccept = true,
         AutoReady = true,
         AutoConfirm = true,
@@ -1483,6 +1485,8 @@ do
                     AutoReady = TradeState.AutoReady,
                     AutoConfirm = TradeState.AutoConfirm,
                     CurrentCategory = TradeState.CurrentCategory or "All",
+                SendAllAlways = TradeState.SendAllAlways ~= false,
+                AutoLoopUntilEmpty = TradeState.AutoLoopUntilEmpty ~= false,
                     SelectedItems = itemsToSave
                 }
                 writefile(TRADE_CONFIG_FILE, HttpService:JSONEncode(data))
@@ -1507,6 +1511,8 @@ do
                     if decoded.AutoReady ~= nil then TradeState.AutoReady = decoded.AutoReady end
                     if decoded.AutoConfirm ~= nil then TradeState.AutoConfirm = decoded.AutoConfirm end
                     if decoded.CurrentCategory then TradeState.CurrentCategory = decoded.CurrentCategory end
+                if decoded.SendAllAlways ~= nil then TradeState.SendAllAlways = decoded.SendAllAlways end
+                if decoded.AutoLoopUntilEmpty ~= nil then TradeState.AutoLoopUntilEmpty = decoded.AutoLoopUntilEmpty end
                     if type(decoded.SelectedItems) == "table" then
                         SavedTradeItems = decoded.SelectedItems
                     end
@@ -1886,7 +1892,7 @@ do
     ScrollContainer.BorderSizePixel = 0
     ScrollContainer.ScrollBarThickness = 4
     ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
-    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 720)
+    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 800)
     ScrollContainer.Parent = TradeMainFrame
     
     local ContainerLayout = Instance.new("UIListLayout")
@@ -2225,7 +2231,7 @@ do
             -- คืนค่าไอเทมและจำนวนที่เคยบันทึกไว้ใน Config อัตโนมัติ
             local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
             if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and it.Count > 0 and not TradeState.SelectedItems[it.Key] then
-                local savedAmt = math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
+                local savedAmt = TradeState.SendAllAlways and maxAllowed or math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
                 TradeState.SelectedItems[it.Key] = {
                     Key = it.Key,
                     Name = it.Name,
@@ -2353,7 +2359,7 @@ do
                         TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
                         return
                     end
-                    local sendNum = tonumber(amtBox.Text) or 1
+                    local sendNum = TradeState.SendAllAlways and maxAllowed or (tonumber(amtBox.Text) or maxAllowed)
                     sendNum = math.clamp(sendNum, 1, maxAllowed)
                     TradeState.SelectedItems[it.Key] = {
                         Key = it.Key,
@@ -2435,6 +2441,27 @@ do
     SwitchCorner.CornerRadius = UDim.new(0, 4)
     SwitchCorner.Parent = TradeSwitchBadge
 
+    local SendAllToggleFrame = Instance.new("Frame")
+    SendAllToggleFrame.Size = UDim2.new(1, 0, 0, 58)
+    SendAllToggleFrame.BackgroundTransparency = 1
+    SendAllToggleFrame.LayoutOrder = 13
+    SendAllToggleFrame.Parent = ScrollContainer
+
+    local SendAllLayout = Instance.new("UIListLayout")
+    SendAllLayout.Padding = UDim.new(0, 4)
+    SendAllLayout.Parent = SendAllToggleFrame
+
+    CreateSmallToggle(SendAllToggleFrame, "⚡ ส่งของที่เลือกทั้งหมดทุกครั้ง (Send Max Always)", TradeState.SendAllAlways, function(v)
+        TradeState.SendAllAlways = v
+        SaveTradeConfig()
+        RenderInventoryList()
+    end)
+
+    CreateSmallToggle(SendAllToggleFrame, "🔁 ส่งวนซ้ำจนกว่าของจะหมดกระเป๋า (Auto-Loop)", TradeState.AutoLoopUntilEmpty, function(v)
+        TradeState.AutoLoopUntilEmpty = v
+        SaveTradeConfig()
+    end)
+
     local StartTradeBtn = Instance.new("TextButton")
     StartTradeBtn.Size = UDim2.new(1, 0, 0, 36)
     StartTradeBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
@@ -2442,7 +2469,7 @@ do
     StartTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     StartTradeBtn.Font = Enum.Font.GothamBold
     StartTradeBtn.TextSize = 12
-    StartTradeBtn.LayoutOrder = 12
+    StartTradeBtn.LayoutOrder = 14
     StartTradeBtn.Parent = ScrollContainer
     
     local StartCorner = Instance.new("UICorner")
@@ -2456,7 +2483,7 @@ do
     CancelTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     CancelTradeBtn.Font = Enum.Font.GothamBold
     CancelTradeBtn.TextSize = 11
-    CancelTradeBtn.LayoutOrder = 14
+    CancelTradeBtn.LayoutOrder = 15
     CancelTradeBtn.Parent = ScrollContainer
     
     local CancelCorner = Instance.new("UICorner")
@@ -2470,7 +2497,7 @@ do
     SaveConfigBtn.TextColor3 = Color3.fromRGB(200, 230, 255)
     SaveConfigBtn.Font = Enum.Font.GothamSemibold
     SaveConfigBtn.TextSize = 10.5
-    SaveConfigBtn.LayoutOrder = 15
+    SaveConfigBtn.LayoutOrder = 16
     SaveConfigBtn.Parent = ScrollContainer
     
     local SaveCorner = Instance.new("UICorner")
@@ -2613,168 +2640,234 @@ do
     end)
     
     -- Main Transfer Worker (สำหรับ Sender)
-    local function RunTransferWorker()
+    local function GetAvailableCountMap()
+        local list = FetchOwnedInventory()
+        local map = {}
+        for _, it in ipairs(list) do
+            map[it.Key] = it.Count
+        end
+        return map
+    end
+
+        local function RunTransferWorker()
         if not TradeState.TargetReceiver then
             AbortTransfer("กรุณาเลือกผู้รับเป้าหมายก่อน")
             return
         end
-    
-        local itemsToSendList = {}
-        for _, item in pairs(TradeState.SelectedItems) do
-            table.insert(itemsToSendList, item)
-        end
-    
-        if #itemsToSendList == 0 then
-            AbortTransfer("กรุณาติ๊กเลือกไอเทมที่จะส่งอย่างน้อย 1 รายการ")
-            return
-        end
-    
-        StatusBar.Text = "⏳ กำลังส่ง MineTradeRequest ไปยัง: " .. TradeState.TargetReceiver.Name
-        StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
-        TradeNotify("เริ่มการเทรด", "ส่งคำขอเทรดไปยัง: " .. TradeState.TargetReceiver.Name)
-    
-        -- 1. ยิงคำขอเทรด
-        SafeSendEvent("MineTradeRequest", TradeState.TargetReceiver.UserId)
-    
-        -- 2. รอตอบรับจนกว่า Session จะ Active
-        local elapsed = 0
-        while TradeState.IsTradeActive and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") do
-            if not IsReceiverOnline() then
-                AbortTransfer("ผู้รับเป้าหมายหลุดออกจากเซิร์ฟเวอร์")
+
+        local roundCount = 0
+
+        while TradeState.IsTradeActive do
+            roundCount = roundCount + 1
+
+            -- ตรวจสอบคลังไอเทมจริงล่าสุด ณ ปัจจุบัน
+            local ownedMap = GetAvailableCountMap()
+            local itemsToSendList = {}
+
+            for key, item in pairs(TradeState.SelectedItems) do
+                local currentAvailable = ownedMap[key] or 0
+                if currentAvailable > 0 then
+                    local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
+                    -- ⚡ ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง: คำนวณจำนวนส่งเป็นจำนวนทั้งหมดที่มีจริงในคลัง (ไม่เกิน Cap)
+                    local sendAmount = TradeState.SendAllAlways and math.min(currentAvailable, cap) or math.min(item.Amount, currentAvailable, cap)
+                    if sendAmount > 0 then
+                        table.insert(itemsToSendList, {
+                            Key = key,
+                            Name = item.Name,
+                            Amount = sendAmount,
+                            MaxCap = cap
+                        })
+                        if #itemsToSendList >= 8 then break end -- ขีดจำกัด 8 ช่องต่อรอบของเกม
+                    end
+                end
+            end
+
+            if #itemsToSendList == 0 then
+                if roundCount > 1 then
+                    TradeNotify("ส่งครบ 100%", "ส่งไอเทมที่เลือกทั้งหมดทุกชิ้นเรียบร้อยแล้ว (ของหมดกระเป๋า)!")
+                    StatusBar.Text = "✅ ส่งไอเทมที่เลือกทั้งหมดทุกชิ้นเรียบร้อย (ของหมดกระเป๋า)"
+                else
+                    AbortTransfer("ไม่พบไอเทมที่เลือกในกระเป๋า หรือจำนวนเป็น 0")
+                end
+                StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+                TradeState.IsTradeActive = false
+                UpdateTradeUIState(false)
+                RenderInventoryList()
+                break
+            end
+
+            StatusBar.Text = string.format("⏳ [รอบที่ %d] กำลังส่งคำขอเทรดไปยัง: %s", roundCount, TradeState.TargetReceiver.Name)
+            StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+            TradeNotify("เริ่มส่งไอเทม", string.format("รอบที่ %d: ส่งของ %d รายการไปยัง %s", roundCount, #itemsToSendList, TradeState.TargetReceiver.Name))
+
+            -- 1. ยิงคำขอเทรด
+            SafeSendEvent("MineTradeRequest", TradeState.TargetReceiver.UserId)
+
+            -- 2. รอตอบรับจนกว่า Session จะ Active
+            local elapsed = 0
+            while TradeState.IsTradeActive and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") do
+                if not IsReceiverOnline() then
+                    AbortTransfer("ผู้รับเป้าหมายหลุดออกจากเซิร์ฟเวอร์")
+                    return
+                end
+                task.wait(0.5)
+                elapsed = elapsed + 0.5
+                if elapsed >= TradeTimingConfig.RequestTimeout then
+                    AbortTransfer("หมดเวลารอ (Timeout 20s) ผู้รับไม่ตอบรับคำขอ")
+                    return
+                end
+            end
+
+            if not TradeState.IsTradeActive or not TradeState.CurrentSession then return end
+
+            local sess = TradeState.CurrentSession
+            TradeState.EditRevision = 0
+
+            -- 3. วนลูปส่งไอเทมทีละชิ้น (Network Rate Limiting + Safe Cap)
+            for idx, item in ipairs(itemsToSendList) do
+                if not TradeState.IsTradeActive then
+                    AbortTransfer("ผู้ใช้กดยกเลิกการทำงาน")
+                    return
+                end
+
+                if not IsReceiverOnline() then
+                    AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะกำลังส่งไอเทม")
+                    return
+                end
+
+                local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
+                local sendAmount = math.clamp(item.Amount, 1, cap)
+                TradeState.EditRevision = math.max(TradeState.EditRevision, tonumber(TradeState.CurrentSession and TradeState.CurrentSession.LastEditId) or 0) + 1
+
+                StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d", idx, #itemsToSendList, item.Name, sendAmount)
+                StatusBar.TextColor3 = Color3.fromRGB(240, 220, 100)
+
+                SafeSendEvent("MineTradeSetItem", item.Key, sendAmount, sess.SessionId, TradeState.EditRevision)
+
+                local jitter = math.random(TradeTimingConfig.ThrottleDelayMin * 100, TradeTimingConfig.ThrottleDelayMax * 100) / 100
+                task.wait(jitter)
+            end
+
+            -- 4. ส่งไอเทมครบทุกชิ้นก่อน -> หน่วงเวลาให้เซิร์ฟเวอร์ซิงค์ข้อมูล
+            StatusBar.Text = string.format("⏱️ ส่งไอเทมครบแล้ว หน่วงเวลา %.1f วินาทีก่อน Ready...", TradeTimingConfig.PreReadyDelay)
+            StatusBar.TextColor3 = Color3.fromRGB(130, 200, 255)
+            task.wait(TradeTimingConfig.PreReadyDelay)
+
+            if not TradeState.IsTradeActive or not IsReceiverOnline() then
+                AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Ready")
                 return
             end
-            task.wait(0.5)
-            elapsed = elapsed + 0.5
-            if elapsed >= TradeTimingConfig.RequestTimeout then
-                AbortTransfer("หมดเวลารอ (Timeout 20s) ผู้รับไม่ตอบรับคำขอ")
-                return
-            end
-        end
-    
-        if not TradeState.IsTradeActive or not TradeState.CurrentSession then return end
-    
-        local sess = TradeState.CurrentSession
-        TradeState.EditRevision = 0
-    
-        -- 3. วนลูปส่งไอเทมทีละชิ้น (Network Rate Limiting + Safe Cap)
-        for idx, item in ipairs(itemsToSendList) do
-            if not TradeState.IsTradeActive then
-                AbortTransfer("ผู้ใช้กดยกเลิกการทำงาน")
-                return
-            end
-    
-            if not IsReceiverOnline() then
-                AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะกำลังส่งไอเทม")
-                return
-            end
-    
-            local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
-            local sendAmount = math.clamp(item.Amount, 1, cap)
-            TradeState.EditRevision = math.max(TradeState.EditRevision, tonumber(TradeState.CurrentSession and TradeState.CurrentSession.LastEditId) or 0) + 1
-    
-            StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d", idx, #itemsToSendList, item.Name, sendAmount)
-            StatusBar.TextColor3 = Color3.fromRGB(240, 220, 100)
-    
-            SafeSendEvent("MineTradeSetItem", item.Key, sendAmount, sess.SessionId, TradeState.EditRevision)
-    
-            local jitter = math.random(TradeTimingConfig.ThrottleDelayMin * 100, TradeTimingConfig.ThrottleDelayMax * 100) / 100
-            task.wait(jitter)
-        end
-    
-        -- 4. ส่งไอเทมครบทุกชิ้นก่อน -> หน่วงเวลาให้เซิร์ฟเวอร์ซิงค์ข้อมูล
-        StatusBar.Text = string.format("⏱️ ส่งไอเทมครบแล้ว หน่วงเวลา %.1f วินาทีก่อน Ready...", TradeTimingConfig.PreReadyDelay)
-        StatusBar.TextColor3 = Color3.fromRGB(130, 200, 255)
-        task.wait(TradeTimingConfig.PreReadyDelay)
-    
-        if not TradeState.IsTradeActive or not IsReceiverOnline() then
-            AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Ready")
-            return
-        end
-    
-        -- 5a. ส่งคำสั่ง MineTradeReady จนกว่า MeReady จะเป็น true
-        local readyRetries = 0
-        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" and not TradeState.CurrentSession.MeReady and readyRetries < 8 do
-            local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
-            StatusBar.Text = string.format("⚡ กดยืนยัน Ready (Rev: %d)...", curRev)
-            SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, curRev)
-            ClickTradeButtonUI()
-            readyRetries = readyRetries + 1
-            task.wait(0.6)
-        end
-    
-        -- 5b. รอนจนกว่า Stage จะเปลี่ยนเป็น "confirm" (รอฝ่ายรับกด Ready สำเร็จ)
-        StatusBar.Text = "⏳ ฝั่งผู้ส่งพร้อมแล้ว กำลังรอฝ่ายรับกดยินยอม Ready..."
-        StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
-        local waitStageElapsed = 0
-        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" do
-            if not IsReceiverOnline() then
-                AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะรอ Ready")
-                return
-            end
-            if not TradeState.CurrentSession.MeReady then
-                SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, TradeState.CurrentSession.Revision or TradeState.EditRevision)
+
+            -- 5a. ส่งคำสั่ง MineTradeReady จนกว่า MeReady จะเป็น true
+            local readyRetries = 0
+            while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" and not TradeState.CurrentSession.MeReady and readyRetries < 8 do
+                local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
+                StatusBar.Text = string.format("⚡ กดยืนยัน Ready (Rev: %d)...", curRev)
+                SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, curRev)
                 ClickTradeButtonUI()
+                readyRetries = readyRetries + 1
+                task.wait(0.6)
             end
-            task.wait(0.5)
-            waitStageElapsed = waitStageElapsed + 0.5
-            if waitStageElapsed >= 25 then
-                AbortTransfer("หมดเวลารอ (Timeout 25s) ฝ่ายรับไม่ยอมกด Ready")
-                return
+
+            -- 5b. รอนจนกว่า Stage จะเปลี่ยนเป็น "confirm"
+            StatusBar.Text = "⏳ ฝั่งผู้ส่งพร้อมแล้ว กำลังรอฝ่ายรับกดยินยอม Ready..."
+            StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+            local waitStageElapsed = 0
+            while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "negotiate" do
+                if not IsReceiverOnline() then
+                    AbortTransfer("ผู้รับหลุดออกจากเซิร์ฟเวอร์ขณะรอ Ready")
+                    return
+                end
+                if not TradeState.CurrentSession.MeReady then
+                    SafeSendEvent("MineTradeReady", true, TradeState.CurrentSession.SessionId, TradeState.CurrentSession.Revision or TradeState.EditRevision)
+                    ClickTradeButtonUI()
+                end
+                task.wait(0.5)
+                waitStageElapsed = waitStageElapsed + 0.5
+                if waitStageElapsed >= 25 then
+                    AbortTransfer("หมดเวลารอ (Timeout 25s) ฝ่ายรับไม่ยอมกด Ready")
+                    return
+                end
             end
-        end
-    
-        if not TradeState.IsTradeActive or not TradeState.CurrentSession or TradeState.CurrentSession.Stage ~= "confirm" then
-            if TradeState.CurrentSession and (TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") then
-                -- สำเร็จทันที
-            else
-                AbortTransfer("การเทรดถูกยกเลิกหรือไม่สามารถเข้าสู่ช่วงยืนยันได้")
-                return
+
+            if not TradeState.IsTradeActive or not TradeState.CurrentSession or TradeState.CurrentSession.Stage ~= "confirm" then
+                if TradeState.CurrentSession and (TradeState.CurrentSession.Stage == "saving" or TradeState.CurrentSession.Stage == "closed") then
+                    -- สำเร็จทันที
+                else
+                    AbortTransfer("การเทรดถูกยกเลิกหรือไม่สามารถเข้าสู่ช่วงยืนยันได้")
+                    return
+                end
             end
-        end
-    
-        -- 6. หน่วงเวลานับถอยหลัง Confirm Countdown
-        local countdown = math.max(4.5, (tonumber(TradeState.CurrentSession and TradeState.CurrentSession.ConfirmAfter) or 4.0) + 0.5)
-        for t = math.ceil(countdown), 1, -1 do
+
+            -- 6. หน่วงเวลานับถอยหลัง Confirm Countdown
+            local countdown = math.max(4.5, (tonumber(TradeState.CurrentSession and TradeState.CurrentSession.ConfirmAfter) or 4.0) + 0.5)
+            for t = math.ceil(countdown), 1, -1 do
+                if not TradeState.IsTradeActive or not IsReceiverOnline() then
+                    AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Confirm")
+                    return
+                end
+                StatusBar.Text = string.format("⏳ รอนับถอยหลังยืนยันครั้งสุดท้าย (%d วิ)...", t)
+                StatusBar.TextColor3 = Color3.fromRGB(255, 180, 80)
+                task.wait(1.0)
+            end
+
             if not TradeState.IsTradeActive or not IsReceiverOnline() then
                 AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Confirm")
                 return
             end
-            StatusBar.Text = string.format("⏳ รอนับถอยหลังยืนยันครั้งสุดท้าย (%d วิ)...", t)
-            StatusBar.TextColor3 = Color3.fromRGB(255, 180, 80)
-            task.wait(1.0)
+
+            -- 7. วนส่ง MineTradeConfirm
+            local confirmRetries = 0
+            while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and not TradeState.CurrentSession.MeConfirmed and confirmRetries < 15 do
+                local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
+                StatusBar.Text = string.format("⚡ กดยืนยัน Confirm แลกเปลี่ยน (%d/15)...", confirmRetries + 1)
+                StatusBar.TextColor3 = Color3.fromRGB(120, 240, 160)
+                SafeSendEvent("MineTradeConfirm", TradeState.CurrentSession.SessionId, curRev)
+                ClickTradeButtonUI()
+                confirmRetries = confirmRetries + 1
+                task.wait(0.6)
+            end
+
+            -- 8. รอรับผลลัพธ์การบันทึกข้อมูล
+            local saveWait = 0
+            while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and saveWait < 8 do
+                task.wait(0.5)
+                saveWait = saveWait + 0.5
+            end
+
+            -- ตรวจสอบว่าต้องวนลูปส่งต่อจนกว่าของจะหมดหรือไม่
+            if not TradeState.AutoLoopUntilEmpty then
+                TradeNotify("สำเร็จ", "ส่งไอเทมรอบนี้ครบถ้วนเรียบร้อยแล้ว!")
+                StatusBar.Text = "✅ การโอนย้ายไอเทมเสร็จสมบูรณ์"
+                StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+                TradeState.IsTradeActive = false
+                UpdateTradeUIState(false)
+                RenderInventoryList()
+                break
+            end
+
+            -- ถ้าเปิด AutoLoopUntilEmpty: เช็คว่ายังมีของที่เลือกเหลือในคลังหรือไม่
+            local nextOwnedMap = GetAvailableCountMap()
+            local remainingItemsCount = 0
+            for key, _ in pairs(TradeState.SelectedItems) do
+                remainingItemsCount = remainingItemsCount + (nextOwnedMap[key] or 0)
+            end
+
+            if remainingItemsCount <= 0 then
+                TradeNotify("ส่งครบ 100%", "ส่งไอเทมที่เลือกทั้งหมดทุกชิ้นเรียบร้อยแล้ว (ของหมดกระเป๋า)!")
+                StatusBar.Text = "✅ ส่งไอเทมที่เลือกทั้งหมดเรียบร้อย (ของหมดกระเป๋า)"
+                StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
+                TradeState.IsTradeActive = false
+                UpdateTradeUIState(false)
+                RenderInventoryList()
+                break
+            else
+                StatusBar.Text = string.format("🔄 รอบที่ %d สำเร็จ! กำลังเตรียมส่งรอบถัดไปสำหรับของที่เหลือ (%d ชิ้น)...", roundCount, remainingItemsCount)
+                StatusBar.TextColor3 = Color3.fromRGB(140, 200, 255)
+                RenderInventoryList()
+                task.wait(3.0)
+            end
         end
-    
-        if not TradeState.IsTradeActive or not IsReceiverOnline() then
-            AbortTransfer("ยกเลิกหรือผู้รับหลุดก่อนกด Confirm")
-            return
-        end
-    
-        -- 7. วนส่ง MineTradeConfirm จนกว่าสถานะ MeConfirmed จะสำเร็จ หรือ Stage จะเปลี่ยนเป็น saving/closed
-        local confirmRetries = 0
-        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and not TradeState.CurrentSession.MeConfirmed and confirmRetries < 15 do
-            local curRev = TradeState.CurrentSession.Revision or TradeState.EditRevision
-            StatusBar.Text = string.format("⚡ กดยืนยัน Confirm แลกเปลี่ยน (%d/15)...", confirmRetries + 1)
-            StatusBar.TextColor3 = Color3.fromRGB(120, 240, 160)
-            SafeSendEvent("MineTradeConfirm", TradeState.CurrentSession.SessionId, curRev)
-            ClickTradeButtonUI()
-            confirmRetries = confirmRetries + 1
-            task.wait(0.6)
-        end
-    
-        -- 8. รอรับผลลัพธ์การบันทึกข้อมูลจนเสร็จสมบูรณ์
-        local saveWait = 0
-        while TradeState.IsTradeActive and TradeState.CurrentSession and TradeState.CurrentSession.Stage == "confirm" and saveWait < 8 do
-            task.wait(0.5)
-            saveWait = saveWait + 0.5
-        end
-    
-        TradeNotify("สำเร็จ", "ส่งไอเทมครบถ้วนและยืนยันการเทรดเรียบร้อยแล้ว!")
-        StatusBar.Text = "✅ การโอนย้ายไอเทมเสร็จสมบูรณ์"
-        StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
-        TradeState.IsTradeActive = false
-        StartTradeBtn.BackgroundColor3 = Color3.fromRGB(130, 70, 220)
-        StartTradeBtn.Text = "🚀 เริ่มส่งไอเทมที่เลือก (Start Transfer)"
-        RenderInventoryList()
     end
     
     local function UpdateTradeUIState(isActive)
