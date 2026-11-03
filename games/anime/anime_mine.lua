@@ -832,6 +832,8 @@ local function AddLevelCapCustomInput(title, configKey, minVal, maxVal, step, or
     end)
 end
 
+local RefreshMutationVisuals = nil
+
 -- ตัวเลือก Slot สุ่มบัพ (จัดลำดับตาม Base DMG Lv.1 + ล็อคอัตโนมัติ)
 local function AddMultiSlotSelector(order)
     local Frame = Instance.new("Frame")
@@ -955,8 +957,9 @@ local function AddMultiSlotSelector(order)
             end
         end
 
-        StatusSubLabel.Text = string.format("เลือกทั้งหมด: %d แท่น | ล็อคแล้ว: %d | รอดำเนินการ: %d (เปิดค้างได้ สุ่มตัว Base DMG สูงสุดก่อน)", totalSelected, lockedCount, math.max(0, totalSelected - lockedCount))
+                StatusSubLabel.Text = string.format("เลือกทั้งหมด: %d แท่น | 🔒ล็อคแล้ว: %d | รอดำเนินการ: %d (สุ่มตัวที่พร้อมก่อนเสมอ ล็อคเมื่อตรงเป้าหมาย)", totalSelected, lockedCount, math.max(0, totalSelected - lockedCount))
     end
+    RefreshMutationVisuals = RefreshVisuals
 
     for _, sName in ipairs(availableSlots) do
         local btn = Instance.new("TextButton")
@@ -3289,11 +3292,13 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- [TASK 6] สุ่มการกลายพันธุ์ (Auto Mutation)
+        -- [TASK 6] สุ่มการกลายพันธุ์ (Auto Mutation - Ready First & Auto-Lock Engine)
         -- -------------------------------------------------------------
         local ok6, err6 = pcall(function()
             if Config.AutoMutation and mg and mg.Holders and Items and MineConfig then
-                local pendingSlots = {}
+                local curMoney = tonumber(SafeGetData().Money) or 0
+                local readySlots = {}    -- ตัวที่ยังไม่ได้บัพเป้าหมาย และเงินพอสุ่มทันที (พร้อมที่สุด)
+                local waitingSlots = {}  -- ตัวที่ยังไม่ได้บัพเป้าหมาย แต่เงินยังไม่พอ
                 local lockedCount = 0
                 local totalSelected = 0
 
@@ -3303,59 +3308,73 @@ task.spawn(function()
                         if h and h.CharName then
                             totalSelected = totalSelected + 1
                             local curVariant = h.CharVariant or "Normal"
+                            -- 🔒 ตรวจสอบว่าได้บัพตรงตามที่เลือกไว้หรือไม่
                             if Config.TargetMutations[curVariant] then
+                                -- ล็อคตัวนี้ทันที ไม่นำไปสุ่มอีกเด็ดขาด
                                 lockedCount = lockedCount + 1
                             else
-                                table.insert(pendingSlots, {
+                                -- ยังไม่ได้บัพเป้าหมาย ให้คำนวณค่าสุ่ม
+                                local item = Items.GetItemData(h.CharName)
+                                local mutCost = item and MineConfig.GetMutationRollCost and MineConfig.GetMutationRollCost(item, mg) or 0
+                                local baseDmg = GetCharBaseDamage(h.CharName)
+
+                                local slotData = {
                                     slot = slotKey,
                                     name = h.CharName,
                                     variant = curVariant,
-                                    baseDmg = GetCharBaseDamage(h.CharName)
-                                })
+                                    baseDmg = baseDmg,
+                                    cost = mutCost
+                                }
+
+                                if mutCost > 0 and curMoney >= mutCost then
+                                    table.insert(readySlots, slotData)
+                                else
+                                    table.insert(waitingSlots, slotData)
+                                end
                             end
                         end
                     end
                 end
 
-                table.sort(pendingSlots, function(a, b) return a.baseDmg > b.baseDmg end)
-
                 if totalSelected == 0 then
                     -- ยังไม่ได้เลือกแท่นใดๆ
-                elseif #pendingSlots == 0 then
-                    UpdateStatus(string.format("🎉 ได้บัพครบแล้ว (%d/%d) [สแตนด์บาย]", lockedCount, totalSelected))
-                else
-                    local currentTarget = pendingSlots[1]
-                    local item = Items.GetItemData(currentTarget.name)
-                    local mutCost = item and MineConfig.GetMutationRollCost and MineConfig.GetMutationRollCost(item, mg)
-                    local curMoney = tonumber(SafeGetData().Money) or 0
+                elseif lockedCount >= totalSelected then
+                    UpdateStatus(string.format("🎉 ได้บัพตรงตามที่เลือกครบแล้ว (%d/%d) [🔒 ล็อคทั้งหมด]", lockedCount, totalSelected))
+                    if RefreshMutationVisuals then pcall(RefreshMutationVisuals) end
+                elseif #readySlots > 0 then
+                    -- 🎯 สุ่มตัวที่พร้อมก่อนเสมอ! (เรียงตัวที่ Base DMG สูงสุดในกลุ่มตัวที่เงินพอ)
+                    table.sort(readySlots, function(a, b) return a.baseDmg > b.baseDmg end)
+                    local currentTarget = readySlots[1]
+                    local mutCost = currentTarget.cost
 
-                    if mutCost and curMoney >= mutCost then
-                        for r = 1, 3 do
-                            curMoney = tonumber(SafeGetData().Money) or 0
-                            if not Config.AutoMutation or curMoney < mutCost then break end
+                    for r = 1, 3 do
+                        curMoney = tonumber(SafeGetData().Money) or 0
+                        if not Config.AutoMutation or curMoney < mutCost then break end
 
-                            UpdateStatus(string.format("🧬 สุ่ม %s [Base: %s]", currentTarget.slot, FormatNumber(currentTarget.baseDmg)))
-                            SafeSendEvent(Config.Events.RollMutation, currentTarget.slot)
-                            HumanWait(0.22, 0.3)
+                        UpdateStatus(string.format("🧬 สุ่ม %s (%s) [ค่าสุ่ม: %s]", currentTarget.slot, currentTarget.name, FormatNumber(mutCost)))
+                        SafeSendEvent(Config.Events.RollMutation, currentTarget.slot)
+                        HumanWait(0.22, 0.3)
 
-                            local postD2 = SafeGetData2()
-                            local postH = postD2 and postD2.MineGame and postD2.MineGame.Holders and postD2.MineGame.Holders[currentTarget.slot]
-                            local newVariant = postH and (postH.CharVariant or "Normal")
-                            if newVariant and Config.TargetMutations[newVariant] then
-                                UpdateStatus(string.format("🔒 ล็อค %s ได้ %s! สุ่มตัวถัดไป...", currentTarget.slot, newVariant))
-                                SaveConfig()
-                                HumanWait(0.3, 0.5)
-                                break
-                            end
-                        end
-                    else
-                        local needMore = (mutCost and curMoney) and (mutCost - curMoney) or 0
-                        if needMore > 0 then
-                            UpdateStatus(string.format("⏳ รอเงินสุ่มบัพ (ขาดอีก %s)", FormatNumber(needMore)))
-                        else
-                            UpdateStatus("⏳ รอเงินเพื่อสุ่มบัพ...")
+                        -- ตรวจสอบผลลัพธ์ทันทีหลังสุ่ม
+                        local postD2 = SafeGetData2()
+                        local postH = postD2 and postD2.MineGame and postD2.MineGame.Holders and postD2.MineGame.Holders[currentTarget.slot]
+                        local newVariant = postH and (postH.CharVariant or "Normal")
+
+                        -- 🔒 ล็อคทันทีเมื่อบัพตรงตามที่เลือก
+                        if newVariant and Config.TargetMutations[newVariant] then
+                            UpdateStatus(string.format("🔒 ล็อค %s ได้ '%s' แล้ว! (ตรงตามที่เลือก)", currentTarget.slot, newVariant))
+                            SaveConfig()
+                            if RefreshMutationVisuals then pcall(RefreshMutationVisuals) end
+                            HumanWait(0.3, 0.5)
+                            break
                         end
                     end
+                elseif #waitingSlots > 0 then
+                    -- มีตัวที่ยังไม่ได้บัพ แต่เงินยังไม่พอ ให้หาตัวที่ขาดเงินน้อยที่สุดมาบอกสถานะ
+                    table.sort(waitingSlots, function(a, b) return (a.cost - curMoney) < (b.cost - curMoney) end)
+                    local nearest = waitingSlots[1]
+                    local needMore = math.max(0, nearest.cost - curMoney)
+                    UpdateStatus(string.format("⏳ รอเงินสุ่มบัพ %s (ขาดอีก %s)", nearest.slot, FormatNumber(needMore)))
                 end
             end
         end)
