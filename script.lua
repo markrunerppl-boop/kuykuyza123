@@ -125,24 +125,45 @@ task.spawn(function()
     end
     task.wait(1.5) -- หน่วงเวลาสั้นๆ เพื่อให้ ReplicatedFirst และ Data Init เริ่มต้นอย่างปลอดภัย
 
-    -- 🛡️ ระบบเฝ้าระวังแก้ปัญหาหน้าจอโหลดค้าง (Auto-Dismiss Stuck Loading Screen)
+    -- 🛡️ ระบบเฝ้าระวังและกระตุ้นการเข้าเกมอัตโนมัติ (Auto-Click Start & Restore Camera)
     task.spawn(function()
         local watchStart = os.clock()
-        while (os.clock() - watchStart < 20) do
-            task.wait(1)
+        while (os.clock() - watchStart < 25) do
+            task.wait(0.5)
             pcall(function()
                 local lp = game:GetService("Players").LocalPlayer
                 local pGui = lp and lp:FindFirstChild("PlayerGui")
-                if pGui then
-                    -- ปลดล็อคหน้าจอโหลดของ Anime Mine ถ้าค้างเกิน 5 วินาที
-                    local ls = pGui:FindFirstChild("LoadingScreen")
-                    if ls and ls.Enabled and (os.clock() - watchStart >= 5) then
-                        ls.Enabled = false
+                local ls = pGui and pGui:FindFirstChild("LoadingScreen")
+
+                -- หากตัวเกมมีปุ่ม ContinueButton หรือหน้าจอโหลดค้าง ให้ส่งสัญญาณคลิกเริ่มเกม
+                if ls and ls.Enabled then
+                    local cb = ls:FindFirstChild("ContinueButton", true)
+                    if cb and getconnections then
+                        for _, conn in ipairs(getconnections(cb.MouseButton1Down)) do
+                            conn:Fire()
+                        end
+                        for _, conn in ipairs(getconnections(cb.MouseButton1Click)) do
+                            conn:Fire()
+                        end
                     end
-                    local fade = pGui:FindFirstChild("MineFadeGui")
-                    if fade and (os.clock() - watchStart >= 5) then
-                        local f = fade:FindFirstChild("Fade", true)
-                        if f and f.Visible then f.Visible = false end
+                    -- ส่งสัญญาณคลิกจำลองเพื่อกระตุ้น UserInputService.InputBegan ในตัวโหลดของเกม
+                    local vu = game:GetService("VirtualUser")
+                    if vu then
+                        vu:Button1Down(Vector2.new(200, 200))
+                        task.wait(0.05)
+                        vu:Button1Up(Vector2.new(200, 200))
+                    end
+                end
+
+                -- หากกล้องยังค้างอยู่ในโหมดชมวิว (Scriptable) ให้คืนค่ากล้องกลับมาที่ตัวละคร
+                local cam = workspace.CurrentCamera
+                local char = lp and lp.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if cam and cam.CameraType == Enum.CameraType.Scriptable and hum then
+                    local mineGui = pGui and pGui:FindFirstChild("MineGui")
+                    if mineGui and mineGui.Enabled then
+                        cam.CameraType = Enum.CameraType.Custom
+                        cam.CameraSubject = hum
                     end
                 end
             end)

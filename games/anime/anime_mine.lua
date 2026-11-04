@@ -34,21 +34,43 @@ while not LocalPlayer do
 end
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
 
--- 🛡️ ป้องกันหน้าจอโหลดค้าง (Auto-Dismiss Stuck Loading Screen)
+-- 🛡️ ระบบเฝ้าระวังและกระตุ้นการเข้าเกมอัตโนมัติ (Auto-Click Start & Restore Camera)
 task.spawn(function()
-    pcall(function()
-        if PlayerGui then
-            local ls = PlayerGui:FindFirstChild("LoadingScreen")
+    local watchStart = os.clock()
+    while (os.clock() - watchStart < 25) do
+        task.wait(0.5)
+        pcall(function()
+            local ls = PlayerGui and PlayerGui:FindFirstChild("LoadingScreen")
             if ls and ls.Enabled then
-                ls.Enabled = false
+                local cb = ls:FindFirstChild("ContinueButton", true)
+                if cb and getconnections then
+                    for _, conn in ipairs(getconnections(cb.MouseButton1Down)) do
+                        conn:Fire()
+                    end
+                    for _, conn in ipairs(getconnections(cb.MouseButton1Click)) do
+                        conn:Fire()
+                    end
+                end
+                local vu = game:GetService("VirtualUser")
+                if vu then
+                    vu:Button1Down(Vector2.new(200, 200))
+                    task.wait(0.05)
+                    vu:Button1Up(Vector2.new(200, 200))
+                end
             end
-            local fade = PlayerGui:FindFirstChild("MineFadeGui")
-            if fade then
-                local f = fade:FindFirstChild("Fade", true)
-                if f and f.Visible then f.Visible = false end
+
+            local cam = workspace.CurrentCamera
+            local char = LocalPlayer and LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if cam and cam.CameraType == Enum.CameraType.Scriptable and hum then
+                local mineGui = PlayerGui and PlayerGui:FindFirstChild("MineGui")
+                if mineGui and mineGui.Enabled then
+                    cam.CameraType = Enum.CameraType.Custom
+                    cam.CameraSubject = hum
+                end
             end
-        end
-    end)
+        end)
+    end
 end)
 
 -- ═══════════════════════════════════════════════
