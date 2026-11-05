@@ -225,21 +225,8 @@ local function GetCharBaseDamage(charName)
     return 0
 end
 
--- สร้างตารางแมปชื่อตัวละคร -> โซน เพื่อค้นหาโซนได้อย่างแม่นยำ 100% โดยไม่ต้องพึ่งพาโมดูลภายนอก
-local function GetCharacterZone(charName)
-    if not charName or not (MineConfig and MineConfig.Zones) then return nil end
-    for zk, z in pairs(MineConfig.Zones) do
-        local zoneNum = tonumber(zk:match("%d+")) or 1
-        if z and z.CharacterPool then
-            for _, entry in ipairs(z.CharacterPool) do
-                if entry.Name == charName then
-                    return zoneNum
-                end
-            end
-        end
-    end
-    return nil
-end
+-- 🛡️ ประกาศตัวแปร Config ล่วงหน้า (Forward Declaration) เพื่อให้ฟังก์ชัน Helper ทั้งหมดเข้าถึงได้
+local Config = nil
 
 -- สร้างตารางแมปชื่อตัวละคร -> โซน เพื่อค้นหาโซนได้อย่างแม่นยำ 100% โดยไม่ต้องพึ่งพาโมดูลภายนอก
 local function GetCharacterZone(charName)
@@ -402,7 +389,7 @@ end
 -- ═══════════════════════════════════════════════
 local CONFIG_FILE = "AnimeMine_Config.json"
 
-local Config = {
+Config = {
     -- 📡 CENTRALIZED STRING CONSTANTS: รวบรวม Event ทั้งหมดไว้ใน Table ที่เดียว
     Events = {
         TakeChest = "MineTakeChest",
