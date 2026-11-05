@@ -1988,30 +1988,11 @@ do
         return TradeState.TargetReceiver:IsDescendantOf(Players)
     end
     
-    -- ตรวจสอบว่าไอเทมสามารถเทรดได้จริงตามกฎของเกมหรือไม่ (Dual-Layer Safe Validator)
+    -- ตรวจสอบว่าไอเทมสามารถแสดงในระบบเทรดได้ (เปิดให้แสดงไอเทมทุกชนิดในคลังเพื่อให้ผู้ใช้เลือกส่งได้เอง 100%)
     local function CanTradeItem(itemKey)
         if not itemKey or type(itemKey) ~= "string" or #itemKey == 0 then return false end
         if itemKey == "Day" or itemKey == "Count" then return false end
-        if itemKey == "Gems" then return true end
-
-        -- ป้องกันไอเทมที่เกมไม่ให้เทรดผ่านหน้าต่าง Trade (เช่น ลูกเต๋า และ ม้วนอัญเชิญ)
-        if itemKey == "Enchanted Dice" or itemKey == "Summon Scroll" then return false end
-
-        -- 1. ตรวจสอบผ่าน MineConfig.TradeStack (ถ้ามีฟังก์ชั่นนี้และส่งค่ากลับ nil แสดงว่าเซิร์ฟเวอร์ห้ามเทรด)
-        if MineConfig and type(MineConfig.TradeStack) == "function" then
-            local stack = MineConfig.TradeStack(itemKey)
-            if stack ~= nil then return true end
-            return false
-        end
-
-        -- 2. Fallback ตรวจสอบผ่าน Items.GetItemData
-        if Items and type(Items.GetItemData) == "function" then
-            local cleanName = tostring(itemKey):match("^([^|]+)") or tostring(itemKey)
-            local data = Items.GetItemData(cleanName) or Items.GetItemData(itemKey)
-            if type(data) == "table" then return true end
-        end
-
-        return false
+        return true
     end
     
     -- สแกนไอเทมจริงทั้งหมดในกระเป๋าอย่างละเอียด (รวมอัญมณี หินบัฟ น้ำยา ขวาน และตัวละคร)
@@ -2193,6 +2174,44 @@ do
                         Kind = "Gear",
                         Category = "Other",
                         Emoji = "🛡️",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        -- 8. แร่ (Ores)
+        if type(mg.Ores) == "table" then
+            for oreName, count in pairs(mg.Ores) do
+                local num = tonumber(count) or 0
+                if num > 0 and CanTradeItem(oreName) then
+                    table.insert(list, {
+                        Key = oreName,
+                        Name = oreName,
+                        Count = num,
+                        Total = num,
+                        Kind = "Ore",
+                        Category = "Other",
+                        Emoji = "🪨",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        -- 9. ไอเทมทั่วไปอื่นๆ ในกระเป๋า (Items / Misc)
+        if type(mg.Items) == "table" then
+            for itName, count in pairs(mg.Items) do
+                local num = tonumber(count) or 0
+                if num > 0 and CanTradeItem(itName) then
+                    table.insert(list, {
+                        Key = itName,
+                        Name = itName,
+                        Count = num,
+                        Total = num,
+                        Kind = "Misc",
+                        Category = "Other",
+                        Emoji = "📦",
                         MaxCap = TradeTimingConfig.MaxStackCap
                     })
                 end
