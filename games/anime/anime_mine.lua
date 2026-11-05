@@ -361,6 +361,12 @@ local function GetUnifiedSellKeys(mg)
                     end
                 end
 
+                -- 🛡️ ป้องกันตัวละคร Limited, Secret, Event, Exclusive 100% ไม่ให้โดนขายเด็ดขาด แม้จะเปิดขายโซนเก่า!
+                local isProtectedRarity = (rName == "Limited" or rName == "Secret" or rName == "Event" or rName == "Exclusive")
+                if isProtectedRarity then
+                    shouldSellChar = false
+                end
+
                 if shouldSellChar then
                     local canSell = not MineConfig or not MineConfig.CanSellCharacter or MineConfig.CanSellCharacter(itemData or { ItemName = baseName })
                     if canSell and not addedKeySet[charKey] then
@@ -1943,9 +1949,9 @@ do
     local TradeTimingConfig = {
         ThrottleDelayMin = 0.55,    -- หน่วงเวลาระหว่างส่งไอเทมแต่ละชิ้น (วินาที)
         ThrottleDelayMax = 0.85,    -- หน่วงเวลาขั้นสูงแบบสุ่มเลียนแบบมนุษย์ (วินาที)
-        PreReadyDelay    = 1.2,     -- หน่วงเวลาก่อนส่ง MineTradeReady (วินาที)
+        PreReadyDelay    = 1.5,     -- หน่วงเวลาก่อนส่ง MineTradeReady (วินาที)
         ConfirmWaitTime  = 4.5,     -- เวลารอนับถอยหลังของเกมก่อนกดยืนยัน Confirm (วินาที)
-        RequestTimeout   = 20.0,    -- เวลารอผู้รับกดยอมรับคำขอเทรด (วินาที)
+        RequestTimeout   = 35.0,    -- เวลารอผู้รับกดยอมรับคำขอเทรด (วินาที) ปรับเพิ่มสำหรับ UGPhone / Mobile
         MaxStackCap      = 999,     -- เพดานขีดจำกัดสูงสุดต่อ 1 ช่องของเซิร์ฟเวอร์
         MaxGemsCap       = 1000000, -- เพดานอัญมณีสูงสุดต่อ 1 รอบการเทรด (1 ล้าน Gems)
     }
@@ -1987,20 +1993,24 @@ do
         if not itemKey or type(itemKey) ~= "string" or #itemKey == 0 then return false end
         if itemKey == "Day" or itemKey == "Count" then return false end
         if itemKey == "Gems" then return true end
-    
-        -- 1. ตรวจสอบผ่าน MineConfig.TradeStack
+
+        -- ป้องกันไอเทมที่เกมไม่ให้เทรดผ่านหน้าต่าง Trade (เช่น ลูกเต๋า และ ม้วนอัญเชิญ)
+        if itemKey == "Enchanted Dice" or itemKey == "Summon Scroll" then return false end
+
+        -- 1. ตรวจสอบผ่าน MineConfig.TradeStack (ถ้ามีฟังก์ชั่นนี้และส่งค่ากลับ nil แสดงว่าเซิร์ฟเวอร์ห้ามเทรด)
         if MineConfig and type(MineConfig.TradeStack) == "function" then
             local stack = MineConfig.TradeStack(itemKey)
             if stack ~= nil then return true end
+            return false
         end
-    
+
         -- 2. Fallback ตรวจสอบผ่าน Items.GetItemData
         if Items and type(Items.GetItemData) == "function" then
             local cleanName = tostring(itemKey):match("^([^|]+)") or tostring(itemKey)
             local data = Items.GetItemData(cleanName) or Items.GetItemData(itemKey)
             if type(data) == "table" then return true end
         end
-    
+
         return false
     end
     
@@ -2936,17 +2946,17 @@ do
             local tradeFrame = mineGui and mineGui:FindFirstChild("TradeFrame")
             if tradeFrame then
                 for _, desc in ipairs(tradeFrame:GetDescendants()) do
-                    if desc.Name == "ReadyButton" and desc:IsA("GuiButton") then
+                    if (desc.Name == "ReadyButton" or desc.Name == "ConfirmButton") and desc:IsA("GuiButton") then
                         pcall(function()
                             if getconnections then
-                                for _, conn in ipairs(getconnections(desc.Activated)) do
-                                    conn:Fire()
-                                end
+                                for _, conn in ipairs(getconnections(desc.Activated)) do conn:Fire() end
+                                for _, conn in ipairs(getconnections(desc.MouseButton1Click)) do conn:Fire() end
                             end
                         end)
                         pcall(function()
                             if firesignal then
                                 firesignal(desc.Activated)
+                                firesignal(desc.MouseButton1Click)
                             end
                         end)
                     end
@@ -2965,14 +2975,14 @@ do
                 if acceptBtn and acceptBtn:IsA("GuiButton") then
                     pcall(function()
                         if getconnections then
-                            for _, conn in ipairs(getconnections(acceptBtn.Activated)) do
-                                conn:Fire()
-                            end
+                            for _, conn in ipairs(getconnections(acceptBtn.Activated)) do conn:Fire() end
+                            for _, conn in ipairs(getconnections(acceptBtn.MouseButton1Click)) do conn:Fire() end
                         end
                     end)
                     pcall(function()
                         if firesignal then
                             firesignal(acceptBtn.Activated)
+                            firesignal(acceptBtn.MouseButton1Click)
                         end
                     end)
                 end
