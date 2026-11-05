@@ -281,6 +281,51 @@ local function GetOldPickaxeKeys(mg)
 end
 
 
+-- คัดเลือกคีย์ตัวละครตามระดับความหายากที่เลือกไว้ใน Dropdown (ไม่รวมตัวที่สวมใส่)
+local function GetRarityCharacterKeys(mg)
+    if not (MineInventory and MineInventory.Collect and Config.SellRarities) then return {} end
+    local okCollect, allItems = pcall(MineInventory.Collect, mg)
+    if not okCollect or not allItems then return {} end
+
+    local equippedNames = {}
+    for _, h in pairs(mg and mg.Holders or {}) do
+        if h and h.CharName then
+            equippedNames[h.CharName] = true
+        end
+    end
+
+    local keys = {}
+    for _, it in ipairs(allItems or {}) do
+        if it.Kind == "Character" then
+            local name = it.Name or (it.Item and it.Item.ItemName) or it.Key
+            local itemData = it.Item or (Items and Items.GetItemData and Items.GetItemData(name))
+            local rName = nil
+            if itemData and itemData.Rarity then
+                if type(itemData.Rarity) == "table" then
+                    rName = itemData.Rarity.Rarity
+                else
+                    rName = tostring(itemData.Rarity)
+                end
+            elseif it.Rarity then
+                if type(it.Rarity) == "table" then
+                    rName = it.Rarity.Rarity
+                else
+                    rName = tostring(it.Rarity)
+                end
+            end
+
+            if rName and Config.SellRarities[rName] and not equippedNames[name] then
+                if MineConfig and MineConfig.CanSellCharacter and MineConfig.CanSellCharacter(itemData or it) then
+                    table.insert(keys, it.Key)
+                end
+            end
+        end
+    end
+    return keys
+end
+
+
+
 -- ═══════════════════════════════════════════════
 -- 🎯 2. CONFIG STATE & CENTRALIZED STRING CONSTANTS
 -- ═══════════════════════════════════════════════
@@ -319,6 +364,11 @@ local Config = {
     AutoSell = true,
     AutoSellOldChars = true, -- ขายตัวละครโซนเก่าอัตโนมัติ
     AutoSellPickaxes = true, -- ขายขวานเก่าทั้งหมด (ยกเว้นอันที่ดีที่สุด)
+    AutoSellByRarity = false, -- ขายตัวละครตามระดับความหายากที่เลือกในดรอปดาวน์
+    SellRarities = {
+        ["Common"] = true,
+        ["Uncommon"] = true
+    },
     AutoBuyBestPickaxe = true,
     AutoBuyZone = true,
     AutoUpgradeTree = true,
@@ -395,6 +445,8 @@ local function SaveConfig()
                 AutoSell = Config.AutoSell,
                 AutoSellOldChars = Config.AutoSellOldChars,
                 AutoSellPickaxes = Config.AutoSellPickaxes,
+                AutoSellByRarity = Config.AutoSellByRarity,
+                SellRarities = Config.SellRarities,
                 AutoBuyBestPickaxe = Config.AutoBuyBestPickaxe,
                 AutoBuyZone = Config.AutoBuyZone,
                 AutoUpgradeTree = Config.AutoUpgradeTree,
@@ -908,6 +960,194 @@ end
 local RefreshMutationVisuals = nil
 
 -- ตัวเลือก Slot สุ่มบัพ (จัดลำดับตาม Base DMG Lv.1 + ล็อคอัตโนมัติ)
+
+local AllSellRarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical", "Exotic" }
+
+-- ดรอปดาวน์เลือกระดับความหายากของตัวละครที่จะขาย
+local function AddRarityDropdownSelector(order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 48)
+    Frame.BackgroundColor3 = Theme.Button
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order
+    Frame.ClipsDescendants = true
+    Frame.Parent = Scroll
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 8)
+    fCorner.Parent = Frame
+
+    local HeaderBtn = Instance.new("TextButton")
+    HeaderBtn.Size = UDim2.new(1, 0, 0, 48)
+    HeaderBtn.BackgroundTransparency = 1
+    HeaderBtn.Text = ""
+    HeaderBtn.Parent = Frame
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(1, -60, 0, 18)
+    TitleLabel.Position = UDim2.new(0, 12, 0, 6)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Text = "🎭 เลือกระดับตัวละครที่จะขาย (Dropdown)"
+    TitleLabel.TextColor3 = Theme.Text
+    TitleLabel.TextSize = 11
+    TitleLabel.Font = Enum.Font.GothamSemibold
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = HeaderBtn
+
+    local SummaryLabel = Instance.new("TextLabel")
+    SummaryLabel.Size = UDim2.new(1, -60, 0, 16)
+    SummaryLabel.Position = UDim2.new(0, 12, 0, 26)
+    SummaryLabel.BackgroundTransparency = 1
+    SummaryLabel.Text = "ระดับที่เลือก: กำลังโหลด..."
+    SummaryLabel.TextColor3 = Theme.Accent
+    SummaryLabel.TextSize = 10
+    SummaryLabel.Font = Enum.Font.Gotham
+    SummaryLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SummaryLabel.Parent = HeaderBtn
+
+    local ArrowLabel = Instance.new("TextLabel")
+    ArrowLabel.Size = UDim2.new(0, 30, 0, 48)
+    ArrowLabel.Position = UDim2.new(1, -40, 0, 0)
+    ArrowLabel.BackgroundTransparency = 1
+    ArrowLabel.Text = "▼"
+    ArrowLabel.TextColor3 = Theme.SubText
+    ArrowLabel.TextSize = 14
+    ArrowLabel.Font = Enum.Font.GothamBold
+    ArrowLabel.Parent = HeaderBtn
+
+    local ExpandedPanel = Instance.new("Frame")
+    ExpandedPanel.Size = UDim2.new(1, -24, 0, 130)
+    ExpandedPanel.Position = UDim2.new(0, 12, 0, 48)
+    ExpandedPanel.BackgroundTransparency = 1
+    ExpandedPanel.Parent = Frame
+
+    -- Preset Bar (≤ Common, ≤ Uncommon, ≤ Rare, ≤ Epic, ล้าง)
+    local PresetBar = Instance.new("Frame")
+    PresetBar.Size = UDim2.new(1, 0, 0, 24)
+    PresetBar.Position = UDim2.new(0, 0, 0, 0)
+    PresetBar.BackgroundTransparency = 1
+    PresetBar.Parent = ExpandedPanel
+
+    local pLayout = Instance.new("UIListLayout")
+    pLayout.FillDirection = Enum.FillDirection.Horizontal
+    pLayout.Padding = UDim.new(0, 4)
+    pLayout.Parent = PresetBar
+
+    local ChipContainer = Instance.new("Frame")
+    ChipContainer.Size = UDim2.new(1, 0, 0, 95)
+    ChipContainer.Position = UDim2.new(0, 0, 0, 30)
+    ChipContainer.BackgroundTransparency = 1
+    ChipContainer.Parent = ExpandedPanel
+
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize = UDim2.new(0, 78, 0, 26)
+    grid.CellPadding = UDim2.new(0, 5, 0, 5)
+    grid.Parent = ChipContainer
+
+    local rarityButtons = {}
+
+    local function UpdateSummary()
+        local selectedList = {}
+        for _, r in ipairs(AllSellRarities) do
+            if Config.SellRarities[r] then
+                table.insert(selectedList, r)
+            end
+        end
+        if #selectedList == 0 then
+            SummaryLabel.Text = "ระดับที่เลือก: (ไม่ได้เลือก - ปิดการขายตามระดับ)"
+            SummaryLabel.TextColor3 = Theme.SubText
+        else
+            SummaryLabel.Text = "ระดับที่เลือก: " .. table.concat(selectedList, ", ")
+            SummaryLabel.TextColor3 = Theme.Accent
+        end
+        for r, btn in pairs(rarityButtons) do
+            local isSel = Config.SellRarities[r] == true
+            btn.BackgroundColor3 = isSel and Theme.ChipActive or Theme.ChipInactive
+            btn.TextColor3 = isSel and Color3.fromRGB(255, 255, 255) or Theme.SubText
+            btn.Text = (isSel and "✓ " or "+ ") .. r
+        end
+    end
+
+    local isExpanded = false
+    HeaderBtn.MouseButton1Click:Connect(function()
+        isExpanded = not isExpanded
+        if isExpanded then
+            Frame.Size = UDim2.new(1, 0, 0, 185)
+            ArrowLabel.Text = "▲"
+            ArrowLabel.TextColor3 = Theme.Accent
+        else
+            Frame.Size = UDim2.new(1, 0, 0, 48)
+            ArrowLabel.Text = "▼"
+            ArrowLabel.TextColor3 = Theme.SubText
+        end
+    end)
+
+    -- Presets setup
+    local presets = {
+        { name = "≤ Common", list = { "Common" } },
+        { name = "≤ Uncom", list = { "Common", "Uncommon" } },
+        { name = "≤ Rare", list = { "Common", "Uncommon", "Rare" } },
+        { name = "≤ Epic", list = { "Common", "Uncommon", "Rare", "Epic" } },
+        { name = "ล้าง", list = {} }
+    }
+
+    for _, p in ipairs(presets) do
+        local pBtn = Instance.new("TextButton")
+        pBtn.Size = UDim2.new(0, 58, 1, 0)
+        pBtn.BackgroundColor3 = Theme.BadgeBG
+        pBtn.Text = p.name
+        pBtn.TextColor3 = Theme.SubText
+        pBtn.TextSize = 9
+        pBtn.Font = Enum.Font.GothamMedium
+        pBtn.BorderSizePixel = 0
+        pBtn.Parent = PresetBar
+
+        local pc = Instance.new("UICorner")
+        pc.CornerRadius = UDim.new(0, 4)
+        pc.Parent = pBtn
+
+        pBtn.MouseButton1Click:Connect(function()
+            Config.SellRarities = {}
+            for _, rName in ipairs(p.list) do
+                Config.SellRarities[rName] = true
+            end
+            SaveConfig()
+            UpdateSummary()
+        end)
+    end
+
+    -- Rarity Chips setup
+    for _, rName in ipairs(AllSellRarities) do
+        local chip = Instance.new("TextButton")
+        chip.Size = UDim2.new(0, 78, 0, 26)
+        chip.BackgroundColor3 = Theme.ChipInactive
+        chip.Text = "+ " .. rName
+        chip.TextColor3 = Theme.SubText
+        chip.TextSize = 9
+        chip.Font = Enum.Font.GothamMedium
+        chip.BorderSizePixel = 0
+        chip.Parent = ChipContainer
+
+        local cCorner = Instance.new("UICorner")
+        cCorner.CornerRadius = UDim.new(0, 5)
+        cCorner.Parent = chip
+
+        rarityButtons[rName] = chip
+
+        chip.MouseButton1Click:Connect(function()
+            if Config.SellRarities[rName] then
+                Config.SellRarities[rName] = nil
+            else
+                Config.SellRarities[rName] = true
+            end
+            SaveConfig()
+            UpdateSummary()
+        end)
+    end
+
+    UpdateSummary()
+end
+
 local function AddMultiSlotSelector(order)
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, 0, 0, 105)
@@ -1330,7 +1570,46 @@ AddActionButton("⚡ ขายตัวละครโซนเก่าทั�
         end
     end)
 end, 6)
-AddToggle("AutoSellPickaxes", "Auto Sell Old Pickaxes", "ขายขวานที่ด้อยกว่าทั้งหมดอัตโนมัติ (เก็บไว้เฉพาะขวานที่ดีที่สุด)", 6)
+AddToggle("AutoSellByRarity", "Auto Sell by Rarity (ดรอปดาวน์)", "ขายตัวละครตามระดับความหายากที่เลือกไว้ในดรอปดาวน์อัตโนมัติ", 6)
+AddRarityDropdownSelector(7)
+AddActionButton("🎭 ขายตัวละครตามระดับทันที", "วาร์ปไปขายตัวละครในคลังตามระดับความหายากที่เลือกไว้ทันที", "ขายทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
+            local rarityKeys = GetRarityCharacterKeys(mg)
+            if #rarityKeys == 0 then
+                UpdateStatus("ℹ️ ไม่มีตัวละครตามระดับที่เลือกให้ขาย")
+                return
+            end
+            local char = LocalPlayer.Character
+            local sellStand = workspace:FindFirstChild("SellStand")
+            if not sellStand then
+                warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace")
+                UpdateStatus("⚠️ ไม่พบร้านค้า SellStand")
+                return
+            end
+            local myPlot = GetMyPlot()
+            local returnPlot = GetPlotReturnCFrame(myPlot)
+            if char and sellStand then
+                UpdateStatus(string.format("💰 ขายตัวละครตามระดับ (%d ชุด)...", #rarityKeys))
+                char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
+                HumanWait(0.35, 0.5)
+                SafeSendEvent(Config.Events.SellItems, rarityKeys)
+                HumanWait(0.35, 0.5)
+                if returnPlot then
+                    char:PivotTo(returnPlot)
+                    HumanWait(0.2, 0.3)
+                end
+                UpdateStatus(string.format("✅ ขายตัวละครตามระดับ %d ชุดสำเร็จ!", #rarityKeys))
+            end
+        end)
+        if not ok then
+            warn(string.format("⚠️ [Action Error: SellRarityChars] %s", tostring(err)))
+        end
+    end)
+end, 8)
+AddToggle("AutoSellPickaxes", "Auto Sell Old Pickaxes", "ขายขวานที่ด้อยกว่าทั้งหมดอัตโนมัติ (เก็บไว้เฉพาะขวานที่ดีที่สุด)", 9)
 AddActionButton("🪓 ขายขวานเก่าทันที", "วาร์ปไปขายขวานเก่าในคลังทั้งหมด เก็บเฉพาะขวานที่ดีที่สุด", "ขายทันที", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -3105,7 +3384,7 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- [TASK 2] ขายของ (Auto Sell ที่ร้านค้า SellStand)
-        -- ขายแร่ในกระเป๋า + ขายตัวละครในโซนเก่า + ขายขวานเก่าทั้งหมด (ยกเว้นอันที่ดีที่สุด)
+        -- ขายแร่ในกระเป๋า + ขายตัวละครในโซนเก่า + ขายตัวละครตามระดับความหายาก + ขายขวานเก่าทั้งหมด
         -- -------------------------------------------------------------
         local ok2, err2 = pcall(function()
             d2 = SafeGetData2()
@@ -3114,14 +3393,16 @@ task.spawn(function()
             local hasOres = ores and next(ores) ~= nil
             local oldCharKeys = Config.AutoSellOldChars and GetOldZoneCharacterKeys(mg) or {}
             local hasOldChars = #oldCharKeys > 0
+            local rarityCharKeys = Config.AutoSellByRarity and GetRarityCharacterKeys(mg) or {}
+            local hasRarityChars = #rarityCharKeys > 0
             local oldPickKeys, bestOwnedPick = (Config.AutoSellPickaxes or Config.AutoSell) and GetOldPickaxeKeys(mg) or {}
             local hasOldPicks = oldPickKeys and #oldPickKeys > 0
 
-            local shouldSell = hasOres or hasOldChars or hasOldPicks
+            local shouldSell = hasOres or hasOldChars or hasRarityChars or hasOldPicks
             local didTravel = false
             local returnPlotCFrame = GetPlotReturnCFrame(myPlot)
 
-            if (Config.AutoSell or Config.AutoSellOldChars or Config.AutoSellPickaxes) and shouldSell and char then
+            if (Config.AutoSell or Config.AutoSellOldChars or Config.AutoSellByRarity or Config.AutoSellPickaxes) and shouldSell and char then
                 local sellStand = workspace:FindFirstChild("SellStand")
                 if not sellStand then
                     warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace ข้ามขั้นตอนการขาย")
@@ -3131,6 +3412,7 @@ task.spawn(function()
                     local details = {}
                     if hasOres then table.insert(details, "แร่") end
                     if hasOldChars then table.insert(details, string.format("ตัวละครเก่า %d ชุด", #oldCharKeys)) end
+                    if hasRarityChars then table.insert(details, string.format("ตัวละครตามระดับ %d ชุด", #rarityCharKeys)) end
                     if hasOldPicks then table.insert(details, string.format("ขวานเก่า %d ชิ้น", #oldPickKeys)) end
                     if #details > 0 then
                         sellStatusText = sellStatusText .. " (" .. table.concat(details, " + ") .. ")..."
@@ -3143,19 +3425,36 @@ task.spawn(function()
                     HumanWait(0.35, 0.5)
 
                     local sellKeys = {}
+                    local addedKeySet = {}
+
                     if Config.AutoSell and hasOres then
                         for k in pairs(ores) do
                             table.insert(sellKeys, k)
+                            addedKeySet[k] = true
                         end
                     end
                     if Config.AutoSellOldChars and hasOldChars then
                         for _, k in ipairs(oldCharKeys) do
-                            table.insert(sellKeys, k)
+                            if not addedKeySet[k] then
+                                table.insert(sellKeys, k)
+                                addedKeySet[k] = true
+                            end
+                        end
+                    end
+                    if Config.AutoSellByRarity and hasRarityChars then
+                        for _, k in ipairs(rarityCharKeys) do
+                            if not addedKeySet[k] then
+                                table.insert(sellKeys, k)
+                                addedKeySet[k] = true
+                            end
                         end
                     end
                     if (Config.AutoSellPickaxes or Config.AutoSell) and hasOldPicks then
                         for _, k in ipairs(oldPickKeys) do
-                            table.insert(sellKeys, k)
+                            if not addedKeySet[k] then
+                                table.insert(sellKeys, k)
+                                addedKeySet[k] = true
+                            end
                         end
                     end
 
@@ -3168,7 +3467,7 @@ task.spawn(function()
                         char:PivotTo(returnPlotCFrame)
                         HumanWait(0.2, 0.3)
                     end
-                    UpdateStatus("✅ ขายไอเทมและขวานเก่าเรียบร้อย!")
+                    UpdateStatus("✅ ขายไอเทมเรียบร้อย!")
                 end
             end
         end)
