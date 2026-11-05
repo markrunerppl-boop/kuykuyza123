@@ -329,14 +329,7 @@ local function GetUnifiedSellKeys(mg)
         end
     end
 
-    -- 3. ตัวละคร (สแกนตรงจาก mg.Characters ไม่รวมตัวที่ติดตั้งบนแท่น)
-    local equippedNames = {}
-    for _, h in pairs(mg.Holders or {}) do
-        if h and h.CharName then
-            equippedNames[h.CharName] = true
-        end
-    end
-
+    -- 3. ตัวละครในกระเป๋า (สแกนตรงจาก mg.Characters โดยตัวที่ทำงานบนแท่น Holders เซิร์ฟเวอร์จะคุ้มครองให้อยู่แล้ว 100%)
     local curZone = mg.CurrentZone or 1
 
     if type(mg.Characters) == "table" then
@@ -344,37 +337,35 @@ local function GetUnifiedSellKeys(mg)
             local countNum = tonumber(count) or 0
             if countNum > 0 then
                 local baseName = charKey:match("^([^|]+)") or charKey
-                if not equippedNames[baseName] then
-                    local shouldSellChar = false
-                    local itemData = Items and Items.GetItemData and Items.GetItemData(baseName)
-                    local rName = nil
-                    if itemData and itemData.Rarity then
-                        if type(itemData.Rarity) == "table" then
-                            rName = itemData.Rarity.Rarity
-                        else
-                            rName = tostring(itemData.Rarity)
-                        end
+                local shouldSellChar = false
+                local itemData = Items and Items.GetItemData and Items.GetItemData(baseName)
+                local rName = nil
+                if itemData and itemData.Rarity then
+                    if type(itemData.Rarity) == "table" then
+                        rName = itemData.Rarity.Rarity
+                    else
+                        rName = tostring(itemData.Rarity)
                     end
+                end
 
-                    -- เช็คตามระดับความหายาก
-                    if rName and Config.SellOptions[rName] then
+                -- เช็คตามระดับความหายากที่เลือก (Common, Uncommon, Rare, Epic, Legendary, Mythical, Exotic)
+                if rName and Config.SellOptions and Config.SellOptions[rName] then
+                    shouldSellChar = true
+                end
+
+                -- เช็คกรณีเลือกขายตัวละครโซนเก่า
+                if not shouldSellChar and Config.SellOptions and Config.SellOptions["OldZoneChars"] then
+                    local z = GetCharacterZone(baseName)
+                    if z and z < curZone then
                         shouldSellChar = true
                     end
+                end
 
-                    -- เช็คกรณีเลือกขายตัวละครโซนเก่า
-                    if not shouldSellChar and Config.SellOptions["OldZoneChars"] then
-                        local z = GetCharacterZone(baseName)
-                        if z and z < curZone then
-                            shouldSellChar = true
-                        end
-                    end
-
-                    if shouldSellChar then
-                        local canSell = not MineConfig or not MineConfig.CanSellCharacter or MineConfig.CanSellCharacter(itemData or { ItemName = baseName })
-                        if canSell and not addedKeySet[charKey] then
-                            table.insert(sellKeys, charKey)
-                            addedKeySet[charKey] = true
-                        end
+                if shouldSellChar then
+                    local canSell = not MineConfig or not MineConfig.CanSellCharacter or MineConfig.CanSellCharacter(itemData or { ItemName = baseName })
+                    if canSell and not addedKeySet[charKey] then
+                        table.insert(sellKeys, charKey)
+                        addedKeySet[charKey] = true
                     end
                 end
             end
