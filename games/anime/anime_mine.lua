@@ -232,6 +232,55 @@ local function GetOldZoneCharacterKeys(mg)
     return keys
 end
 
+
+-- คัดเลือกคีย์ขวานเก่าทั้งหมดเพื่อนำไปขาย (ยกเว้นขวานที่ดีที่สุดไว้เท่านั้น)
+local function GetOldPickaxeKeys(mg)
+    if not (mg and mg.Pickaxes and MineConfig and MineConfig.Pickaxes) then return {}, nil end
+
+    -- 1. หาขวานที่ดีที่สุดที่ผู้เล่นมีอยู่ในกระเป๋า (Highest Multiplier)
+    local bestMult = -1
+    local bestOwnedPick = nil
+
+    for pName, count in pairs(mg.Pickaxes) do
+        local countNum = tonumber(count) or 0
+        if countNum > 0 then
+            local pDef = nil
+            for _, p in ipairs(MineConfig.Pickaxes) do
+                if p.Name == pName then
+                    pDef = p
+                    break
+                end
+            end
+            local mult = pDef and (tonumber(pDef.Multiplier) or 1) or 0
+            if mult > bestMult then
+                bestMult = mult
+                bestOwnedPick = pName
+            end
+        end
+    end
+
+    -- 2. ขวานอื่นๆ ทั้งหมดที่ด้อยกว่าขวานที่ดีที่สุด จะถูกเลือกไปขายทิ้ง
+    local oldPickKeys = {}
+    for pName, count in pairs(mg.Pickaxes) do
+        local countNum = tonumber(count) or 0
+        if countNum > 0 and pName ~= bestOwnedPick then
+            local pDef = nil
+            for _, p in ipairs(MineConfig.Pickaxes) do
+                if p.Name == pName then
+                    pDef = p
+                    break
+                end
+            end
+            if pDef and not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pDef)) then
+                table.insert(oldPickKeys, pName)
+            end
+        end
+    end
+
+    return oldPickKeys, bestOwnedPick
+end
+
+
 -- ═══════════════════════════════════════════════
 -- 🎯 2. CONFIG STATE & CENTRALIZED STRING CONSTANTS
 -- ═══════════════════════════════════════════════
@@ -269,6 +318,7 @@ local Config = {
     AutoChest = true,
     AutoSell = true,
     AutoSellOldChars = true, -- ขายตัวละครโซนเก่าอัตโนมัติ
+    AutoSellPickaxes = true, -- ขายขวานเก่าทั้งหมด (ยกเว้นอันที่ดีที่สุด)
     AutoBuyBestPickaxe = true,
     AutoBuyZone = true,
     AutoUpgradeTree = true,
@@ -344,6 +394,7 @@ local function SaveConfig()
                 AutoChest = Config.AutoChest,
                 AutoSell = Config.AutoSell,
                 AutoSellOldChars = Config.AutoSellOldChars,
+                AutoSellPickaxes = Config.AutoSellPickaxes,
                 AutoBuyBestPickaxe = Config.AutoBuyBestPickaxe,
                 AutoBuyZone = Config.AutoBuyZone,
                 AutoUpgradeTree = Config.AutoUpgradeTree,
@@ -1279,7 +1330,45 @@ AddActionButton("⚡ ขายตัวละครโซนเก่าทั�
         end
     end)
 end, 6)
-AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 7)
+AddToggle("AutoSellPickaxes", "Auto Sell Old Pickaxes", "ขายขวานที่ด้อยกว่าทั้งหมดอัตโนมัติ (เก็บไว้เฉพาะขวานที่ดีที่สุด)", 6)
+AddActionButton("🪓 ขายขวานเก่าทันที", "วาร์ปไปขายขวานเก่าในคลังทั้งหมด เก็บเฉพาะขวานที่ดีที่สุด", "ขายทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
+            local oldPicks, bestPick = GetOldPickaxeKeys(mg)
+            if #oldPicks == 0 then
+                UpdateStatus("ℹ️ ไม่มีขวานเก่าให้ขาย (มีแต่ขวานที่ดีที่สุดแล้ว)")
+                return
+            end
+            local char = LocalPlayer.Character
+            local sellStand = workspace:FindFirstChild("SellStand")
+            if not sellStand then
+                warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace")
+                UpdateStatus("⚠️ ไม่พบร้านค้า SellStand")
+                return
+            end
+            local myPlot = GetMyPlot()
+            local returnPlot = GetPlotReturnCFrame(myPlot)
+            if char and sellStand then
+                UpdateStatus(string.format("💰 ขายขวานเก่า (%d ชิ้น)...", #oldPicks))
+                char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
+                HumanWait(0.35, 0.5)
+                SafeSendEvent(Config.Events.SellItems, oldPicks)
+                HumanWait(0.35, 0.5)
+                if returnPlot then
+                    char:PivotTo(returnPlot)
+                    HumanWait(0.2, 0.3)
+                end
+                UpdateStatus(string.format("✅ ขายขวานเก่า %d ชิ้นสำเร็จ! (เก็บ %s ไว้)", #oldPicks, tostring(bestPick)))
+            end
+        end)
+        if not ok then
+            warn(string.format("⚠️ [Action Error: SellOldPicks] %s", tostring(err)))
+        end
+    end)
+end, 7)
+AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 8)
 
 -- หมวดที่ 2: ดันเจี้ยน & กล่องรางวัล
 AddCategory("⚔️ 2. ดันเจี้ยน & กล่องรางวัล (Trials & Crates)", 10)
@@ -3016,7 +3105,7 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- [TASK 2] ขายของ (Auto Sell ที่ร้านค้า SellStand)
-        -- ขายแร่ในกระเป๋า + ขายตัวละครในโซนเก่าทิ้ง (เก็บตัวละครโซนปัจจุบันไว้ 100%)
+        -- ขายแร่ในกระเป๋า + ขายตัวละครในโซนเก่า + ขายขวานเก่าทั้งหมด (ยกเว้นอันที่ดีที่สุด)
         -- -------------------------------------------------------------
         local ok2, err2 = pcall(function()
             d2 = SafeGetData2()
@@ -3025,23 +3114,31 @@ task.spawn(function()
             local hasOres = ores and next(ores) ~= nil
             local oldCharKeys = Config.AutoSellOldChars and GetOldZoneCharacterKeys(mg) or {}
             local hasOldChars = #oldCharKeys > 0
-            local shouldSell = hasOres or hasOldChars
+            local oldPickKeys, bestOwnedPick = (Config.AutoSellPickaxes or Config.AutoSell) and GetOldPickaxeKeys(mg) or {}
+            local hasOldPicks = oldPickKeys and #oldPickKeys > 0
+
+            local shouldSell = hasOres or hasOldChars or hasOldPicks
             local didTravel = false
             local returnPlotCFrame = GetPlotReturnCFrame(myPlot)
 
-            if (Config.AutoSell or Config.AutoSellOldChars) and shouldSell and char then
+            if (Config.AutoSell or Config.AutoSellOldChars or Config.AutoSellPickaxes) and shouldSell and char then
                 local sellStand = workspace:FindFirstChild("SellStand")
                 if not sellStand then
                     warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace ข้ามขั้นตอนการขาย")
                 else
                     didTravel = true
                     local sellStatusText = "💰 วาร์ปไปร้านขายแร่"
-                    if hasOldChars then
-                        sellStatusText = sellStatusText .. string.format(" + ขายตัวละครโซนเก่า (%d ชุด)...", #oldCharKeys)
+                    local details = {}
+                    if hasOres then table.insert(details, "แร่") end
+                    if hasOldChars then table.insert(details, string.format("ตัวละครเก่า %d ชุด", #oldCharKeys)) end
+                    if hasOldPicks then table.insert(details, string.format("ขวานเก่า %d ชิ้น", #oldPickKeys)) end
+                    if #details > 0 then
+                        sellStatusText = sellStatusText .. " (" .. table.concat(details, " + ") .. ")..."
                     else
                         sellStatusText = sellStatusText .. "..."
                     end
                     UpdateStatus(sellStatusText)
+
                     char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
                     HumanWait(0.35, 0.5)
 
@@ -3056,28 +3153,28 @@ task.spawn(function()
                             table.insert(sellKeys, k)
                         end
                     end
+                    if (Config.AutoSellPickaxes or Config.AutoSell) and hasOldPicks then
+                        for _, k in ipairs(oldPickKeys) do
+                            table.insert(sellKeys, k)
+                        end
+                    end
 
                     if #sellKeys > 0 then
                         SafeSendEvent(Config.Events.SellItems, sellKeys)
                         HumanWait(0.35, 0.5)
                     end
 
-                    d = SafeGetData()
-                    myMoney = d and tonumber(d.Money) or 0
+                    if returnPlotCFrame then
+                        char:PivotTo(returnPlotCFrame)
+                        HumanWait(0.2, 0.3)
+                    end
+                    UpdateStatus("✅ ขายไอเทมและขวานเก่าเรียบร้อย!")
                 end
-            end
-
-            -- หากมีการวาร์ปออกไป ให้วาร์ปกลับแปลง
-            if didTravel and char and returnPlotCFrame then
-                char:PivotTo(returnPlotCFrame)
-                HumanWait(0.25, 0.4)
-                UpdateStatus("🏠 กลับถึงแปลงขุด")
             end
         end)
         if not ok2 then
             warn(string.format("⚠️ [Worker Task 2 Error - AutoSell] %s", tostring(err2)))
         end
-
         -- -------------------------------------------------------------
         -- [TASK 3] อัปเกรดต้นไม้ (Zone Skill Tree & Core Upgrades)
         -- -------------------------------------------------------------
@@ -3150,41 +3247,45 @@ task.spawn(function()
                 mg = d2 and d2.MineGame
                 myMoney = d and tonumber(d.Money) or 0
 
-                -- 4.1 ค้นหาขวานที่ดีที่สุดในร้านค้าที่ปลดล็อกแล้ว มีสต็อก และมีเงินพอซื้อ
+                -- 4.1 ค้นหาขวาน "อันสุดท้ายที่ดีที่สุดที่ปลดล็อค" เพียงอันเดียวเท่านั้น
                 if MineConfig.Pickaxes then
-                    local bestPick = nil
-                    local bestPickIdx = nil
-                    local bestMult = -1
+                    local targetBestPick = nil
+                    local targetBestIdx = nil
+                    local bestUnlockedMult = -1
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
                         if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly then
-                            local cost = tonumber(pick.Cost) or (1 / 0)
-                            local mult = tonumber(pick.Multiplier) or 1
                             local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
-                            local stock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(d2, pick.Name) or 0
-
-                            if isZoneUnlocked and myMoney >= cost and stock > 0 then
-                                if mult > bestMult then
-                                    bestMult = mult
-                                    bestPick = pick
-                                    bestPickIdx = idx
+                            local mult = tonumber(pick.Multiplier) or 1
+                            if isZoneUnlocked then
+                                if mult > bestUnlockedMult then
+                                    bestUnlockedMult = mult
+                                    targetBestPick = pick
+                                    targetBestIdx = idx
                                 end
                             end
                         end
                     end
 
-                    -- ซื้อขวานที่ดีที่สุดทันทีเมื่อพร้อม (ไม่จำกัดจำนวน)
-                    if bestPick and bestPickIdx then
+                    -- ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อค "เมื่อพร้อมเท่านั้น" (เงินพอ + มีของในสต็อก)
+                    if targetBestPick and targetBestIdx then
                         local curMoney = tonumber(SafeGetData().Money) or 0
-                        local cost = tonumber(bestPick.Cost) or (1 / 0)
-                        local stock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(d2, bestPick.Name) or 0
-                        local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[bestPick.Name]) or 0
+                        local cost = tonumber(targetBestPick.Cost) or (1 / 0)
+                        local stock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(d2, targetBestPick.Name) or 0
+                        local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[targetBestPick.Name]) or 0
 
-                        if curMoney >= cost and stock > 0 then
-                            UpdateStatus(string.format("🪓 ซื้อขวาน: %s (มีแล้ว %d ชิ้น)", bestPick.Name, ownedCount))
-                            SafeSendEvent(Config.Events.BuyPickaxe, bestPickIdx)
-                            myMoney = myMoney - cost
-                            HumanWait(0.2, 0.35)
+                        -- นับจำนวนแท่นคนงานทั้งหมด
+                        local totalHolders = 0
+                        for _ in pairs(mg.Holders or {}) do
+                            totalHolders = totalHolders + 1
+                        end
+                        if totalHolders == 0 then totalHolders = 8 end
+
+                        -- ซื้อเมื่อเงินพอ และยังซื้อไม่ครบตามจำนวนแท่นคนงาน (ไม่ซื้อเกินความจำเป็น)
+                        if curMoney >= cost and stock > 0 and ownedCount < totalHolders then
+                            UpdateStatus(string.format("🪓 ซื้อขวานดีสุด: %s (%d/%d ชิ้น)", targetBestPick.Name, ownedCount + 1, totalHolders))
+                            SafeSendEvent(Config.Events.BuyPickaxe, targetBestIdx)
+                            HumanWait(0.25, 0.4)
                         end
                     end
                 end
@@ -3242,7 +3343,6 @@ task.spawn(function()
         if not ok4 then
             warn(string.format("⚠️ [Worker Task 4 Error - AutoPickaxe] %s", tostring(err4)))
         end
-
         -- -------------------------------------------------------------
         -- [TASK 5] อัปเกรดสถิติ (จัดลำดับจาก Base DMG Lv.1 มากที่สุดเสมอ)
         -- -------------------------------------------------------------
