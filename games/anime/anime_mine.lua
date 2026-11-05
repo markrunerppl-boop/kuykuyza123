@@ -32,40 +32,62 @@ while not LocalPlayer do
     task.wait(0.2)
     LocalPlayer = Players.LocalPlayer
 end
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 15)
+local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 30)
 
--- 🛡️ ระบบเฝ้าระวังและกระตุ้นการเข้าเกมอัตโนมัติ (Auto-Click Start & Restore Camera)
-task.spawn(function()
-    local watchStart = os.clock()
-    while (os.clock() - watchStart < 25) do
-        task.wait(0.5)
-        pcall(function()
-            local ls = PlayerGui and PlayerGui:FindFirstChild("LoadingScreen")
-            if ls and ls.Enabled then
-                local cb = ls:FindFirstChild("ContinueButton", true)
-                if cb and getconnections then
-                    for _, conn in ipairs(getconnections(cb.MouseButton1Down)) do
-                        conn:Fire()
-                    end
-                    for _, conn in ipairs(getconnections(cb.MouseButton1Click)) do
-                        conn:Fire()
-                    end
+-- 🛡️ ปิดกั้นสคริปต์ IdleRejoin ของตัวเกมเพื่อป้องกัน Roblox Error 769 100%
+local function NeutralizeIdleRejoin()
+    pcall(function()
+        local pscripts = LocalPlayer:FindFirstChild("PlayerScripts") or LocalPlayer:WaitForChild("PlayerScripts", 5)
+        if pscripts then
+            local essentials = pscripts:FindFirstChild("Essentials") or pscripts:WaitForChild("Essentials", 3)
+            if essentials then
+                local idleScript = essentials:FindFirstChild("IdleRejoin")
+                if idleScript then
+                    idleScript.Disabled = true
+                    idleScript:Destroy()
                 end
-                local vu = game:GetService("VirtualUser")
-                if vu then
-                    vu:Button1Down(Vector2.new(200, 200))
-                    task.wait(0.05)
-                    vu:Button1Up(Vector2.new(200, 200))
+            end
+        end
+    end)
+end
+NeutralizeIdleRejoin()
+
+-- 🛡️ ระบบเฝ้าระวังหน้าจอโหลด คืนค่ามุมกล้อง และป้องกัน Error 769 ตลอดการทำงาน
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            -- 1. เคลียร์ IdleRejoin อย่างต่อเนื่อง ป้องกันเกมเกิดใหม่แล้วโหลดสคริปต์ซ้ำ
+            NeutralizeIdleRejoin()
+
+            -- 2. ตรวจจับและกดปุ่มข้าม LoadingScreen / Popup เริ่มเกมอัตโนมัติ
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            if pg then
+                local ls = pg:FindFirstChild("LoadingScreen")
+                if ls and ls.Enabled then
+                    local cb = ls:FindFirstChild("ContinueButton", true) or ls:FindFirstChild("PlayButton", true)
+                    if cb and getconnections then
+                        for _, conn in ipairs(getconnections(cb.MouseButton1Down)) do conn:Fire() end
+                        for _, conn in ipairs(getconnections(cb.MouseButton1Click)) do conn:Fire() end
+                    end
+                    local vu = game:GetService("VirtualUser")
+                    if vu then
+                        vu:Button1Down(Vector2.new(200, 200))
+                        task.wait(0.05)
+                        vu:Button1Up(Vector2.new(200, 200))
+                    end
                 end
             end
 
+            -- 3. กู้คืนมุมกล้องหากค้างลอยบนฟ้า (Scriptable) ให้กลับมาโฟกัสที่ตัวละครเสมอ
             local cam = workspace.CurrentCamera
             local char = LocalPlayer and LocalPlayer.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if cam and cam.CameraType == Enum.CameraType.Scriptable and hum then
-                local mineGui = PlayerGui and PlayerGui:FindFirstChild("MineGui")
-                if mineGui and mineGui.Enabled then
+            if cam and hum then
+                if cam.CameraType == Enum.CameraType.Scriptable then
                     cam.CameraType = Enum.CameraType.Custom
+                    cam.CameraSubject = hum
+                elseif cam.CameraSubject ~= hum and not (cam.CameraSubject and cam.CameraSubject:IsDescendantOf(char)) then
                     cam.CameraSubject = hum
                 end
             end
