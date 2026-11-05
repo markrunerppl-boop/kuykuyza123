@@ -203,28 +203,47 @@ local function GetCharBaseDamage(charName)
     return 0
 end
 
+-- สร้างตารางแมปชื่อตัวละคร -> โซน เพื่อค้นหาโซนได้อย่างแม่นยำ 100% โดยไม่ต้องพึ่งพาโมดูลภายนอก
+local function GetCharacterZone(charName)
+    if not charName or not (MineConfig and MineConfig.Zones) then return nil end
+    for zk, z in pairs(MineConfig.Zones) do
+        local zoneNum = tonumber(zk:match("%d+")) or 1
+        if z and z.CharacterPool then
+            for _, entry in ipairs(z.CharacterPool) do
+                if entry.Name == charName then
+                    return zoneNum
+                end
+            end
+        end
+    end
+    return nil
+end
+
 -- คัดเลือกคีย์ตัวละครเฉพาะในโซนเก่า (ไม่รวมโซนปัจจุบัน และไม่รวมตัวที่สวมใส่)
+-- สแกนตรงจาก mg.Characters 100% ป้องกันข้อผิดพลาด Cannot require non-RobloxScript module
 local function GetOldZoneCharacterKeys(mg)
-    if not (MineInventory and MineInventory.Collect) then return {} end
-    local okCollect, allItems = pcall(MineInventory.Collect, mg)
-    if not okCollect or not allItems then return {} end
-    local curZone = mg and mg.CurrentZone or 1
+    if not (mg and type(mg.Characters) == "table") then return {} end
+    local curZone = mg.CurrentZone or 1
+
     local equippedNames = {}
-    for _, h in pairs(mg and mg.Holders or {}) do
+    for _, h in pairs(mg.Holders or {}) do
         if h and h.CharName then
             equippedNames[h.CharName] = true
         end
     end
 
     local keys = {}
-    for _, it in ipairs(allItems or {}) do
-        if it.Kind == "Character" then
-            local zone = it.Zone or (MineInventory.DropZoneOf and MineInventory.DropZoneOf(it))
-            local name = it.Name or (it.Item and it.Item.ItemName) or it.Key
-            -- เฉพาะตัวละครจากโซนเก่า และต้องไม่สวมใส่อยู่บนแท่น
-            if zone and zone < curZone and not equippedNames[name] then
-                if MineConfig and MineConfig.CanSellCharacter and MineConfig.CanSellCharacter(it.Item or it) then
-                    table.insert(keys, it.Key)
+    for charKey, count in pairs(mg.Characters) do
+        local countNum = tonumber(count) or 0
+        if countNum > 0 then
+            local baseName = charKey:match("^([^|]+)") or charKey
+            if not equippedNames[baseName] then
+                local zone = GetCharacterZone(baseName)
+                if zone and zone < curZone then
+                    local itemData = Items and Items.GetItemData and Items.GetItemData(baseName)
+                    if not MineConfig or not MineConfig.CanSellCharacter or MineConfig.CanSellCharacter(itemData or { ItemName = baseName }) then
+                        table.insert(keys, charKey)
+                    end
                 end
             end
         end
@@ -282,48 +301,43 @@ end
 
 
 -- คัดเลือกคีย์ตัวละครตามระดับความหายากที่เลือกไว้ใน Dropdown (ไม่รวมตัวที่สวมใส่)
+-- สแกนตรงจาก mg.Characters 100% แม่นยำ รวดเร็ว และปลอดภัย
 local function GetRarityCharacterKeys(mg)
-    if not (MineInventory and MineInventory.Collect and Config.SellRarities) then return {} end
-    local okCollect, allItems = pcall(MineInventory.Collect, mg)
-    if not okCollect or not allItems then return {} end
+    if not (mg and type(mg.Characters) == "table" and Config.SellRarities and Items) then return {} end
 
     local equippedNames = {}
-    for _, h in pairs(mg and mg.Holders or {}) do
+    for _, h in pairs(mg.Holders or {}) do
         if h and h.CharName then
             equippedNames[h.CharName] = true
         end
     end
 
     local keys = {}
-    for _, it in ipairs(allItems or {}) do
-        if it.Kind == "Character" then
-            local name = it.Name or (it.Item and it.Item.ItemName) or it.Key
-            local itemData = it.Item or (Items and Items.GetItemData and Items.GetItemData(name))
-            local rName = nil
-            if itemData and itemData.Rarity then
-                if type(itemData.Rarity) == "table" then
-                    rName = itemData.Rarity.Rarity
-                else
-                    rName = tostring(itemData.Rarity)
+    for charKey, count in pairs(mg.Characters) do
+        local countNum = tonumber(count) or 0
+        if countNum > 0 then
+            local baseName = charKey:match("^([^|]+)") or charKey
+            if not equippedNames[baseName] then
+                local itemData = Items.GetItemData and Items.GetItemData(baseName)
+                local rName = nil
+                if itemData and itemData.Rarity then
+                    if type(itemData.Rarity) == "table" then
+                        rName = itemData.Rarity.Rarity
+                    else
+                        rName = tostring(itemData.Rarity)
+                    end
                 end
-            elseif it.Rarity then
-                if type(it.Rarity) == "table" then
-                    rName = it.Rarity.Rarity
-                else
-                    rName = tostring(it.Rarity)
-                end
-            end
 
-            if rName and Config.SellRarities[rName] and not equippedNames[name] then
-                if MineConfig and MineConfig.CanSellCharacter and MineConfig.CanSellCharacter(itemData or it) then
-                    table.insert(keys, it.Key)
+                if rName and Config.SellRarities[rName] then
+                    if not MineConfig or not MineConfig.CanSellCharacter or MineConfig.CanSellCharacter(itemData or { ItemName = baseName }) then
+                        table.insert(keys, charKey)
+                    end
                 end
             end
         end
     end
     return keys
 end
-
 
 
 -- ═══════════════════════════════════════════════
@@ -364,7 +378,7 @@ local Config = {
     AutoSell = true,
     AutoSellOldChars = true, -- ขายตัวละครโซนเก่าอัตโนมัติ
     AutoSellPickaxes = true, -- ขายขวานเก่าทั้งหมด (ยกเว้นอันที่ดีที่สุด)
-    AutoSellByRarity = false, -- ขายตัวละครตามระดับความหายากที่เลือกในดรอปดาวน์
+    AutoSellByRarity = true, -- ขายตัวละครตามระดับความหายากที่เลือกในดรอปดาวน์
     SellRarities = {
         ["Common"] = true,
         ["Uncommon"] = true
@@ -3393,7 +3407,11 @@ task.spawn(function()
             local hasOres = ores and next(ores) ~= nil
             local oldCharKeys = Config.AutoSellOldChars and GetOldZoneCharacterKeys(mg) or {}
             local hasOldChars = #oldCharKeys > 0
-            local rarityCharKeys = Config.AutoSellByRarity and GetRarityCharacterKeys(mg) or {}
+            local hasRaritySelected = false
+            for _, v in pairs(Config.SellRarities or {}) do
+                if v == true then hasRaritySelected = true break end
+            end
+            local rarityCharKeys = (Config.AutoSellByRarity or hasRaritySelected) and GetRarityCharacterKeys(mg) or {}
             local hasRarityChars = #rarityCharKeys > 0
             local oldPickKeys, bestOwnedPick = (Config.AutoSellPickaxes or Config.AutoSell) and GetOldPickaxeKeys(mg) or {}
             local hasOldPicks = oldPickKeys and #oldPickKeys > 0
