@@ -125,8 +125,13 @@ local Config = {
         -- Potions, Skills & Bait
         AutoBuyPotions = true,          -- ซื้อยาจากร้าน Potion Shop เมื่อมีของ
         AutoDrinkPotions = true,        -- เปิดโหมดดื่มยาอัตโนมัติ
+        PotionDrinkMode = "ดื่มยาทุกชนิด (All Potions)", -- โหมดการดื่มยา
         AutoInvestSkills = true,        -- อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี
         AutoEquipBait = true,           -- สวมใส่เหยื่อที่ดีที่สุด
+
+        -- Boss Automation (Megalodon & Kraken)
+        AutoBossFight = true,           -- ตีบอส Megalodon & Kraken อัตโนมัติ
+        AutoClaimBossLoot = true,       -- เคลมการ์ดของรางวัลบอสอัตโนมัติ
 
         -- Auto Sell
         AutoSell = false,
@@ -517,11 +522,51 @@ local function RunPotionsAndSkillsCycle()
     if not remotes then return end
 
     -- 1. Auto Potions (ซื้อยา & ดื่มยา)
-    if Config.Settings.AutoDrinkPotions then
-        local potionRemote = remotes:FindFirstChild("Potions")
-        if potionRemote then
+    if Config.Settings.AutoDrinkPotions and remotes:FindFirstChild("Potions") then
+        local potionRemote = remotes.Potions
+        local mode = Config.Settings.PotionDrinkMode or "ดื่มยาทุกชนิด (All Potions)"
+        if mode == "ดื่มยาทุกชนิด (All Potions)" then
             pcall(function()
-                potionRemote:InvokeServer("auto", true)
+                local res = potionRemote:InvokeServer("useAll")
+                if res and res.ok and res.drank and res.drank > 0 then
+                    UpdateStatus(string.format("STATUS: DRANK %d POTIONS FROM COOLER!", res.drank))
+                end
+            end)
+        elseif mode ~= "ปิดการดื่มยา (Disabled)" then
+            pcall(function()
+                local inv = nil
+                local pState = potionRemote:InvokeServer("state")
+                if pState and pState.inv then
+                    inv = pState.inv
+                else
+                    local getData = remotes:FindFirstChild(Config.Events.GetData)
+                    local data = getData and getData:InvokeServer()
+                    if data and data.PotionInv then
+                        inv = data.PotionInv
+                    end
+                end
+
+                if inv then
+                    for key, count in pairs(inv) do
+                        if (tonumber(count) or 0) > 0 then
+                            local kind, tier = key:match("^(%a+)_(%d+)$")
+                            local shouldDrink = false
+                            if mode == "เฉพาะยาเงิน (Cash Boost)" and kind == "Cash" then
+                                shouldDrink = true
+                            elseif mode == "เฉพาะยาตาข่าย (Net Space)" and kind == "Net" then
+                                shouldDrink = true
+                            elseif mode == "เฉพาะเทียร์สูงสุด (Tier 5+)" and (tonumber(tier) or 0) >= 5 then
+                                shouldDrink = true
+                            end
+
+                            if shouldDrink then
+                                potionRemote:InvokeServer("use", key)
+                                UpdateStatus(string.format("STATUS: DRANK POTION [%s]!", key))
+                                task.wait(0.15)
+                            end
+                        end
+                    end
+                end
             end)
         end
     end
@@ -601,6 +646,73 @@ end
 SpawnWorker("PotionsAndSkillsWorker", function()
     RunPotionsAndSkillsCycle()
     task.wait(15.0 + math.random(1, 4))
+end)
+
+-- Task 9: Auto Boss Fighter (Megalodon & Kraken Auto Fight & Loot)
+SpawnWorker("AutoBossWorker", function()
+    if not Config.Settings.AutoBossFight then
+        task.wait(3.0)
+        return
+    end
+
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then
+        task.wait(3.0)
+        return
+    end
+
+    local megEvent = remotes:FindFirstChild("MegEvent")
+    local bossEvent = remotes:FindFirstChild("BossEvent")
+
+    -- 1. Check Megalodon Event
+    if megEvent and workspace:GetAttribute("MegActive") == true then
+        UpdateStatus("STATUS: MEGALODON DETECTED! ENTERING FIGHT...")
+        pcall(function()
+            -- Join the fight
+            megEvent:FireServer("enter")
+            task.wait(0.5)
+
+            -- Fight loop while Megalodon is active
+            local fightStart = os.clock()
+            while workspace:GetAttribute("MegActive") == true and (os.clock() - fightStart < 190) and IsSessionValid() do
+                -- Calculate Megalodon aim position
+                local targetPos = nil
+                local megFolder = workspace:FindFirstChild("MegalodonLocal")
+                if megFolder and megFolder:FindFirstChild("Root") then
+                    targetPos = megFolder.Root.Position
+                elseif FishingShared and FishingShared.MegPos then
+                    targetPos = FishingShared.MegPos(workspace:GetServerTimeNow())
+                end
+
+                if targetPos then
+                    megEvent:FireServer("fire", targetPos)
+                    UpdateStatus("STATUS: ATTACKING MEGALODON WITH SPEAR TURRET!")
+                end
+
+                task.wait(1.1)
+            end
+
+            -- Battle ended: claim victory rewards
+            task.wait(1.0)
+            megEvent:FireServer("closed")
+            UpdateStatus("STATUS: MEGALODON DEFEATED! CLAIMED VICTORY LOOT!")
+        end)
+    end
+
+    -- 2. Kraken Boss / General Boss Event
+    if bossEvent and Config.Settings.AutoClaimBossLoot then
+        -- Auto close/claim Kraken loot card if open
+        pcall(function()
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local bossUI = pGui and (pGui:FindFirstChild("BossUI") or pGui:FindFirstChild("LootUI"))
+            if bossUI and bossUI.Enabled then
+                bossEvent:FireServer("closed")
+                UpdateStatus("STATUS: CLAIMED KRAKEN BOSS LOOT CARD!")
+            end
+        end)
+    end
+
+    task.wait(3.0)
 end)
 
 -- Task 6: Auto Sell Worker
@@ -1079,6 +1191,110 @@ local function BuildUI()
         return label
     end
 
+    local function CreateDropdown(parent, title, options, defaultOption, callback)
+        local isExpanded = false
+        local currentSelected = defaultOption or options[1]
+
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, 0, 0, 42)
+        card.BackgroundColor3 = Config.Colors.Card
+        card.ClipsDescendants = true
+        card.Parent = parent
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = card
+
+        local header = Instance.new("Frame")
+        header.Size = UDim2.new(1, 0, 0, 42)
+        header.BackgroundTransparency = 1
+        header.Parent = card
+
+        local titleLabel = Instance.new("TextLabel")
+        titleLabel.Size = UDim2.new(0.48, -10, 1, 0)
+        titleLabel.Position = UDim2.new(0, 12, 0, 0)
+        titleLabel.BackgroundTransparency = 1
+        titleLabel.Font = Enum.Font.GothamMedium
+        titleLabel.TextSize = 12
+        titleLabel.TextColor3 = Config.Colors.TextPrimary
+        titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+        titleLabel.Text = title
+        titleLabel.Parent = header
+
+        local selectBtn = Instance.new("TextButton")
+        selectBtn.Size = UDim2.new(0.52, -12, 0, 28)
+        selectBtn.Position = UDim2.new(0.48, 0, 0.5, -14)
+        selectBtn.BackgroundColor3 = Config.Colors.Sidebar
+        selectBtn.Font = Enum.Font.GothamMedium
+        selectBtn.TextSize = 11
+        selectBtn.TextColor3 = Config.Colors.AccentLight
+        selectBtn.Text = tostring(currentSelected) .. " ▼"
+        selectBtn.Parent = header
+
+        local selectCorner = Instance.new("UICorner")
+        selectCorner.CornerRadius = UDim.new(0, 4)
+        selectCorner.Parent = selectBtn
+
+        local optionsList = Instance.new("Frame")
+        optionsList.Size = UDim2.new(1, -24, 0, #options * 30 + 4)
+        optionsList.Position = UDim2.new(0, 12, 0, 44)
+        optionsList.BackgroundTransparency = 1
+        optionsList.Visible = false
+        optionsList.Parent = card
+
+        local listLayout = Instance.new("UIListLayout")
+        listLayout.Padding = UDim.new(0, 4)
+        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        listLayout.Parent = optionsList
+
+        local function ToggleExpand(state)
+            isExpanded = (state ~= nil) and state or (not isExpanded)
+            optionsList.Visible = isExpanded
+            selectBtn.Text = tostring(currentSelected) .. (isExpanded and " ▲" or " ▼")
+            if isExpanded then
+                card.Size = UDim2.new(1, 0, 0, 46 + #options * 32)
+            else
+                card.Size = UDim2.new(1, 0, 0, 42)
+            end
+        end
+
+        selectBtn.MouseButton1Click:Connect(function()
+            ToggleExpand()
+        end)
+
+        for i, opt in ipairs(options) do
+            local optBtn = Instance.new("TextButton")
+            optBtn.Name = "Opt_" .. tostring(i)
+            optBtn.Size = UDim2.new(1, 0, 0, 28)
+            optBtn.BackgroundColor3 = (opt == currentSelected) and Config.Colors.Accent or Config.Colors.Sidebar
+            optBtn.Font = Enum.Font.GothamMedium
+            optBtn.TextSize = 11
+            optBtn.TextColor3 = Config.Colors.TextPrimary
+            optBtn.Text = opt
+            optBtn.Parent = optionsList
+
+            local optCorner = Instance.new("UICorner")
+            optCorner.CornerRadius = UDim.new(0, 4)
+            optCorner.Parent = optBtn
+
+            optBtn.MouseButton1Click:Connect(function()
+                currentSelected = opt
+                selectBtn.Text = tostring(currentSelected) .. " ▼"
+                ToggleExpand(false)
+                for _, child in ipairs(optionsList:GetChildren()) do
+                    if child:IsA("TextButton") then
+                        child.BackgroundColor3 = (child.Text == currentSelected) and Config.Colors.Accent or Config.Colors.Sidebar
+                    end
+                end
+                if callback then
+                    callback(opt)
+                end
+            end)
+        end
+
+        return card
+    end
+
     -- ==========================================================================
     -- TAB 1: ระบบโยนแห & ฟาร์มหลัก (Net & Main Farm)
     -- ==========================================================================
@@ -1352,6 +1568,36 @@ local function BuildUI()
         end
     end)
 
+    local potionOptions = {
+        "ดื่มยาทุกชนิด (All Potions)",
+        "เฉพาะยาเงิน (Cash Boost)",
+        "เฉพาะยาตาข่าย (Net Space)",
+        "เฉพาะเทียร์สูงสุด (Tier 5+)",
+        "ปิดการดื่มยา (Disabled)"
+    }
+    CreateDropdown(pPotions, "โหมดการดื่มยา (Drink Mode)", potionOptions, Config.Settings.PotionDrinkMode, function(selected)
+        Config.Settings.PotionDrinkMode = selected
+        UpdateStatus("STATUS: POTION MODE SET TO: " .. selected)
+        if PotionsStatusCard then
+            PotionsStatusCard.Text = "โหมดดื่มยาปัจจุบัน: " .. selected
+        end
+    end)
+
+    CreateButton(pPotions, "⚡ ดื่มยาทุกขวดในคูลเลอร์ทันที (Drink All Potions Now)", Config.Colors.Success, function()
+        UpdateStatus("STATUS: CONSUMING ALL STORED POTIONS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes and remotes:FindFirstChild("Potions") then
+                local res = remotes.Potions:InvokeServer("useAll")
+                local count = (res and res.drank) or 0
+                UpdateStatus(string.format("STATUS: SUCCESSFULLY DRANK %d POTIONS!", count))
+                if PotionsStatusCard then
+                    PotionsStatusCard.Text = string.format("ดื่มยาสำเร็จทันที: %d ขวด! (บัฟทำงานแล้ว)", count)
+                end
+            end
+        end)
+    end)
+
     CreateToggle(pPotions, "อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี (Auto Invest Skills)", Config.Settings.AutoInvestSkills, function(v)
         Config.Settings.AutoInvestSkills = v
     end)
@@ -1423,7 +1669,82 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 8: ตั้งค่าระบบ (Settings & System)
+    -- TAB 8: ระบบล่าบอส (Boss Fights: Megalodon & Kraken)
+    -- ==========================================================================
+    AddTabButton("BossTab", "🦈 ล่าบอส", false)
+    local pBoss = CreateTabPage("BossTab")
+
+    local BossStatusCard = CreateStatusCard(pBoss, "ระบบบอส: กำลังสแกนสถานะ Megalodon & Kraken...")
+
+    -- Live status update for BossStatusCard
+    task.spawn(function()
+        while IsSessionValid() do
+            if BossStatusCard and BossStatusCard.Parent then
+                local isMeg = workspace:GetAttribute("MegActive") == true
+                local isKraken = workspace:GetAttribute("BossActive") == true
+                local megText = isMeg and "🔴 MEG ACTIVE!" or "Meg: รอเวลา"
+                local krakenText = isKraken and "🔴 KRAKEN ACTIVE!" or "Kraken: รอเวลา"
+                BossStatusCard.Text = string.format("สถานะบอส | %s | %s", megText, krakenText)
+            end
+            task.wait(2.5)
+        end
+    end)
+
+    CreateToggle(pBoss, "🦈 ตีบอสอัตโนมัติ (Auto Fight Megalodon & Kraken)", Config.Settings.AutoBossFight, function(v)
+        Config.Settings.AutoBossFight = v
+        UpdateStatus("STATUS: AUTO BOSS FIGHT " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pBoss, "🎁 เคลมการ์ดของรางวัลบอสอัตโนมัติ (Auto Claim Boss Loot)", Config.Settings.AutoClaimBossLoot, function(v)
+        Config.Settings.AutoClaimBossLoot = v
+        UpdateStatus("STATUS: AUTO CLAIM BOSS LOOT " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateButton(pBoss, "🦈 เข้าสู่โหมดป้อมปืนตี Megalodon ทันที (Enter Turret)", Config.Colors.Accent, function()
+        UpdateStatus("STATUS: ENTERING MEGALODON TURRET MODE...")
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("MegEvent") then
+            remotes.MegEvent:FireServer("enter")
+        end
+    end)
+
+    CreateButton(pBoss, "🎯 เล็งยิงฉมวกใส่ Megalodon ทันที (Fire Turret Spear)", Config.Colors.Cyan, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("MegEvent") then
+            local targetPos = nil
+            local megFolder = workspace:FindFirstChild("MegalodonLocal")
+            if megFolder and megFolder:FindFirstChild("Root") then
+                targetPos = megFolder.Root.Position
+            elseif FishingShared and FishingShared.MegPos then
+                targetPos = FishingShared.MegPos(workspace:GetServerTimeNow())
+            end
+            if targetPos then
+                remotes.MegEvent:FireServer("fire", targetPos)
+                UpdateStatus("STATUS: MANUAL SHOT FIRED AT MEGALODON!")
+            else
+                UpdateStatus("STATUS: MEGALODON TARGET NOT FOUND")
+            end
+        end
+    end)
+
+    CreateButton(pBoss, "🎁 รับของรางวัลบอส Megalodon ทันที (Claim Megalodon Loot)", Config.Colors.Gold, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("MegEvent") then
+            remotes.MegEvent:FireServer("closed")
+            UpdateStatus("STATUS: CLAIMED MEGALODON REWARDS!")
+        end
+    end)
+
+    CreateButton(pBoss, "🐙 รับของรางวัลบอส Kraken ทันที (Claim Kraken Loot)", Config.Colors.Success, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("BossEvent") then
+            remotes.BossEvent:FireServer("closed")
+            UpdateStatus("STATUS: CLAIMED KRAKEN REWARDS!")
+        end
+    end)
+
+    -- ==========================================================================
+    -- TAB 9: ตั้งค่าระบบ (Settings & System)
     -- ==========================================================================
     AddTabButton("SettingsTab", "ตั้งค่าระบบ", false)
     local pSettings = CreateTabPage("SettingsTab")
