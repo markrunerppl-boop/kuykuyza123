@@ -1,9 +1,10 @@
 -- ==============================================================================
--- PROJECT: Unified Auto Farm & Utility Hub Framework
+-- PROJECT: KUYKUY HUB Unified Farm & Utility Framework
 -- GAME: [🐟] จับปลา! (PlaceId: 93898234979111)
--- VERSION: v3.0.0 [ULTIMATE EDITION]
+-- VERSION: v3.0.0 [KUYKUY ULTIMATE EDITION]
 -- FEATURES: Auto Net (Perfect Tap) / Auto Collect Pads / Auto Equip Best /
---           Auto Rebirth / Auto Claim Gifts & Free Clams / Auto Sell
+--           Auto Rebirth / Auto Claim Gifts & Free Clams / Auto Sell /
+--           Auto Deep Current / Multi-Tier Potions / Auto Mini-Games (Gold 🥇)
 -- ==============================================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -156,9 +157,9 @@ end)
 
 local Config = {
     Meta = {
-        HubName = "NEXUS HUB",
+        HubName = "KUYKUY HUB",
         Version = "v3.0.0 [จับปลา! Ultimate]",
-        SaveFileName = "NexusHub_Config_" .. tostring(game.PlaceId) .. ".json"
+        SaveFileName = "KUYKUY_Config_" .. tostring(game.PlaceId) .. ".json"
     },
     Colors = {
         Background = Color3.fromRGB(18, 15, 26),
@@ -190,7 +191,9 @@ local Config = {
         Rewards = "Rewards",
         PearlShop = "PearlShop",
         Current = "Current",
-        CurrentPing = "CurrentPing"
+        CurrentPing = "CurrentPing",
+        MiniGame = "MiniGame",
+        MiniGamePing = "MiniGamePing"
     },
     Settings = {
         -- Auto Net
@@ -217,6 +220,10 @@ local Config = {
         AutoClaimRetention = true,      -- เคลมเควสประจำวัน & หมุนวงล้อฟรี (Daily & Spins)
         AutoClaimIndexPages = true,     -- เคลมรางวัลสะสมปลาครบหน้า (Index Page Rewards)
         AutoLikeBases = true,           -- กด Like เบสผู้เล่นอื่นรับโบนัส
+
+        -- Mini-Games (เล่นมินิเกมทุกอันอัตโนมัติ)
+        AutoMiniGames = true,           -- เล่นมินิเกมอัตโนมัติทุกชนิดเมื่อได้รับคำเชิญ
+        MiniGameMode = "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)", -- โหมดเล่นมินิเกม
 
         -- Deep Current (กระแสน้ำลึก)
         AutoCurrent = true,             -- เปิดใช้งานฟังชั่นเรียกลอยกระแสน้ำลึกอัตโนมัติ
@@ -928,6 +935,123 @@ SpawnWorker("DeepCurrentWorker", function()
     task.wait(6.0 + math.random(1, 3))
 end)
 
+-- ==============================================================================
+-- Auto Mini-Games Engine (Perfect Reel, Fish Frenzy, Bait Memory -> Always Gold 🥇)
+-- ==============================================================================
+local function InitializeMiniGameListener()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local pingRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGamePing)
+    local mgRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGame)
+    if not pingRemote or not mgRemote then return end
+
+    pingRemote.OnClientEvent:Connect(function(msg)
+        if not IsSessionValid() then return end
+        if type(msg) ~= "table" then return end
+        if not Config.Settings.AutoMiniGames then return end
+
+        if msg.kind == "invite" and msg.game and msg.round then
+            local gameId = msg.game
+            local round = msg.round
+
+            -- Filter according to MiniGameMode
+            local mode = Config.Settings.MiniGameMode or "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)"
+            local allowed = false
+            if mode == "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)" then
+                allowed = true
+            elseif mode == "เฉพาะ Perfect Reel (🎣)" and gameId == "Reel" then
+                allowed = true
+            elseif mode == "เฉพาะ Fish Frenzy (🐟)" and gameId == "Jump" then
+                allowed = true
+            elseif mode == "เฉพาะ Bait Memory (🐛)" and gameId == "Lures" then
+                allowed = true
+            end
+
+            if not allowed then return end
+
+            UpdateStatus(string.format("STATUS: 🎮 MINIGAME INVITE [%s] DETECTED! PREPARING AUTO-PLAY...", gameId))
+            task.spawn(function()
+                task.wait(1.2 + (math.random(1, 10) / 10))
+                pcall(function() mgRemote:InvokeServer("shown", round) end)
+                task.wait(0.5)
+
+                local enterRes = nil
+                pcall(function()
+                    enterRes = mgRemote:InvokeServer("enter", round)
+                end)
+
+                if enterRes and enterRes.ok then
+                    UpdateStatus(string.format("STATUS: 🎮 PLAYING MINIGAME [%s] IN BACKGROUND...", gameId))
+
+                    -- Safe, humanlike playing delay (6-9s)
+                    task.wait(math.random(6, 9))
+
+                    -- Compute Gold Medal target score (based on ReplicatedStorage.MiniGames thresholds)
+                    local score = 0
+                    if gameId == "Reel" then
+                        score = math.random(580, 660) -- Threshold 560
+                    elseif gameId == "Jump" then
+                        score = math.random(445, 510) -- Threshold 430
+                    elseif gameId == "Lures" then
+                        score = math.random(8, 11)   -- Threshold 8
+                    else
+                        score = 500
+                    end
+
+                    local finishRes = nil
+                    pcall(function()
+                        finishRes = mgRemote:InvokeServer("finish", round, score, false)
+                    end)
+
+                    local wonGold = (finishRes and finishRes.tier and finishRes.tier >= 3) or (finishRes and finishRes.ok ~= false)
+                    if wonGold then
+                        local pearls = (finishRes and finishRes.pearls) or 35
+                        UpdateStatus(string.format("STATUS: 🥇 WON MINIGAME [%s] WITH GOLD MEDAL! (+%d 🦪)", gameId, pearls))
+                        if UIReferences.MiniGameStatusCard then
+                            UIReferences.MiniGameStatusCard.Text = string.format("🎮 มินิเกมล่าสุด: ชนะทอง 🥇 [%s] คะแนน: %d (+%d 🦪)", gameId, score, pearls)
+                        end
+                    else
+                        UpdateStatus(string.format("STATUS: 🎮 MINIGAME [%s] ROUND COMPLETED (SCORE: %d)", gameId, score))
+                    end
+
+                    -- Auto-dismiss result popup after reward is awarded
+                    task.wait(1.5)
+                    pcall(function()
+                        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+                        local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
+                        if mgUI then
+                            for _, desc in ipairs(mgUI:GetDescendants()) do
+                                if desc:IsA("TextButton") and (desc.Name == "Collect" or desc.Text == "COLLECT!") and typeof(firesignal) == "function" then
+                                    firesignal(desc.MouseButton1Click)
+                                end
+                            end
+                            mgUI.Enabled = false
+                        end
+                    end)
+                end
+            end)
+        end
+    end)
+end
+task.spawn(InitializeMiniGameListener)
+
+SpawnWorker("MiniGameAutoWorker", function()
+    if Config.Settings.AutoMiniGames then
+        -- Auto-dismiss any stale MiniGameUI result dialogs
+        pcall(function()
+            local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+            local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
+            if mgUI and mgUI.Enabled then
+                for _, desc in ipairs(mgUI:GetDescendants()) do
+                    if desc:IsA("TextButton") and (desc.Name == "Collect" or desc.Text == "COLLECT!") and typeof(firesignal) == "function" then
+                        firesignal(desc.MouseButton1Click)
+                    end
+                end
+            end
+        end)
+    end
+    task.wait(12)
+end)
+
 -- Task 8: Potions, Skill Tree & Best Bait Worker
 local function RunPotionsAndSkillsCycle()
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
@@ -1398,14 +1522,14 @@ SpawnWorker("AutoUpgradeWorker", function()
 end)
 
 -- ==============================================================================
--- 4. UI CREATION (MODERN DARK PURPLE UNIFIED HUB)
+-- 4. UI CREATION (KUYKUY HUB - MODERN DARK PURPLE UNIFIED HUB)
 -- ==============================================================================
 local function BuildUI()
-    local oldUI = CoreGui:FindFirstChild("NexusHub_ScreenGui") or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("NexusHub_ScreenGui"))
+    local oldUI = CoreGui:FindFirstChild("KUYKUY_ScreenGui") or CoreGui:FindFirstChild("NexusHub_ScreenGui") or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and (LocalPlayer.PlayerGui:FindFirstChild("KUYKUY_ScreenGui") or LocalPlayer.PlayerGui:FindFirstChild("NexusHub_ScreenGui")))
     if oldUI then oldUI:Destroy() end
 
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "NexusHub_ScreenGui"
+    ScreenGui.Name = "KUYKUY_ScreenGui"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -1414,14 +1538,14 @@ local function BuildUI()
         ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
 
-    -- Floating Action Button
+    -- Floating Action Button (ตอนย่อหน้าต่าง ui เป็นรูปการ์ตูนควาย)
     local FloatButton = Instance.new("TextButton")
-    FloatButton.Name = "NexusFloatButton"
-    FloatButton.Size = UDim2.new(0, 48, 0, 48)
+    FloatButton.Name = "KUYKUY_FloatButton"
+    FloatButton.Size = UDim2.new(0, 52, 0, 52)
     FloatButton.Position = UDim2.new(0, 25, 0.35, 0)
     FloatButton.BackgroundColor3 = Config.Colors.Card
-    FloatButton.Text = "🔮"
-    FloatButton.TextSize = 22
+    FloatButton.Text = "🐃"
+    FloatButton.TextSize = 28
     FloatButton.AutoButtonColor = false
     FloatButton.Parent = ScreenGui
 
@@ -1430,10 +1554,28 @@ local function BuildUI()
     FloatCorner.Parent = FloatButton
 
     local FloatStroke = Instance.new("UIStroke")
-    FloatStroke.Color = Config.Colors.Accent
-    FloatStroke.Thickness = 1.8
+    FloatStroke.Color = Config.Colors.Gold
+    FloatStroke.Thickness = 2.2
     FloatStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     FloatStroke.Parent = FloatButton
+
+    -- Cartoon Buffalo Image Sticker inside
+    local BuffaloIcon = Instance.new("ImageLabel")
+    BuffaloIcon.Name = "BuffaloIcon"
+    BuffaloIcon.Size = UDim2.new(1, -6, 1, -6)
+    BuffaloIcon.Position = UDim2.new(0, 3, 0, 3)
+    BuffaloIcon.BackgroundTransparency = 1
+    BuffaloIcon.Image = "rbxassetid://15264624467"
+    BuffaloIcon.ScaleType = Enum.ScaleType.Fit
+    BuffaloIcon.ZIndex = FloatButton.ZIndex + 1
+    BuffaloIcon.Parent = FloatButton
+
+    -- If image fails to load or slow CDN, text "🐃" remains visible under it
+    task.delay(1.5, function()
+        if BuffaloIcon and BuffaloIcon.IsLoaded then
+            FloatButton.Text = ""
+        end
+    end)
 
     -- Main Container (570 x 430 px)
     local MainFrame = Instance.new("Frame")
@@ -2242,6 +2384,49 @@ local function BuildUI()
 
     CreateToggle(pRewards, "กด Like เบสผู้เล่นอื่นรับบัฟ (Auto Like Other Bases)", Config.Settings.AutoLikeBases, function(v)
         Config.Settings.AutoLikeBases = v
+    end)
+
+    local MiniGameStatusCard = CreateStatusCard(pRewards, "🎮 มินิเกม (Mini-Games): รอรับคำเชิญเพื่อเล่นอัตโนมัติ...")
+    UIReferences.MiniGameStatusCard = MiniGameStatusCard
+
+    CreateToggle(pRewards, "🎮 เล่นมินิเกมทุกอันอัตโนมัติ (Auto Play All Mini-Games 🥇)", Config.Settings.AutoMiniGames, function(v)
+        Config.Settings.AutoMiniGames = v
+        UpdateStatus("STATUS: AUTO MINI-GAMES " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local miniGameModes = {
+        "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)",
+        "เฉพาะ Perfect Reel (🎣)",
+        "เฉพาะ Fish Frenzy (🐟)",
+        "เฉพาะ Bait Memory (🐛)"
+    }
+    CreateDropdown(pRewards, "โหมดเล่นมินิเกม (Mini-Game Target)", miniGameModes, Config.Settings.MiniGameMode, function(selected)
+        Config.Settings.MiniGameMode = selected
+        UpdateStatus("STATUS: MINI-GAME MODE: " .. selected)
+    end)
+
+    CreateButton(pRewards, "🎮 ตรวจสอบสถิติมินิเกม & เหรียญทอง (Check Mini-Game Stats)", Config.Colors.Cyan, function()
+        UpdateStatus("STATUS: CHECKING MINI-GAME STATS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local getData = remotes and remotes:FindFirstChild(Config.Events.GetData)
+            local data = getData and getData:InvokeServer()
+            local mg = data and (data.MiniGame or data.MiniGames)
+            if mg then
+                local plays = mg.plays or 0
+                local golds = mg.golds or 0
+                local bestText = ""
+                if mg.best then
+                    local parts = {}
+                    for g, s in pairs(mg.best) do table.insert(parts, string.format("%s: %d", tostring(g), tonumber(s) or 0)) end
+                    bestText = table.concat(parts, " | ")
+                end
+                UpdateStatus(string.format("STATUS: MINI-GAMES: %d PLAYS | %d GOLDS 🥇 | BEST: %s", plays, golds, bestText))
+                if MiniGameStatusCard then
+                    MiniGameStatusCard.Text = string.format("🎮 สถิติ: เล่น %d ครั้ง | ทอง 🥇 %d ครั้ง | สถิติสูงสุด: %s", plays, golds, bestText)
+                end
+            end
+        end)
     end)
 
     CreateButton(pRewards, "🎁 กดรับรางวัลและเควสทุกหมวดหมู่ทันที (Claim ALL Now)", Config.Colors.Gold, function()
