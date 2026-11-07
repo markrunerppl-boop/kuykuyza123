@@ -119,7 +119,16 @@ local Config = {
 
         -- Auto Sell
         AutoSell = false,
-        SellInterval = 20
+        SellInterval = 20,
+
+        -- Auto Upgrades
+        AutoUpgrade = true,
+        UpgradeInterval = 3,
+        UpgradeBoat = true,         -- อัปเกรดเรือ (Hull + อุปกรณ์เรือ)
+        UpgradeNet = true,          -- อัปเกรดตาข่าย (ซื้อเทียร์ใหม่)
+        UpgradeFisherman = true,    -- อัปเกรดชาวประมง (เบ็ด, ถัง, สปีด, เหยื่อ)
+        UpgradeSpear = true,        -- อัปเกรดปืนฉมวก (หัวฉมวก, ยิงหลายนัด, รีโหลด)
+        UpgradeGeneral = true       -- อัปเกรดทั่วไป/เบส (Weave, Titan, Colossus, Fleet, etc.)
     }
 }
 
@@ -390,6 +399,166 @@ SpawnWorker("AutoSellWorker", function()
     task.wait(Config.Settings.SellInterval)
 end)
 
+-- Task 7: Universal Auto Upgrade Runner
+local function RunUpgradeCycle()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes or not FishingShared then return 0 end
+
+    local getData = remotes:FindFirstChild(Config.Events.GetData)
+    if not getData then return 0 end
+
+    local ok, data = pcall(function() return getData:InvokeServer() end)
+    if not ok or type(data) ~= "table" then return 0 end
+
+    local currentCash = data.Cash or 0
+    local upgradedCount = 0
+
+    -- 1. Upgrade Net (ตาข่าย)
+    if Config.Settings.UpgradeNet and remotes:FindFirstChild("BuyItem") then
+        local nextTier = (data.NetTier or 1) + 1
+        local netCfg = FishingShared.Nets and FishingShared.Nets[nextTier]
+        if netCfg and (netCfg.Cost or (1/0)) <= currentCash then
+            local rOk = (FishingShared.NetRebirthOk == nil) or FishingShared.NetRebirthOk(data, nextTier)
+            if rOk then
+                pcall(function()
+                    remotes.BuyItem:FireServer("Net", nextTier, true)
+                end)
+                currentCash = currentCash - netCfg.Cost
+                upgradedCount = upgradedCount + 1
+                UpdateStatus(string.format("STATUS: UPGRADED NET TIER %d (%s)!", nextTier, netCfg.Name or ""))
+                task.wait(0.2)
+            end
+        end
+    end
+
+    -- 2. Upgrade Boat (เรือ)
+    if Config.Settings.UpgradeBoat and remotes:FindFirstChild("BoatAction") then
+        -- Hull (ตัวเรือ)
+        local curHull = (data.Boat and data.Boat.Hull) or 0
+        local nextHull = curHull + 1
+        local hullCfg = FishingShared.Boat and FishingShared.Boat.Hulls and FishingShared.Boat.Hulls[nextHull]
+        if hullCfg and (data.Rebirths or 0) >= (hullCfg.Rebirth or 0) and currentCash >= (hullCfg.Cost or (1/0)) then
+            local okBuy = nil
+            pcall(function()
+                okBuy = remotes.BoatAction:InvokeServer("buy", "Hull")
+            end)
+            if okBuy and okBuy.ok then
+                currentCash = currentCash - hullCfg.Cost
+                upgradedCount = upgradedCount + 1
+                UpdateStatus(string.format("STATUS: UPGRADED BOAT HULL LVL %d!", nextHull))
+                task.wait(0.2)
+            end
+        end
+
+        -- Parts (อุปกรณ์เรือ: Trawl, Engine, Sonar, Cold, Figure)
+        if FishingShared.Boat and FishingShared.Boat.Upgrades then
+            for _, u in ipairs(FishingShared.Boat.Upgrades) do
+                local cur = (data.Boat or {})[u.Id] or 0
+                local max = u.Max or 35
+                if cur < max then
+                    local cost = FishingShared.BoatCost and FishingShared.BoatCost(u.Id, cur) or (1/0)
+                    local extraOk = (FishingShared.ExtraOk == nil) or FishingShared.ExtraOk(data, u, cur + 1)
+                    if currentCash >= cost and extraOk then
+                        local okBuy = nil
+                        pcall(function()
+                            okBuy = remotes.BoatAction:InvokeServer("buy", u.Id)
+                        end)
+                        if okBuy and okBuy.ok then
+                            currentCash = currentCash - cost
+                            upgradedCount = upgradedCount + 1
+                            UpdateStatus(string.format("STATUS: UPGRADED BOAT [%s] LVL %d!", u.Name or u.Id, cur + 1))
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Upgrade Fishermen (ชาวประมง: Rod, Line, Speed, Range, Tackle, Shiny, Bait)
+    if Config.Settings.UpgradeFisherman and remotes:FindFirstChild("HelperAction") and FishingShared.Helper and FishingShared.Helper.Upgrades then
+        for _, u in ipairs(FishingShared.Helper.Upgrades) do
+            local cur = (data.Helper or {})[u.Id] or 0
+            local max = u.Max or 35
+            if cur < max then
+                local cost = FishingShared.HelperCost and FishingShared.HelperCost(u.Id, cur) or (1/0)
+                local okLvl = (FishingShared.HelperLevelOk == nil) or FishingShared.HelperLevelOk(data, u, cur + 1)
+                if currentCash >= cost and okLvl then
+                    local okBuy = nil
+                    pcall(function()
+                        okBuy = remotes.HelperAction:InvokeServer("buy", u.Id)
+                    end)
+                    if okBuy and okBuy.ok then
+                        currentCash = currentCash - cost
+                        upgradedCount = upgradedCount + 1
+                        UpdateStatus(string.format("STATUS: UPGRADED FISHERMAN [%s] LVL %d!", u.Name or u.Id, cur + 1))
+                        task.wait(0.2)
+                    end
+                end
+            end
+        end
+    end
+
+    -- 4. Upgrade Spear Gun (ปืนฉมวก: Tip, Multi, Reload, Range, Barb, Barrel, Scope)
+    if Config.Settings.UpgradeSpear and remotes:FindFirstChild("SpearAction") and FishingShared.Spear and FishingShared.Spear.Upgrades then
+        for _, u in ipairs(FishingShared.Spear.Upgrades) do
+            local cur = (data.Spear or {})[u.Id] or 0
+            local max = u.Max or 35
+            if cur < max then
+                local cost = FishingShared.SpearCost and FishingShared.SpearCost(u.Id, cur) or (1/0)
+                local okLvl = (FishingShared.HelperLevelOk == nil) or FishingShared.HelperLevelOk(data, u, cur + 1)
+                if currentCash >= cost and okLvl then
+                    local okBuy = nil
+                    pcall(function()
+                        okBuy = remotes.SpearAction:InvokeServer("buy", u.Id)
+                    end)
+                    if okBuy and okBuy.ok then
+                        currentCash = currentCash - cost
+                        upgradedCount = upgradedCount + 1
+                        UpdateStatus(string.format("STATUS: UPGRADED SPEAR GUN [%s] LVL %d!", u.Name or u.Id, cur + 1))
+                        task.wait(0.2)
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5. Upgrade General & Base (อัปเกรดทั่วไป/เบส)
+    if Config.Settings.UpgradeGeneral and remotes:FindFirstChild("BuyItem") and FishingShared.Upgrades then
+        for _, u in ipairs(FishingShared.Upgrades) do
+            if not u.Hidden then
+                local cur = (data.Upgrades or {})[u.Id] or 0
+                local max = u.Max or 35
+                if cur < max then
+                    local cost = FishingShared.UpgradeCost and FishingShared.UpgradeCost(u.Id, cur) or (1/0)
+                    local okLvl = (FishingShared.UpgradeLevelOk == nil) or FishingShared.UpgradeLevelOk(data, u, cur + 1)
+                    if currentCash >= cost and okLvl then
+                        pcall(function()
+                            remotes.BuyItem:FireServer("Upgrade", u.Id)
+                        end)
+                        currentCash = currentCash - cost
+                        upgradedCount = upgradedCount + 1
+                        UpdateStatus(string.format("STATUS: UPGRADED [%s] LVL %d!", u.Name or u.Id, cur + 1))
+                        task.wait(0.2)
+                    end
+                end
+            end
+        end
+    end
+
+    return upgradedCount
+end
+
+SpawnWorker("AutoUpgradeWorker", function()
+    if not Config.Settings.AutoUpgrade then
+        task.wait(2.0)
+        return
+    end
+
+    RunUpgradeCycle()
+    task.wait(Config.Settings.UpgradeInterval + math.random(1, 2))
+end)
+
 -- ==============================================================================
 -- 4. UI CREATION (MODERN DARK PURPLE UNIFIED HUB)
 -- ==============================================================================
@@ -482,12 +651,16 @@ local function BuildUI()
     CloseCorner.Parent = CloseBtn
 
     -- Sidebar (145px)
-    local Sidebar = Instance.new("Frame")
+    local Sidebar = Instance.new("ScrollingFrame")
     Sidebar.Name = "Sidebar"
     Sidebar.Size = UDim2.new(0, 145, 1, -42)
     Sidebar.Position = UDim2.new(0, 0, 0, 42)
     Sidebar.BackgroundColor3 = Config.Colors.Sidebar
     Sidebar.BorderSizePixel = 0
+    Sidebar.ScrollBarThickness = 2
+    Sidebar.ScrollBarImageColor3 = Config.Colors.Border
+    Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+    Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
     Sidebar.Parent = MainFrame
 
     local SidebarList = Instance.new("UIListLayout")
@@ -902,7 +1075,51 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 6: ตั้งค่าระบบ (Settings & System)
+    -- TAB 6: ระบบอัปเกรดอัตโนมัติ (Auto Upgrades)
+    -- ==========================================================================
+    AddTabButton("UpgradeTab", "⚡ อัปเกรด", false)
+    local pUpgrade = CreateTabPage("UpgradeTab")
+
+    local UpgradeStatusCard = CreateStatusCard(pUpgrade, "ระบบอัปเกรด: กำลังตรวจสอบไอเทมที่สามารถอัปเกรดได้...")
+
+    CreateToggle(pUpgrade, "⚡ เปิดระบบ Auto Upgrade ทั้งหมด (Master Switch)", Config.Settings.AutoUpgrade, function(v)
+        Config.Settings.AutoUpgrade = v
+        UpdateStatus("STATUS: AUTO UPGRADE " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pUpgrade, "🚤 อัปเกรดเรือ (Boat: Hull & Equipment)", Config.Settings.UpgradeBoat, function(v)
+        Config.Settings.UpgradeBoat = v
+    end)
+
+    CreateToggle(pUpgrade, "🕸️ อัปเกรดตาข่าย (Net: Auto Tier Up)", Config.Settings.UpgradeNet, function(v)
+        Config.Settings.UpgradeNet = v
+    end)
+
+    CreateToggle(pUpgrade, "🎣 อัปเกรดชาวประมง (Fisherman: Rod, Tackle, Bait)", Config.Settings.UpgradeFisherman, function(v)
+        Config.Settings.UpgradeFisherman = v
+    end)
+
+    CreateToggle(pUpgrade, "🔱 อัปเกรดปืนฉมวก (Harpoon: Tips, Multi, Reload)", Config.Settings.UpgradeSpear, function(v)
+        Config.Settings.UpgradeSpear = v
+    end)
+
+    CreateToggle(pUpgrade, "⚙️ อัปเกรดทั่วไป/เบส (General: Weave, Titan, Colossus)", Config.Settings.UpgradeGeneral, function(v)
+        Config.Settings.UpgradeGeneral = v
+    end)
+
+    CreateButton(pUpgrade, "⚡ รันอัปเกรดทุกอย่างที่ซื้อได้ทันที (Upgrade All Now)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: RUNNING INSTANT UPGRADE CYCLE...")
+        task.spawn(function()
+            local count = RunUpgradeCycle()
+            UpdateStatus(string.format("STATUS: UPGRADE COMPLETED! (%d ITEMS UPGRADED)", count))
+            if UpgradeStatusCard then
+                UpgradeStatusCard.Text = string.format("อัปเกรดสำเร็จล่าสุด: %d รายการ | เงินคงเหลืออัปเดตแล้ว", count)
+            end
+        end)
+    end)
+
+    -- ==========================================================================
+    -- TAB 7: ตั้งค่าระบบ (Settings & System)
     -- ==========================================================================
     AddTabButton("SettingsTab", "ตั้งค่าระบบ", false)
     local pSettings = CreateTabPage("SettingsTab")
