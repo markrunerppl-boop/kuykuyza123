@@ -14,6 +14,8 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualUser = game:GetService("VirtualUser")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 local SharedEnv = (getgenv and getgenv()) or _G
@@ -27,14 +29,106 @@ local function IsSessionValid()
     return SharedEnv._ScriptWorkerActive == true and SharedEnv._CurrentHubSessionId == CurrentSessionId
 end
 
--- Anti-AFK Engine
+-- ==============================================================================
+-- Dual-Layer Anti-AFK Engine (Roblox Platform 20m + Custom In-Game 300s + Auto-Dismiss)
+-- ==============================================================================
+local function DismissGameAFKScreen()
+    pcall(function()
+        local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if PlayerGui then
+            local afkScreen = PlayerGui:FindFirstChild("AFKModeScreen")
+            if afkScreen then
+                local afkBack = afkScreen:FindFirstChild("AFKBack", true)
+                if afkBack and typeof(firesignal) == "function" then
+                    pcall(function() firesignal(afkBack.MouseButton1Click) end)
+                    pcall(function() firesignal(afkBack.Activated) end)
+                end
+                afkScreen.Enabled = false
+            end
+        end
+
+        if LocalPlayer:GetAttribute("AFKScreen") then
+            LocalPlayer:SetAttribute("AFKScreen", nil)
+        end
+
+        pcall(function()
+            RunService:Set3dRenderingEnabled(true)
+        end)
+    end)
+end
+
 local function InitializeAntiAFK()
+    -- Layer 1: Roblox Platform 20-Minute Idle Kick Protection
     LocalPlayer.Idled:Connect(function()
         if not IsSessionValid() then return end
+        if Config and Config.Settings and Config.Settings.AntiAFK == false then return end
         pcall(function()
             VirtualUser:CaptureController()
             VirtualUser:ClickButton2(Vector2.new(0, 0))
         end)
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.RightControl, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightControl, false, game)
+        end)
+    end)
+
+    -- Layer 2: Realtime Attribute Listener for Game's AFKScreen
+    LocalPlayer:GetAttributeChangedSignal("AFKScreen"):Connect(function()
+        if not IsSessionValid() then return end
+        if Config and Config.Settings and Config.Settings.AutoDismissAFKScreen == false then return end
+        if LocalPlayer:GetAttribute("AFKScreen") == true then
+            task.wait(0.1)
+            DismissGameAFKScreen()
+        end
+    end)
+
+    -- Layer 3: Heartbeat Anti-AFK Worker (Prevents game's 300s timer & auto-dismisses screen)
+    task.spawn(function()
+        local lastMicroInput = os.clock()
+        while IsSessionValid() do
+            if not Config or not Config.Settings or Config.Settings.AntiAFK ~= false then
+                -- Send harmless micro-input every 25 seconds to continuously reset game's 300s idle timer
+                if os.clock() - lastMicroInput >= 25 then
+                    lastMicroInput = os.clock()
+                    pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.RightControl, false, game)
+                        task.wait(0.02)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightControl, false, game)
+                    end)
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new(0, 0))
+                    end)
+                end
+
+                -- Auto-dismiss screen & restore 3D rendering if AFK screen is triggered
+                if not Config or not Config.Settings or Config.Settings.AutoDismissAFKScreen ~= false then
+                    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+                    local afkScreen = PlayerGui and PlayerGui:FindFirstChild("AFKModeScreen")
+                    if (afkScreen and afkScreen.Enabled) or LocalPlayer:GetAttribute("AFKScreen") == true then
+                        DismissGameAFKScreen()
+                    end
+                end
+
+                -- Manage visibility of in-game AFK button if user opted to hide it
+                if Config and Config.Settings and Config.Settings.HideAFKBar ~= nil then
+                    pcall(function()
+                        local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+                        local afkUI = PlayerGui and PlayerGui:FindFirstChild("AFKModeUI")
+                        if afkUI then
+                            local afkBar = afkUI:FindFirstChild("AFKBar")
+                            local stackToggle = afkUI:FindFirstChild("StackToggle")
+                            if Config.Settings.HideAFKBar then
+                                if afkBar and afkBar.Visible then afkBar.Visible = false end
+                                if stackToggle and stackToggle.Visible then stackToggle.Visible = false end
+                            end
+                        end
+                    end)
+                end
+            end
+            task.wait(2)
+        end
     end)
 end
 task.spawn(InitializeAntiAFK)
@@ -146,7 +240,12 @@ local Config = {
         UpgradeNet = true,          -- อัปเกรดตาข่าย (ซื้อเทียร์ใหม่)
         UpgradeFisherman = true,    -- อัปเกรดชาวประมง (เบ็ด, ถัง, สปีด, เหยื่อ)
         UpgradeSpear = true,        -- อัปเกรดปืนฉมวก (หัวฉมวก, ยิงหลายนัด, รีโหลด)
-        UpgradeGeneral = true       -- อัปเกรดทั่วไป/เบส (Weave, Titan, Colossus, Fleet, etc.)
+        UpgradeGeneral = true,      -- อัปเกรดทั่วไป/เบส (Weave, Titan, Colossus, Fleet, etc.)
+
+        -- Anti-AFK & System
+        AntiAFK = true,                 -- ป้องกันการตัดการเชื่อมต่อจาก AFK (Roblox 20 min + In-Game 300s)
+        AutoDismissAFKScreen = true,    -- ปิดหน้าจอ AFK Mode Screen และกู้คืน 3D Rendering อัตโนมัติ
+        HideAFKBar = false              -- ซ่อนปุ่ม 💤 AFK MODE ของตัวเกมที่มุมขวาล่าง
     }
 }
 
@@ -1960,6 +2059,36 @@ local function BuildUI()
     -- ==========================================================================
     AddTabButton("SettingsTab", "⚙️ 9. ตั้งค่าระบบ", false, 9)
     local pSettings = CreateTabPage("SettingsTab")
+
+    CreateToggle(pSettings, "🛡️ ป้องกันหลุด AFK ขั้นสูง (Dual-Layer Anti-AFK)", Config.Settings.AntiAFK, function(val)
+        Config.Settings.AntiAFK = val
+    end)
+
+    CreateToggle(pSettings, "🚫 ปิดหน้าจอ AFK Mode อัตโนมัติ (Auto Dismiss AFK Screen)", Config.Settings.AutoDismissAFKScreen, function(val)
+        Config.Settings.AutoDismissAFKScreen = val
+        if val then
+            DismissGameAFKScreen()
+        end
+    end)
+
+    CreateToggle(pSettings, "👁️ ซ่อนปุ่ม AFK ของเกมที่ขวาล่าง (Hide In-Game AFK Bar)", Config.Settings.HideAFKBar, function(val)
+        Config.Settings.HideAFKBar = val
+        pcall(function()
+            local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local afkUI = PlayerGui and PlayerGui:FindFirstChild("AFKModeUI")
+            if afkUI then
+                local afkBar = afkUI:FindFirstChild("AFKBar")
+                local stackToggle = afkUI:FindFirstChild("StackToggle")
+                if afkBar then afkBar.Visible = not val end
+                if stackToggle then stackToggle.Visible = not val end
+            end
+        end)
+    end)
+
+    CreateButton(pSettings, "⚡ บังคับปลด AFK ทันที (Force Exit AFK Now)", Config.Colors.Warning, function()
+        DismissGameAFKScreen()
+        UpdateStatus("ปลดสถานะ AFK และกู้คืน 3D Render เรียบร้อย!")
+    end)
 
     CreateButton(pSettings, "EMERGENCY KILL SWITCH (หยุดการทำงานทั้งหมด)", Config.Colors.Danger, function()
         SharedEnv._ScriptWorkerActive = false
