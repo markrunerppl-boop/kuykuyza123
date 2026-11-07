@@ -591,1287 +591,16 @@ local function GetPlotReturnCFrame(plot)
 end
 
 -- ═══════════════════════════════════════════════
--- 🎨 UI SYSTEM
--- ═══════════════════════════════════════════════
-for _, oldName in ipairs({"AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8", "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12", "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14", "AnimeMineAutoFarmV15", "MineTradeSelectiveUI"}) do
-    local oldGui = PlayerGui:FindFirstChild(oldName)
-    if oldGui then oldGui:Destroy() end
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AnimeMineAutoFarmV15"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = PlayerGui
-
-local Theme = {
-    Background = Color3.fromRGB(18, 18, 28),
-    Header = Color3.fromRGB(34, 24, 56),
-    Category = Color3.fromRGB(28, 26, 44),
-    Button = Color3.fromRGB(24, 24, 38),
-    InputBG = Color3.fromRGB(15, 15, 24),
-    Text = Color3.fromRGB(255, 255, 255),
-    SubText = Color3.fromRGB(160, 160, 185),
-    ToggleOn = Color3.fromRGB(46, 204, 113),
-    ToggleOff = Color3.fromRGB(231, 76, 60),
-    Accent = Color3.fromRGB(165, 94, 234),
-    Border = Color3.fromRGB(70, 48, 110),
-    ChipActive = Color3.fromRGB(142, 68, 173),
-    ChipInactive = Color3.fromRGB(36, 36, 52),
-    ChipLocked = Color3.fromRGB(39, 174, 96),
-    BadgeBG = Color3.fromRGB(38, 32, 60),
-    SpecialBtn = Color3.fromRGB(230, 126, 34)
-}
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 370, 0, 620)
-MainFrame.Position = UDim2.new(0, 20, 0.5, -310)
-MainFrame.BackgroundColor3 = Theme.Background
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-
-local Corner = Instance.new("UICorner")
-Corner.CornerRadius = UDim.new(0, 12)
-Corner.Parent = MainFrame
-
-local Stroke = Instance.new("UIStroke")
-Stroke.Thickness = 2
-Stroke.Color = Theme.Border
-Stroke.Parent = MainFrame
-
--- Header
-local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Size = UDim2.new(1, 0, 0, 50)
-Header.BackgroundColor3 = Theme.Header
-Header.BorderSizePixel = 0
-Header.Parent = MainFrame
-
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 12)
-HeaderCorner.Parent = Header
-
-local HeaderFix = Instance.new("Frame")
-HeaderFix.Size = UDim2.new(1, 0, 0, 12)
-HeaderFix.Position = UDim2.new(0, 0, 1, -12)
-HeaderFix.BackgroundColor3 = Theme.Header
-HeaderFix.BorderSizePixel = 0
-HeaderFix.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0, 175, 1, 0)
-Title.Position = UDim2.new(0, 14, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "⛏️ Auto Farm Suite V16 (Unified Sell Edition)"
-Title.TextColor3 = Theme.Text
-Title.TextSize = 15
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local StatusBadge = Instance.new("TextLabel")
-StatusBadge.Name = "StatusBadge"
-StatusBadge.Size = UDim2.new(0, 130, 0, 26)
-StatusBadge.Position = UDim2.new(1, -170, 0.5, -13)
-StatusBadge.BackgroundColor3 = Theme.BadgeBG
-StatusBadge.Text = "⏸️ เริ่มต้นทำงาน..."
-StatusBadge.TextColor3 = Theme.Accent
-StatusBadge.TextSize = 11
-StatusBadge.Font = Enum.Font.GothamMedium
-StatusBadge.Parent = Header
-
-local BadgeCorner = Instance.new("UICorner")
-BadgeCorner.CornerRadius = UDim.new(0, 6)
-BadgeCorner.Parent = StatusBadge
-
-local function UpdateStatus(text)
-    StatusBadge.Text = text
-end
-
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.new(0, 28, 0, 28)
-MinBtn.Position = UDim2.new(1, -34, 0.5, -14)
-MinBtn.BackgroundColor3 = Theme.Accent
-MinBtn.Text = "—"
-MinBtn.TextColor3 = Theme.Text
-MinBtn.TextSize = 15
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.BorderSizePixel = 0
-MinBtn.Parent = Header
-
-local MinCorner = Instance.new("UICorner")
-MinCorner.CornerRadius = UDim.new(0, 6)
-MinCorner.Parent = MinBtn
-
--- Scroll Container
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Name = "Content"
-Scroll.Size = UDim2.new(1, -16, 1, -60)
-Scroll.Position = UDim2.new(0, 8, 0, 54)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 4
-Scroll.ScrollBarImageColor3 = Theme.Accent
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-Scroll.Parent = MainFrame
-
-local Layout = Instance.new("UIListLayout")
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Padding = UDim.new(0, 6)
-Layout.Parent = Scroll
 
 -- ═══════════════════════════════════════════════
--- 🛠️ UI BUILDERS
--- ═══════════════════════════════════════════════
-local ToggleControls = {}
-
-local function AddCategory(title, order)
-    local Cat = Instance.new("Frame")
-    Cat.Size = UDim2.new(1, 0, 0, 26)
-    Cat.BackgroundColor3 = Theme.Category
-    Cat.BorderSizePixel = 0
-    Cat.LayoutOrder = order
-    Cat.Parent = Scroll
-
-    local cCorner = Instance.new("UICorner")
-    cCorner.CornerRadius = UDim.new(0, 6)
-    cCorner.Parent = Cat
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -12, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = title
-    lbl.TextColor3 = Theme.Accent
-    lbl.TextSize = 12
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Cat
-end
-
-local function AddToggle(key, name, desc, order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 46)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local tLbl = Instance.new("TextLabel")
-    tLbl.Size = UDim2.new(1, -65, 0, 18)
-    tLbl.Position = UDim2.new(0, 12, 0, 6)
-    tLbl.BackgroundTransparency = 1
-    tLbl.Text = name
-    tLbl.TextColor3 = Theme.Text
-    tLbl.TextSize = 12
-    tLbl.Font = Enum.Font.GothamSemibold
-    tLbl.TextXAlignment = Enum.TextXAlignment.Left
-    tLbl.Parent = Frame
-
-    local dLbl = Instance.new("TextLabel")
-    dLbl.Size = UDim2.new(1, -65, 0, 14)
-    dLbl.Position = UDim2.new(0, 12, 0, 24)
-    dLbl.BackgroundTransparency = 1
-    dLbl.Text = desc
-    dLbl.TextColor3 = Theme.SubText
-    dLbl.TextSize = 10
-    dLbl.Font = Enum.Font.Gotham
-    dLbl.TextXAlignment = Enum.TextXAlignment.Left
-    dLbl.Parent = Frame
-
-    local Switch = Instance.new("Frame")
-    Switch.Size = UDim2.new(0, 40, 0, 20)
-    Switch.Position = UDim2.new(1, -48, 0.5, -10)
-    Switch.BackgroundColor3 = Config[key] and Theme.ToggleOn or Theme.ToggleOff
-    Switch.BorderSizePixel = 0
-    Switch.Parent = Frame
-
-    local sCorner = Instance.new("UICorner")
-    sCorner.CornerRadius = UDim.new(1, 0)
-    sCorner.Parent = Switch
-
-    local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.new(0, 16, 0, 16)
-    Knob.Position = Config[key] and UDim2.new(0, 21, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-    Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Switch
-
-    local kCorner = Instance.new("UICorner")
-    kCorner.CornerRadius = UDim.new(1, 0)
-    kCorner.Parent = Knob
-
-    local function UpdateVisual(val)
-        TweenService:Create(Switch, TweenInfo.new(0.2), {
-            BackgroundColor3 = val and Theme.ToggleOn or Theme.ToggleOff
-        }):Play()
-
-        TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Back), {
-            Position = val and UDim2.new(0, 21, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-        }):Play()
-    end
-
-    ToggleControls[key] = {
-        Set = function(val)
-            Config[key] = val
-            UpdateVisual(val)
-            SaveConfig()
-        end
-    }
-
-    local Click = Instance.new("TextButton")
-    Click.Size = UDim2.new(1, 0, 1, 0)
-    Click.BackgroundTransparency = 1
-    Click.Text = ""
-    Click.Parent = Frame
-
-    Click.MouseButton1Click:Connect(function()
-        Config[key] = not Config[key]
-        UpdateVisual(Config[key])
-        SaveConfig()
-    end)
-    return Frame
-end
-
-local function AddActionButton(name, desc, btnText, btnColor, callback, order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 44)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local tLbl = Instance.new("TextLabel")
-    tLbl.Size = UDim2.new(1, -125, 0, 18)
-    tLbl.Position = UDim2.new(0, 12, 0, 5)
-    tLbl.BackgroundTransparency = 1
-    tLbl.Text = name
-    tLbl.TextColor3 = Theme.Text
-    tLbl.TextSize = 11
-    tLbl.Font = Enum.Font.GothamSemibold
-    tLbl.TextXAlignment = Enum.TextXAlignment.Left
-    tLbl.Parent = Frame
-
-    local dLbl = Instance.new("TextLabel")
-    dLbl.Size = UDim2.new(1, -125, 0, 14)
-    dLbl.Position = UDim2.new(0, 12, 0, 23)
-    dLbl.BackgroundTransparency = 1
-    dLbl.Text = desc
-    dLbl.TextColor3 = Theme.SubText
-    dLbl.TextSize = 10
-    dLbl.Font = Enum.Font.Gotham
-    dLbl.TextXAlignment = Enum.TextXAlignment.Left
-    dLbl.Parent = Frame
-
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(0, 105, 0, 26)
-    Btn.Position = UDim2.new(1, -117, 0.5, -13)
-    Btn.BackgroundColor3 = btnColor or Theme.BadgeBG
-    Btn.Text = btnText
-    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Btn.TextSize = 10
-    Btn.Font = Enum.Font.GothamBold
-    Btn.BorderSizePixel = 0
-    Btn.Parent = Frame
-
-    local bCorner = Instance.new("UICorner")
-    bCorner.CornerRadius = UDim.new(0, 6)
-    bCorner.Parent = Btn
-
-    Btn.MouseButton1Click:Connect(callback)
-    return Frame
-end
-
-local function AddLevelCapCustomInput(title, configKey, minVal, maxVal, step, order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 42)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, 155, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = title
-    lbl.TextColor3 = Theme.Text
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Frame
-
-    local Actions = Instance.new("Frame")
-    Actions.Size = UDim2.new(0, 175, 0, 28)
-    Actions.Position = UDim2.new(1, -183, 0.5, -14)
-    Actions.BackgroundTransparency = 1
-    Actions.Parent = Frame
-
-    local aLayout = Instance.new("UIListLayout")
-    aLayout.FillDirection = Enum.FillDirection.Horizontal
-    aLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    aLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    aLayout.Padding = UDim.new(0, 4)
-    aLayout.Parent = Actions
-
-    local InputBox = Instance.new("TextBox")
-    InputBox.Size = UDim2.new(0, 52, 0, 26)
-    InputBox.BackgroundColor3 = Theme.InputBG
-    InputBox.Text = tostring(Config[configKey])
-    InputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    InputBox.TextSize = 12
-    InputBox.Font = Enum.Font.GothamBold
-    InputBox.ClearTextOnFocus = false
-    InputBox.BorderSizePixel = 0
-    InputBox.LayoutOrder = 2
-    InputBox.Parent = Actions
-
-    local iCorner = Instance.new("UICorner")
-    iCorner.CornerRadius = UDim.new(0, 6)
-    iCorner.Parent = InputBox
-
-    local iStroke = Instance.new("UIStroke")
-    iStroke.Color = Theme.Border
-    iStroke.Thickness = 1
-    iStroke.Parent = InputBox
-
-    local function ApplyValue(val)
-        val = tonumber(val) or Config[configKey]
-        val = math.clamp(math.floor(val), minVal, maxVal)
-        Config[configKey] = val
-        InputBox.Text = tostring(val)
-        SaveConfig()
-    end
-
-    InputBox.FocusLost:Connect(function()
-        ApplyValue(InputBox.Text)
-    end)
-
-    local DecBtn = Instance.new("TextButton")
-    DecBtn.Size = UDim2.new(0, 26, 0, 26)
-    DecBtn.BackgroundColor3 = Theme.BadgeBG
-    DecBtn.Text = "—"
-    DecBtn.TextColor3 = Theme.Accent
-    DecBtn.TextSize = 11
-    DecBtn.Font = Enum.Font.GothamBold
-    DecBtn.BorderSizePixel = 0
-    DecBtn.LayoutOrder = 1
-    DecBtn.Parent = Actions
-
-    local dCorner = Instance.new("UICorner")
-    dCorner.CornerRadius = UDim.new(0, 6)
-    dCorner.Parent = DecBtn
-
-    DecBtn.MouseButton1Click:Connect(function()
-        ApplyValue(Config[configKey] - step)
-    end)
-
-    local IncBtn = Instance.new("TextButton")
-    IncBtn.Size = UDim2.new(0, 26, 0, 26)
-    IncBtn.BackgroundColor3 = Theme.BadgeBG
-    IncBtn.Text = "+"
-    IncBtn.TextColor3 = Theme.Accent
-    IncBtn.TextSize = 12
-    IncBtn.Font = Enum.Font.GothamBold
-    IncBtn.BorderSizePixel = 0
-    IncBtn.LayoutOrder = 3
-    IncBtn.Parent = Actions
-
-    local inCorner = Instance.new("UICorner")
-    inCorner.CornerRadius = UDim.new(0, 6)
-    inCorner.Parent = IncBtn
-
-    IncBtn.MouseButton1Click:Connect(function()
-        ApplyValue(Config[configKey] + step)
-    end)
-
-    local MaxBtn = Instance.new("TextButton")
-    MaxBtn.Size = UDim2.new(0, 42, 0, 26)
-    MaxBtn.BackgroundColor3 = Theme.ChipActive
-    MaxBtn.Text = "ตัน"
-    MaxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MaxBtn.TextSize = 10
-    MaxBtn.Font = Enum.Font.GothamBold
-    MaxBtn.BorderSizePixel = 0
-    MaxBtn.LayoutOrder = 4
-    MaxBtn.Parent = Actions
-
-    local mCorner = Instance.new("UICorner")
-    mCorner.CornerRadius = UDim.new(0, 6)
-    mCorner.Parent = MaxBtn
-
-    MaxBtn.MouseButton1Click:Connect(function()
-        ApplyValue(maxVal)
-    end)
-end
-
-local RefreshMutationVisuals = nil
-
--- ตัวเลือก Slot สุ่มบัพ (จัดลำดับตาม Base DMG Lv.1 + ล็อคอัตโนมัติ)
-
--- รายชื่อตัวเลือกทั้งหมดในระบบขายรวม (แร่, ขวานเก่า, ตัวละครตามระดับ & โซนเก่า)
-local UnifiedSellItems = {
-    { key = "Ores", name = "แร่ (Ores)", category = "แร่" },
-    { key = "OldPickaxes", name = "ขวานเก่า (Picks)", category = "ขวาน" },
-    { key = "OldZoneChars", name = "โซนเก่า (OldZone)", category = "ตัวละคร" },
-    { key = "Common", name = "Common", category = "ตัวละคร" },
-    { key = "Uncommon", name = "Uncommon", category = "ตัวละคร" },
-    { key = "Rare", name = "Rare", category = "ตัวละคร" },
-    { key = "Epic", name = "Epic", category = "ตัวละคร" },
-    { key = "Legendary", name = "Legendary", category = "ตัวละคร" },
-    { key = "Mythical", name = "Mythical", category = "ตัวละคร" },
-    { key = "Exotic", name = "Exotic", category = "ตัวละคร" },
-}
-
--- ดรอปดาวน์เลือกระดับและประเภทไอเทมที่จะขาย (Unified Sell Dropdown)
-local function AddUnifiedSellDropdown(order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 48)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.ClipsDescendants = true
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local HeaderBtn = Instance.new("TextButton")
-    HeaderBtn.Size = UDim2.new(1, 0, 0, 48)
-    HeaderBtn.BackgroundTransparency = 1
-    HeaderBtn.Text = ""
-    HeaderBtn.Parent = Frame
-
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Size = UDim2.new(1, -60, 0, 18)
-    TitleLabel.Position = UDim2.new(0, 12, 0, 6)
-    TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "📦 เลือกประเภท & ระดับไอเทมที่จะขาย (Dropdown)"
-    TitleLabel.TextColor3 = Theme.Text
-    TitleLabel.TextSize = 11
-    TitleLabel.Font = Enum.Font.GothamSemibold
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLabel.Parent = HeaderBtn
-
-    local SummaryLabel = Instance.new("TextLabel")
-    SummaryLabel.Size = UDim2.new(1, -60, 0, 16)
-    SummaryLabel.Position = UDim2.new(0, 12, 0, 26)
-    SummaryLabel.BackgroundTransparency = 1
-    SummaryLabel.Text = "เลือกไว้: กำลังโหลด..."
-    SummaryLabel.TextColor3 = Theme.Accent
-    SummaryLabel.TextSize = 10
-    SummaryLabel.Font = Enum.Font.Gotham
-    SummaryLabel.TextXAlignment = Enum.TextXAlignment.Left
-    SummaryLabel.Parent = HeaderBtn
-
-    local ArrowLabel = Instance.new("TextLabel")
-    ArrowLabel.Size = UDim2.new(0, 30, 0, 48)
-    ArrowLabel.Position = UDim2.new(1, -40, 0, 0)
-    ArrowLabel.BackgroundTransparency = 1
-    ArrowLabel.Text = "▼"
-    ArrowLabel.TextColor3 = Theme.SubText
-    ArrowLabel.TextSize = 14
-    ArrowLabel.Font = Enum.Font.GothamBold
-    ArrowLabel.Parent = HeaderBtn
-
-    local ExpandedPanel = Instance.new("Frame")
-    ExpandedPanel.Size = UDim2.new(1, -24, 0, 175)
-    ExpandedPanel.Position = UDim2.new(0, 12, 0, 48)
-    ExpandedPanel.BackgroundTransparency = 1
-    ExpandedPanel.Parent = Frame
-
-    -- Preset Bar (แร่+ขวาน, ≤ Common, ≤ Uncommon, ≤ Rare, ≤ Epic, ล้าง)
-    local PresetBar = Instance.new("Frame")
-    PresetBar.Size = UDim2.new(1, 0, 0, 24)
-    PresetBar.Position = UDim2.new(0, 0, 0, 0)
-    PresetBar.BackgroundTransparency = 1
-    PresetBar.Parent = ExpandedPanel
-
-    local pLayout = Instance.new("UIListLayout")
-    pLayout.FillDirection = Enum.FillDirection.Horizontal
-    pLayout.Padding = UDim.new(0, 4)
-    pLayout.Parent = PresetBar
-
-    local ChipContainer = Instance.new("Frame")
-    ChipContainer.Size = UDim2.new(1, 0, 0, 140)
-    ChipContainer.Position = UDim2.new(0, 0, 0, 30)
-    ChipContainer.BackgroundTransparency = 1
-    ChipContainer.Parent = ExpandedPanel
-
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 88, 0, 26)
-    grid.CellPadding = UDim2.new(0, 5, 0, 5)
-    grid.Parent = ChipContainer
-
-    local optionButtons = {}
-
-    local function UpdateSummary()
-        local selectedList = {}
-        for _, item in ipairs(UnifiedSellItems) do
-            if Config.SellOptions and Config.SellOptions[item.key] then
-                table.insert(selectedList, item.name)
-            end
-        end
-        if #selectedList == 0 then
-            SummaryLabel.Text = "เลือกไว้: (ไม่ได้เลือกรายการใดๆ - ปิดการขาย)"
-            SummaryLabel.TextColor3 = Theme.SubText
-        else
-            SummaryLabel.Text = "เลือกไว้: " .. table.concat(selectedList, ", ")
-            SummaryLabel.TextColor3 = Theme.Accent
-        end
-        for _, item in ipairs(UnifiedSellItems) do
-            local btn = optionButtons[item.key]
-            if btn then
-                local isSel = Config.SellOptions and Config.SellOptions[item.key] == true
-                btn.BackgroundColor3 = isSel and Theme.ChipActive or Theme.ChipInactive
-                btn.TextColor3 = isSel and Color3.fromRGB(255, 255, 255) or Theme.SubText
-                btn.Text = (isSel and "✓ " or "+ ") .. item.name
-            end
-        end
-    end
-
-    local isExpanded = false
-    HeaderBtn.MouseButton1Click:Connect(function()
-        isExpanded = not isExpanded
-        if isExpanded then
-            Frame.Size = UDim2.new(1, 0, 0, 230)
-            ArrowLabel.Text = "▲"
-            ArrowLabel.TextColor3 = Theme.Accent
-        else
-            Frame.Size = UDim2.new(1, 0, 0, 48)
-            ArrowLabel.Text = "▼"
-            ArrowLabel.TextColor3 = Theme.SubText
-        end
-    end)
-
-    -- Presets setup
-    local presets = {
-        { name = "แร่+ขวาน", list = { "Ores", "OldPickaxes" } },
-        { name = "≤ Common", list = { "Ores", "OldPickaxes", "OldZoneChars", "Common" } },
-        { name = "≤ Uncom", list = { "Ores", "OldPickaxes", "OldZoneChars", "Common", "Uncommon" } },
-        { name = "≤ Rare", list = { "Ores", "OldPickaxes", "OldZoneChars", "Common", "Uncommon", "Rare" } },
-        { name = "≤ Epic", list = { "Ores", "OldPickaxes", "OldZoneChars", "Common", "Uncommon", "Rare", "Epic" } },
-        { name = "ล้าง", list = {} }
-    }
-
-    for _, p in ipairs(presets) do
-        local pBtn = Instance.new("TextButton")
-        pBtn.Size = UDim2.new(0, 52, 1, 0)
-        pBtn.BackgroundColor3 = Theme.BadgeBG
-        pBtn.Text = p.name
-        pBtn.TextColor3 = Theme.SubText
-        pBtn.TextSize = 9
-        pBtn.Font = Enum.Font.GothamMedium
-        pBtn.BorderSizePixel = 0
-        pBtn.Parent = PresetBar
-
-        local pc = Instance.new("UICorner")
-        pc.CornerRadius = UDim.new(0, 4)
-        pc.Parent = pBtn
-
-        pBtn.MouseButton1Click:Connect(function()
-            Config.SellOptions = {}
-            for _, k in ipairs(p.list) do
-                Config.SellOptions[k] = true
-            end
-            SaveConfig()
-            UpdateSummary()
-        end)
-    end
-
-    -- Option Chips setup
-    for _, item in ipairs(UnifiedSellItems) do
-        local chip = Instance.new("TextButton")
-        chip.Size = UDim2.new(0, 88, 0, 26)
-        chip.BackgroundColor3 = Theme.ChipInactive
-        chip.Text = "+ " .. item.name
-        chip.TextColor3 = Theme.SubText
-        chip.TextSize = 9
-        chip.Font = Enum.Font.GothamMedium
-        chip.BorderSizePixel = 0
-        chip.Parent = ChipContainer
-
-        local cCorner = Instance.new("UICorner")
-        cCorner.CornerRadius = UDim.new(0, 5)
-        cCorner.Parent = chip
-
-        optionButtons[item.key] = chip
-
-        chip.MouseButton1Click:Connect(function()
-            if not Config.SellOptions then Config.SellOptions = {} end
-            if Config.SellOptions[item.key] then
-                Config.SellOptions[item.key] = nil
-            else
-                Config.SellOptions[item.key] = true
-            end
-            SaveConfig()
-            UpdateSummary()
-        end)
-    end
-
-    UpdateSummary()
-    return Frame
-end
-
-local function AddMultiSlotSelector(order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 105)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, 210, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "📌 แท่นสุ่มบัพ (เรียงตาม Base DMG Lv.1):"
-    lbl.TextColor3 = Theme.Text
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Frame
-
-    local QuickActions = Instance.new("Frame")
-    QuickActions.Size = UDim2.new(0, 130, 0, 20)
-    QuickActions.Position = UDim2.new(1, -140, 0, 6)
-    QuickActions.BackgroundTransparency = 1
-    QuickActions.Parent = Frame
-
-    local qLayout = Instance.new("UIListLayout")
-    qLayout.FillDirection = Enum.FillDirection.Horizontal
-    qLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    qLayout.Padding = UDim.new(0, 4)
-    qLayout.Parent = QuickActions
-
-    local SelectAllBtn = Instance.new("TextButton")
-    SelectAllBtn.Size = UDim2.new(0, 62, 1, 0)
-    SelectAllBtn.BackgroundColor3 = Theme.BadgeBG
-    SelectAllBtn.Text = "เลือกทั้งหมด"
-    SelectAllBtn.TextColor3 = Theme.Accent
-    SelectAllBtn.TextSize = 9
-    SelectAllBtn.Font = Enum.Font.GothamMedium
-    SelectAllBtn.BorderSizePixel = 0
-    SelectAllBtn.Parent = QuickActions
-
-    local saCorner = Instance.new("UICorner")
-    saCorner.CornerRadius = UDim.new(0, 4)
-    saCorner.Parent = SelectAllBtn
-
-    local ClearAllBtn = Instance.new("TextButton")
-    ClearAllBtn.Size = UDim2.new(0, 44, 1, 0)
-    ClearAllBtn.BackgroundColor3 = Theme.BadgeBG
-    ClearAllBtn.Text = "ล้าง"
-    ClearAllBtn.TextColor3 = Theme.SubText
-    ClearAllBtn.TextSize = 9
-    ClearAllBtn.Font = Enum.Font.GothamMedium
-    ClearAllBtn.BorderSizePixel = 0
-    ClearAllBtn.Parent = QuickActions
-
-    local caCorner = Instance.new("UICorner")
-    caCorner.CornerRadius = UDim.new(0, 4)
-    caCorner.Parent = ClearAllBtn
-
-    local SlotContainer = Instance.new("Frame")
-    SlotContainer.Size = UDim2.new(1, -24, 0, 28)
-    SlotContainer.Position = UDim2.new(0, 12, 0, 30)
-    SlotContainer.BackgroundTransparency = 1
-    SlotContainer.Parent = Frame
-
-    local sLayout = Instance.new("UIListLayout")
-    sLayout.FillDirection = Enum.FillDirection.Horizontal
-    sLayout.Padding = UDim.new(0, 4)
-    sLayout.Parent = SlotContainer
-
-    local StatusSubLabel = Instance.new("TextLabel")
-    StatusSubLabel.Size = UDim2.new(1, -24, 0, 36)
-    StatusSubLabel.Position = UDim2.new(0, 12, 0, 62)
-    StatusSubLabel.BackgroundTransparency = 1
-    StatusSubLabel.Text = "สถานะ: กำลังตรวจสอบ..."
-    StatusSubLabel.TextColor3 = Theme.SubText
-    StatusSubLabel.TextSize = 10
-    StatusSubLabel.Font = Enum.Font.Gotham
-    StatusSubLabel.TextXAlignment = Enum.TextXAlignment.Left
-    StatusSubLabel.TextYAlignment = Enum.TextYAlignment.Top
-    StatusSubLabel.TextWrapped = true
-    StatusSubLabel.Parent = Frame
-
-    local slotButtons = {}
-    local availableSlots = { "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8" }
-
-    local function RefreshVisuals()
-        local d2 = GameState.GetData2()
-        local mg = d2 and d2.MineGame
-        local lockedCount = 0
-        local totalSelected = 0
-
-        for _, sName in ipairs(availableSlots) do
-            local btn = slotButtons[sName]
-            local isSelected = Config.MutationSlots[sName] == true
-            local h = mg and mg.Holders and mg.Holders[sName]
-            local curVariant = h and h.CharVariant or "Normal"
-            local isTargetHit = Config.TargetMutations[curVariant] == true
-
-            if isSelected then
-                totalSelected = totalSelected + 1
-                if isTargetHit then
-                    lockedCount = lockedCount + 1
-                    btn.BackgroundColor3 = Theme.ChipLocked
-                    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    btn.Text = "🔒" .. sName
-                else
-                    btn.BackgroundColor3 = Theme.ChipActive
-                    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    btn.Text = "✓" .. sName
-                end
-            else
-                btn.BackgroundColor3 = Theme.ChipInactive
-                btn.TextColor3 = Theme.SubText
-                btn.Text = "+" .. sName
-            end
-        end
-
-                StatusSubLabel.Text = string.format("เลือกทั้งหมด: %d แท่น | 🔒ล็อคแล้ว: %d | รอดำเนินการ: %d (สุ่มตัวที่พร้อมก่อนเสมอ ล็อคเมื่อตรงเป้าหมาย)", totalSelected, lockedCount, math.max(0, totalSelected - lockedCount))
-    end
-    RefreshMutationVisuals = RefreshVisuals
-
-    for _, sName in ipairs(availableSlots) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 37, 1, 0)
-        btn.BackgroundColor3 = Theme.ChipInactive
-        btn.Text = sName
-        btn.TextColor3 = Theme.SubText
-        btn.TextSize = 10
-        btn.Font = Enum.Font.GothamBold
-        btn.BorderSizePixel = 0
-        btn.Parent = SlotContainer
-
-        local bCorner = Instance.new("UICorner")
-        bCorner.CornerRadius = UDim.new(0, 5)
-        bCorner.Parent = btn
-
-        slotButtons[sName] = btn
-
-        btn.MouseButton1Click:Connect(function()
-            if Config.MutationSlots[sName] then
-                Config.MutationSlots[sName] = nil
-            else
-                Config.MutationSlots[sName] = true
-            end
-            SaveConfig()
-            RefreshVisuals()
-        end)
-    end
-
-    SelectAllBtn.MouseButton1Click:Connect(function()
-        for _, sName in ipairs(availableSlots) do
-            Config.MutationSlots[sName] = true
-        end
-        SaveConfig()
-        RefreshVisuals()
-    end)
-
-    ClearAllBtn.MouseButton1Click:Connect(function()
-        Config.MutationSlots = {}
-        SaveConfig()
-        RefreshVisuals()
-    end)
-
-    task.spawn(function()
-        while Frame and Frame.Parent do
-            RefreshVisuals()
-            task.wait(1.5)
-        end
-    end)
-end
-
-local function AddMultiMutationSelector(order)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 140)
-    Frame.BackgroundColor3 = Theme.Button
-    Frame.BorderSizePixel = 0
-    Frame.LayoutOrder = order
-    Frame.Parent = Scroll
-
-    local fCorner = Instance.new("UICorner")
-    fCorner.CornerRadius = UDim.new(0, 8)
-    fCorner.Parent = Frame
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -24, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "🎯 เลือกบัพการกลายพันธุ์เป้าหมาย (เลือกกี่บัพก็ได้):"
-    lbl.TextColor3 = Theme.Text
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Frame
-
-    local ChipContainer = Instance.new("Frame")
-    ChipContainer.Size = UDim2.new(1, -24, 0, 105)
-    ChipContainer.Position = UDim2.new(0, 12, 0, 28)
-    ChipContainer.BackgroundTransparency = 1
-    ChipContainer.Parent = Frame
-
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 100, 0, 28)
-    grid.CellPadding = UDim2.new(0, 6, 0, 6)
-    grid.Parent = ChipContainer
-
-    for _, mutName in ipairs(AllMutations) do
-        local chip = Instance.new("TextButton")
-        local isSelected = Config.TargetMutations[mutName] == true
-        chip.BackgroundColor3 = isSelected and Theme.ChipActive or Theme.ChipInactive
-        chip.Text = (isSelected and "✓ " or "+ ") .. mutName
-        chip.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Theme.SubText
-        chip.TextSize = 10
-        chip.Font = Enum.Font.GothamMedium
-        chip.BorderSizePixel = 0
-        chip.Parent = ChipContainer
-
-        local chCorner = Instance.new("UICorner")
-        chCorner.CornerRadius = UDim.new(0, 6)
-        chCorner.Parent = chip
-
-        chip.MouseButton1Click:Connect(function()
-            if Config.TargetMutations[mutName] then
-                Config.TargetMutations[mutName] = nil
-                chip.BackgroundColor3 = Theme.ChipInactive
-                chip.TextColor3 = Theme.SubText
-                chip.Text = "+ " .. mutName
-            else
-                Config.TargetMutations[mutName] = true
-                chip.BackgroundColor3 = Theme.ChipActive
-                chip.TextColor3 = Color3.fromRGB(255, 255, 255)
-                chip.Text = "✓ " .. mutName
-            end
-            SaveConfig()
-        end)
-    end
-end
-
--- ═══════════════════════════════════════════════
--- 🛠️ ACTION HELPERS (TRIALS, CRATES, EQUIP BEST)
--- ═══════════════════════════════════════════════
-
--- Helper สำหรับตรวจสอบสถานะรางวัลของ Infinity Trial (ตรวจนับจำนวนเทียร์ที่เคลมแล้วและนับถอยหลังรีเซ็ต)
-local function GetTrialRewardStatus(trialData)
-    if not (MineTrialConfig and trialData) then
-        return { allClaimed = false, claimedCount = 0, totalTiers = 12, claimable = {}, claimableCount = 0, resetCountdown = "00:00:00", secondsLeft = 0 }
-    end
-    local totalTiers = (MineTrialConfig.TierCount and MineTrialConfig.TierCount(trialData)) or 12
-    local claimedCount = 0
-    for i = 1, totalTiers do
-        if MineTrialConfig.IsClaimed and MineTrialConfig.IsClaimed(trialData, i) then
-            claimedCount = claimedCount + 1
-        end
-    end
-    local claimable = (MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)) or {}
-    local allClaimed = (claimedCount >= totalTiers)
-    local secondsLeft = (MineTrialConfig.SecondsToNextDay and MineTrialConfig.SecondsToNextDay()) or 0
-    local resetCountdown = (MineTrialConfig.FormatCountdown and MineTrialConfig.FormatCountdown(secondsLeft)) or string.format("%ds", secondsLeft)
-
-    return {
-        allClaimed = allClaimed,
-        claimedCount = claimedCount,
-        totalTiers = totalTiers,
-        claimable = claimable,
-        claimableCount = #claimable,
-        hasAvailableRewards = not allClaimed,
-        resetCountdown = resetCountdown,
-        secondsLeft = secondsLeft
-    }
-end
-
--- Helper สำหรับลงทดสอบอินฟินิตี้ (Infinity Trial)
-local function TriggerInfinityTrial(force)
-    local d2 = SafeGetData2()
-    local mg = d2 and d2.MineGame
-    if not (mg and MineTrialConfig) then
-        UpdateStatus("⚠️ ไม่พบข้อมูลโหมด Infinity Trial")
-        return
-    end
-    if MineTrialConfig.Unlocked and not MineTrialConfig.Unlocked(mg) then
-        UpdateStatus("🔒 ยังไม่ปลดล็อกโหมด Infinity Trial")
-        return
-    end
-    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
-    local status = GetTrialRewardStatus(trialData)
-
-    -- หากเคลมรางวัลครบทุกเทียร์แล้ว และไม่ได้สั่งบังคับลง
-    if not force and status.allClaimed then
-        UpdateStatus(string.format("⏳ รางวัลครบแล้ว (รอรีเซ็ต %s)", status.resetCountdown))
-        return
-    end
-
-    local attempt = trialData.Attempt
-    local now = os.time()
-    local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
-    if isRunning then
-        UpdateStatus("ℹ️ กำลังทดสอบ Infinity Trial อยู่ในขณะนี้")
-    else
-        UpdateStatus("⚔️ เริ่มลงทดสอบอินฟินิตี้ (Infinity Trial)...")
-        SafeSendEvent(Config.Events.TrialStart)
-        HumanWait(0.4, 0.6)
-        UpdateStatus("✅ เริ่มลงทดสอบ Infinity Trial สำเร็จ!")
-    end
-end
-
--- Helper สำหรับรับรางวัล Infinity Trial
-local function TriggerClaimTrial()
-    local d2 = SafeGetData2()
-    local mg = d2 and d2.MineGame
-    if not (mg and MineTrialConfig) then return end
-    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
-    local claimable = MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)
-    if claimable and #claimable > 0 then
-        local count = 0
-        for _, tierIdx in ipairs(claimable) do
-            UpdateStatus(string.format("🏆 รับรางวัล Infinity Trial T%d...", tierIdx))
-            SafeSendEvent(Config.Events.TrialClaim, tierIdx)
-            count = count + 1
-            HumanWait(0.35, 0.5)
-        end
-        UpdateStatus(string.format("✅ รับรางวัล Infinity Trial %d รายการสำเร็จ!", count))
-    else
-        UpdateStatus("ℹ️ ไม่มีรางวัล Infinity Trial ที่ค้างรับ")
-    end
-end
-
--- Helper สำหรับเปิด Petalfall Crate
-local function TriggerOpenPetalfallCrate()
-    local d2 = SafeGetData2()
-    local mg = d2 and d2.MineGame
-    local cc = mg and mg.ColossusCrates
-    local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
-    if count <= 0 then
-        UpdateStatus("ℹ️ ไม่มี Petalfall Crate ในคลัง")
-        return
-    end
-    local openAmount = math.clamp(count, 1, 50)
-    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
-    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
-    HumanWait(0.4, 0.6)
-    UpdateStatus(string.format("✅ เปิด Petalfall Crate %d กล่องสำเร็จ!", openAmount))
-end
-
--- Helper สำหรับกดปุ่มสวมใส่ที่ดีที่สุดทั้ง UI และ Server
-local function TriggerEquipBest()
-    UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
-    local mineGui = PlayerGui:FindFirstChild("MineGui")
-    if not mineGui then
-        warn("⚠️ [Null-Safety] ไม่พบ 'MineGui' ใน PlayerGui ข้ามการกดปุ่ม UI")
-    else
-        local invFrame = mineGui:FindFirstChild("InventoryFrame")
-        if not invFrame then
-            warn("⚠️ [Null-Safety] ไม่พบ 'InventoryFrame' ใน MineGui")
-        else
-            local eqBtn = invFrame:FindFirstChild("EquipBestButton", true)
-            if eqBtn then
-                if getconnections then
-                    local conns = getconnections(eqBtn.MouseButton1Click)
-                    if conns and conns[1] then
-                        conns[1]:Fire()
-                    end
-                end
-            else
-                warn("⚠️ [Null-Safety] ไม่พบ 'EquipBestButton' ใน InventoryFrame")
-            end
-        end
-    end
-    SafeSendEvent(Config.Events.EquipBest)
-    HumanWait(0.25, 0.35)
-end
-
--- ═══════════════════════════════════════════════
--- 📋 สร้างเมนูจัดหมวดหมู่ UI ใหม่ (6 หมวดหมู่ ใช้งานง่าย & สะดวก)
--- ═══════════════════════════════════════════════
-
--- หมวดที่ 1: ระบบฟาร์ม & ร้านค้า
-AddCategory("📦 1. ระบบฟาร์ม & ร้านค้า (Farming & Sell)", 1)
-AddToggle("AutoMine", "Auto Mine (ขุดหินในแปลง)", "ค้นหาและขุดหินในแปลง รวมถึงหินทดสอบอินฟินิตี้ก่อนเสมอ", 2)
-AddToggle("AutoChest", "Auto Take Chest (ดูดแร่จากหีบ)", "ดูดแร่จากหีบเข้ากระเป๋าอัตโนมัติเมื่อหินแตก", 3)
-AddToggle("AutoSell", "Auto Sell (ระบบขายอัตโนมัติรวม)", "วาร์ปไปขายแร่, ขวานเก่า และตัวละครตามที่เลือกในดรอปดาวน์อัตโนมัติ", 4)
-AddUnifiedSellDropdown(5)
-AddActionButton("💰 วาร์ปไปขายทันที (ตามที่เลือก)", "วาร์ปไปร้านขายแร่ ขายทุกอย่างที่ติ๊กเลือกไว้ในดรอปดาวน์ทันที", "ขายทันที", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(function()
-            local d2 = SafeGetData2()
-            local mg = d2 and d2.MineGame
-            local sellKeys = GetUnifiedSellKeys(mg)
-            if #sellKeys == 0 then
-                UpdateStatus("ℹ️ ไม่มีไอเทมตามที่เลือกให้ขาย")
-                return
-            end
-            local char = LocalPlayer.Character
-            local sellStand = workspace:FindFirstChild("SellStand")
-            if not sellStand then
-                warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace")
-                UpdateStatus("⚠️ ไม่พบร้านค้า SellStand")
-                return
-            end
-            local myPlot = GetMyPlot()
-            local returnPlot = GetPlotReturnCFrame(myPlot)
-            if char and sellStand then
-                UpdateStatus(string.format("💰 ขายไอเทมที่เลือก (%d รายการ)...", #sellKeys))
-                char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
-                HumanWait(0.35, 0.5)
-
-                -- ส่งคำสั่งขายแบบ Batch ปลอดภัย (ครั้งละ 50 คีย์)
-                for i = 1, #sellKeys, 50 do
-                    local batch = {}
-                    for j = i, math.min(i + 49, #sellKeys) do
-                        table.insert(batch, sellKeys[j])
-                    end
-                    SafeSendEvent(Config.Events.SellItems, batch)
-                    HumanWait(0.25, 0.35)
-                end
-
-                if returnPlot then
-                    char:PivotTo(returnPlot)
-                    HumanWait(0.2, 0.3)
-                end
-                UpdateStatus(string.format("✅ ขายสำเร็จ %d รายการ!", #sellKeys))
-            end
-        end)
-        if not ok then
-            warn(string.format("⚠️ [Action Error: UnifiedSellNow] %s", tostring(err)))
-        end
-    end)
-end, 6)
-AddToggle("AutoBuyZone", "Auto Unlock New Zone", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", 8)
-
--- หมวดที่ 2: ดันเจี้ยน & กล่องรางวัล
-AddCategory("⚔️ 2. ดันเจี้ยน & กล่องรางวัล (Trials & Crates)", 10)
-AddToggle("AutoInfinityTrial", "Auto Infinity Trial (ทดสอบอินฟินิตี้)", "ลงทดสอบและเคลมรับรางวัลอินฟินิตี้อัตโนมัติเมื่อพร้อม", 11)
-AddActionButton("⚡ ลง Infinity Trial ทันที", "สั่งเริ่มการทดสอบอินฟินิตี้ (Infinity Trial) รอบใหม่ทันที", "ลง Trial", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(TriggerInfinityTrial)
-        if not ok then warn(string.format("⚠️ [Action Error: InfinityTrial] %s", tostring(err))) end
-    end)
-end, 12)
-AddActionButton("⚡ รับรางวัล Trial ทันที", "ตรวจสอบและกดรับรางวัล Infinity Trial ที่ผ่านเกณฑ์ทั้งหมดทันที", "รับรางวัล", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(TriggerClaimTrial)
-        if not ok then warn(string.format("⚠️ [Action Error: ClaimTrial] %s", tostring(err))) end
-    end)
-end, 13)
-AddToggle("AutoOpenPetalfallCrate", "Auto Open Petalfall Crate", "เปิดกล่อง Petalfall Crate ในคลังอัตโนมัติเมื่อมีกล่อง", 14)
-AddActionButton("⚡ เปิด Petalfall Crate ทันที", "สั่งเปิดกล่อง Petalfall Crate ในคลังที่มีอยู่ทั้งหมดทันที", "เปิดกล่อง", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(TriggerOpenPetalfallCrate)
-        if not ok then warn(string.format("⚠️ [Action Error: OpenPetalfallCrate] %s", tostring(err))) end
-    end)
-end, 15)
-
--- หมวดที่ 3: อัปเกรด & ขวานคนงาน
-AddCategory("🌳 3. อัปเกรด & ขวานคนงาน (Upgrades & Gear)", 20)
-AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (ต้นใหม่)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", 21)
-AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", 22)
-AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe", "ซื้อขวานขั้นที่แพงและดีที่สุดเมื่อพร้อม (ไม่จำกัดจำนวน)", 23)
-AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", 24)
-AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(TriggerEquipBest)
-        if ok then
-            UpdateStatus("✅ สวมใส่ตัวที่ดีที่สุดสำเร็จ!")
-        else
-            warn(string.format("⚠️ [Action Error: EquipBest] %s", tostring(err)))
-        end
-    end)
-end, 25)
-
--- หมวดที่ 4: สถิติตัวละคร & กลายพันธุ์
-AddCategory("👥 4. สถิติตัวละคร & กลายพันธุ์ (Stats & Mutations)", 30)
-AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", 31)
-AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, 32)
-AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, 33)
-AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, 34)
-AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ (ไม่ปิดสวิตช์)", 35)
-AddMultiSlotSelector(36)
-AddMultiMutationSelector(37)
-
--- หมวดที่ 5: กาชา & รับรางวัล
-AddCategory("🎲 5. กาชา & รับรางวัล (Gacha & Claims)", 40)
-AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อลูกเต๋าหมด)", 41)
-AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", 42)
-AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", 43)
-AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(function()
-            local d2 = SafeGetData2()
-            local mg = d2 and d2.MineGame
-            if not (mg and MineIndexRewardsConfig and MineIndexRewardsConfig.Enabled) then return end
-            local heldNames = MineIndexRewardsConfig.HeldNames(mg)
-            local claimedAny = 0
-            for _, catKey in ipairs(MineIndexRewardsConfig.Keys()) do
-                local state = MineIndexRewardsConfig.State(mg, catKey, heldNames)
-                for _, tier in ipairs(state.Track or {}) do
-                    if tier.Reached and not tier.Claimed then
-                        for rIdx, rDef in ipairs(tier.Rewards or {}) do
-                            local rIds = MineIndexRewardsConfig.RewardIds({rDef})
-                            local rId = rIds and rIds[1]
-                            local isClaimed = tier.ClaimedRewards and (tier.ClaimedRewards[rId] or 0) > 0
-                            if not isClaimed then
-                                UpdateStatus(string.format("📖 รับรางวัล Index: %s", catKey))
-                                SafeSendEvent(Config.Events.IndexClaim, catKey, tier.Key, rIdx)
-                                claimedAny = claimedAny + 1
-                                HumanWait(0.3, 0.45)
-                            end
-                        end
-                    end
-                end
-            end
-            if claimedAny > 0 then
-                UpdateStatus(string.format("✅ รับรางวัล Index %d รายการสำเร็จ!", claimedAny))
-            else
-                UpdateStatus("ℹ️ ไม่มีรางวัล Index ที่ค้างรับ")
-            end
-        end)
-        if not ok then
-            warn(string.format("⚠️ [Action Error: ClaimIndex] %s", tostring(err)))
-        end
-    end)
-end, 44)
-AddToggle("AutoClaimEvents", "Auto Claim Events (รับรางวัลอีเว้น)", "รับรางวัล Milestone บนบอร์ดอีเว้นอัตโนมัติ", 45)
-AddActionButton("⚡ รับรางวัล Event ทันที", "ตรวจสอบและกดรับรางวัลบอร์ด Event ที่ปลดล็อกทั้งหมดทันที", "รับ Event", Theme.SpecialBtn, function()
-    task.spawn(function()
-        local ok, err = pcall(function()
-            UpdateStatus("🏆 ตรวจสอบรางวัล Event...")
-            SafeSendEvent(Config.Events.EventsOpen)
-            HumanWait(0.4, 0.6)
-            if latestEventsPayload and latestEventsPayload.Events then
-                local claimedCount = 0
-                for _, ev in ipairs(latestEventsPayload.Events or {}) do
-                    local pts = tonumber(ev.Points) or 0
-                    for tIdx, targetPts in ipairs(ev.Thresholds or {}) do
-                        if pts >= targetPts and not (ev.Claimed and ev.Claimed[tIdx]) then
-                            local tiers = ev.Days and ev.Key and MineEventsConfig and MineEventsConfig.Catalog and MineEventsConfig.Catalog[ev.Key] and MineEventsConfig.Tiers and MineEventsConfig.Tiers(ev.Days, MineEventsConfig.Catalog[ev.Key])
-                            local tDef = tiers and tiers[tIdx]
-                            local rList = tDef and tDef.Rewards or {}
-                            local shownList = MineEventsConfig and MineEventsConfig.Shown and MineEventsConfig.Shown(rList) or rList
-                            for rIdx, rItem in ipairs(shownList) do
-                                local actualIdx = table.find(rList, rItem) or rIdx
-                                local gotMask = type(ev.Got) == "table" and (tonumber(ev.Got[tIdx]) or 0) or 0
-                                if not (gotMask > 0 and bit32.btest(gotMask, 2 ^ (actualIdx - 1))) then
-                                    SafeSendEvent(Config.Events.EventsClaim, ev.Id, tIdx, actualIdx)
-                                    claimedCount = claimedCount + 1
-                                    HumanWait(0.35, 0.5)
-                                end
-                            end
-                        end
-                    end
-                end
-                if claimedCount > 0 then
-                    UpdateStatus(string.format("✅ รับรางวัล Event %d รายการสำเร็จ!", claimedCount))
-                else
-                    UpdateStatus("ℹ️ ไม่มีรางวัล Event ที่ค้างรับ")
-                end
-            else
-                UpdateStatus("ℹ️ กำลังรอข้อมูลบอร์ด Event...")
-            end
-        end)
-        if not ok then
-            warn(string.format("⚠️ [Action Error: ClaimEvent] %s", tostring(err)))
-        end
-    end)
-end, 46)
-
--- หมวดที่ 6: ระบบเสริม
-AddCategory("🛡️ 6. ระบบเสริม (System)", 50)
-AddToggle("AntiAFK", "Anti-AFK Protection", "ป้องกันระบบตัดการเชื่อมต่อเมื่อ AFK", 51)
-
--- หมวดที่ 7: ระบบแลกเปลี่ยน & โอนไอเทม (Trade Suite)
-AddCategory("🤝 7. ระบบแลกเปลี่ยน & โอนไอเทม (Trade Suite)", 60)
-AddActionButton("Trade Suite UI", "เปิด/ปิดหน้าต่างเมนูเทรดไอเทมและอัญมณีแบบแยกจอ", "🤝 เปิด Trade UI", Color3.fromRGB(130, 70, 220), function()
-    if TradeMainFrame then
-        TradeMainFrame.Visible = not TradeMainFrame.Visible
-    end
-end, 61)
-
-local TradeMainToggleBtn
-local TradeMainToggleFrame = AddActionButton("สวิตช์ระบบเทรด (Trade Switch)", "กดเปิดเพื่อเริ่มส่งของ หรือกดปิดเพื่อหยุดการเทรด", "🚀 ปิด (OFF)", Color3.fromRGB(50, 50, 70), function()
-    if _G.ToggleTrade then
-        _G.ToggleTrade()
-    end
-end, 62)
-if TradeMainToggleFrame then
-    TradeMainToggleBtn = TradeMainToggleFrame:FindFirstChildWhichIsA("TextButton", true)
-end
-
--- ═══════════════════════════════════════════════
--- 🖱️ DRAGGING & MINIMIZE & HOTKEY
--- ═══════════════════════════════════════════════
-local dragging, dragStart, startPos
-Header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-    end
-end)
-
-Header.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-local isMinimized = false
-MinBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    MinBtn.Text = isMinimized and "+" or "—"
-    TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
-        Size = isMinimized and UDim2.new(0, 370, 0, 50) or UDim2.new(0, 370, 0, 620)
-    }):Play()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if not gpe and input.KeyCode == Enum.KeyCode.F9 then
-        MainFrame.Visible = not MainFrame.Visible
-    end
-end)
-
-
+-- 🤝 TRADE CORE DATA HELPERS & LOGIC
 -- ═══════════════════════════════════════════════
 -- 🤝 7. ADVANCED TRADE & SELECTIVE TRANSFER SUITE (V7.1 PRO)
 -- ═══════════════════════════════════════════════
 local TradeState = nil
 local TradeMainFrame = nil
 
-do
-    TradeState = {
+TradeState = {
         IsTradeActive = false,
         Mode = "Sender",            -- "Sender" หรือ "Receiver"
         TargetReceiver = nil,
@@ -2223,742 +952,1832 @@ do
     end
     
     -- ========================================================================
-    -- 🎨 GUI CREATION (V7.1 Pro UI)
-    -- ========================================================================
-    local GuiName = "MineTradeSelectiveUI"
-    local oldGui = PlayerGui:FindFirstChild(GuiName)
+
+-- ═══════════════════════════════════════════════
+-- ⚙️ DUNGEON & ACTION HELPER FUNCTIONS
+-- ═══════════════════════════════════════════════
+local function GetTrialRewardStatus(trialData)
+    if not (MineTrialConfig and trialData) then
+        return { allClaimed = false, claimedCount = 0, totalTiers = 12, claimable = {}, claimableCount = 0, resetCountdown = "00:00:00", secondsLeft = 0 }
+    end
+    local totalTiers = (MineTrialConfig.TierCount and MineTrialConfig.TierCount(trialData)) or 12
+    local claimedCount = 0
+    for i = 1, totalTiers do
+        if MineTrialConfig.IsClaimed and MineTrialConfig.IsClaimed(trialData, i) then
+            claimedCount = claimedCount + 1
+        end
+    end
+    local claimable = (MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)) or {}
+    local allClaimed = (claimedCount >= totalTiers)
+    local secondsLeft = (MineTrialConfig.SecondsToNextDay and MineTrialConfig.SecondsToNextDay()) or 0
+    local resetCountdown = (MineTrialConfig.FormatCountdown and MineTrialConfig.FormatCountdown(secondsLeft)) or string.format("%ds", secondsLeft)
+
+    return {
+        allClaimed = allClaimed,
+        claimedCount = claimedCount,
+        totalTiers = totalTiers,
+        claimable = claimable,
+        claimableCount = #claimable,
+        hasAvailableRewards = not allClaimed,
+        resetCountdown = resetCountdown,
+        secondsLeft = secondsLeft
+    }
+end
+
+-- Helper สำหรับลงทดสอบอินฟินิตี้ (Infinity Trial)
+local function TriggerInfinityTrial(force)
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineTrialConfig) then
+        UpdateStatus("⚠️ ไม่พบข้อมูลโหมด Infinity Trial")
+        return
+    end
+    if MineTrialConfig.Unlocked and not MineTrialConfig.Unlocked(mg) then
+        UpdateStatus("🔒 ยังไม่ปลดล็อกโหมด Infinity Trial")
+        return
+    end
+    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+    local status = GetTrialRewardStatus(trialData)
+
+    -- หากเคลมรางวัลครบทุกเทียร์แล้ว และไม่ได้สั่งบังคับลง
+    if not force and status.allClaimed then
+        UpdateStatus(string.format("⏳ รางวัลครบแล้ว (รอรีเซ็ต %s)", status.resetCountdown))
+        return
+    end
+
+    local attempt = trialData.Attempt
+    local now = os.time()
+    local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
+    if isRunning then
+        UpdateStatus("ℹ️ กำลังทดสอบ Infinity Trial อยู่ในขณะนี้")
+    else
+        UpdateStatus("⚔️ เริ่มลงทดสอบอินฟินิตี้ (Infinity Trial)...")
+        SafeSendEvent(Config.Events.TrialStart)
+        HumanWait(0.4, 0.6)
+        UpdateStatus("✅ เริ่มลงทดสอบ Infinity Trial สำเร็จ!")
+    end
+end
+
+-- Helper สำหรับรับรางวัล Infinity Trial
+local function TriggerClaimTrial()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineTrialConfig) then return end
+    local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
+    local claimable = MineTrialConfig.ClaimableTiers and MineTrialConfig.ClaimableTiers(trialData)
+    if claimable and #claimable > 0 then
+        local count = 0
+        for _, tierIdx in ipairs(claimable) do
+            UpdateStatus(string.format("🏆 รับรางวัล Infinity Trial T%d...", tierIdx))
+            SafeSendEvent(Config.Events.TrialClaim, tierIdx)
+            count = count + 1
+            HumanWait(0.35, 0.5)
+        end
+        UpdateStatus(string.format("✅ รับรางวัล Infinity Trial %d รายการสำเร็จ!", count))
+    else
+        UpdateStatus("ℹ️ ไม่มีรางวัล Infinity Trial ที่ค้างรับ")
+    end
+end
+
+-- Helper สำหรับเปิด Petalfall Crate
+local function TriggerOpenPetalfallCrate()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    local cc = mg and mg.ColossusCrates
+    local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
+    if count <= 0 then
+        UpdateStatus("ℹ️ ไม่มี Petalfall Crate ในคลัง")
+        return
+    end
+    local openAmount = math.clamp(count, 1, 50)
+    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
+    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
+    HumanWait(0.4, 0.6)
+    UpdateStatus(string.format("✅ เปิด Petalfall Crate %d กล่องสำเร็จ!", openAmount))
+end
+
+-- Helper สำหรับกดปุ่มสวมใส่ที่ดีที่สุดทั้ง UI และ Server
+local function TriggerEquipBest()
+    UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
+    local mineGui = PlayerGui:FindFirstChild("MineGui")
+    if not mineGui then
+        warn("⚠️ [Null-Safety] ไม่พบ 'MineGui' ใน PlayerGui ข้ามการกดปุ่ม UI")
+    else
+        local invFrame = mineGui:FindFirstChild("InventoryFrame")
+        if not invFrame then
+            warn("⚠️ [Null-Safety] ไม่พบ 'InventoryFrame' ใน MineGui")
+        else
+            local eqBtn = invFrame:FindFirstChild("EquipBestButton", true)
+            if eqBtn then
+                if getconnections then
+                    local conns = getconnections(eqBtn.MouseButton1Click)
+                    if conns and conns[1] then
+                        conns[1]:Fire()
+                    end
+                end
+            else
+                warn("⚠️ [Null-Safety] ไม่พบ 'EquipBestButton' ใน InventoryFrame")
+            end
+        end
+    end
+    SafeSendEvent(Config.Events.EquipBest)
+    HumanWait(0.25, 0.35)
+end
+
+-- ═══════════════════════════════════════════════
+-- 📋 สร้างเมนูจัดหมวดหมู่ UI ใหม่ (6 หมวดหมู่ ใช้งานง่าย & สะดวก)
+-- ═══════════════════════════════════════════════
+
+-- 🎨 UNIFIED HUB UI (KUYKUY ANIME MINE V17)
+-- ═══════════════════════════════════════════════
+for _, oldName in ipairs({
+    "AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8",
+    "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12",
+    "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14", "AnimeMineAutoFarmV15", "AnimeMineAutoFarmV16",
+    "MineTradeSelectiveUI", "AnimeMineHubUnified"
+}) do
+    local oldGui = PlayerGui:FindFirstChild(oldName)
     if oldGui then oldGui:Destroy() end
-    
-    local TradeScreenGui = Instance.new("ScreenGui")
-    TradeScreenGui.Name = GuiName
-    TradeScreenGui.ResetOnSpawn = false
-    TradeScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    TradeScreenGui.Parent = PlayerGui
-    
-    TradeMainFrame = Instance.new("Frame")
-    TradeMainFrame.Name = "TradeMainFrame"
-    TradeMainFrame.Size = UDim2.new(0, 420, 0, 570)
-    TradeMainFrame.Position = UDim2.new(0.04, 0, 0.14, 0)
-    TradeMainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-    TradeMainFrame.BorderSizePixel = 0
-    TradeMainFrame.ClipsDescendants = true
-    TradeMainFrame.Active = true
-    TradeMainFrame.Draggable = true
-    TradeMainFrame.Parent = TradeScreenGui
-    
-    local MainCorner = Instance.new("UICorner")
-    MainCorner.CornerRadius = UDim.new(0, 10)
-    MainCorner.Parent = TradeMainFrame
-    
-    local MainStroke = Instance.new("UIStroke")
-    MainStroke.Color = Color3.fromRGB(130, 80, 230)
-    MainStroke.Thickness = 1.6
-    MainStroke.Parent = TradeMainFrame
-    
-    -- TradeHeader
-    local TradeHeader = Instance.new("Frame")
-    TradeHeader.Size = UDim2.new(1, 0, 0, 42)
-    TradeHeader.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-    TradeHeader.BorderSizePixel = 0
-    TradeHeader.Parent = TradeMainFrame
-    
-    local HeaderCorner = Instance.new("UICorner")
-    HeaderCorner.CornerRadius = UDim.new(0, 10)
-    HeaderCorner.Parent = TradeHeader
-    
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, -100, 1, 0)
-    Title.Position = UDim2.new(0, 12, 0, 0)
-    Title.BackgroundTransparency = 1
-    Title.Text = "🤝 Trade & Selective Transfer V7.1 Pro"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 12.5
-    Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.Parent = TradeHeader
-    
-    local TradeMinBtn = Instance.new("TextButton")
-    TradeMinBtn.Size = UDim2.new(0, 26, 0, 26)
-    TradeMinBtn.Position = UDim2.new(1, -64, 0, 8)
-    TradeMinBtn.BackgroundColor3 = Color3.fromRGB(48, 48, 65)
-    TradeMinBtn.Text = "—"
-    TradeMinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TradeMinBtn.Font = Enum.Font.GothamBold
-    TradeMinBtn.TextSize = 13
-    TradeMinBtn.Parent = TradeHeader
+end
 
-    local TradeMinCorner = Instance.new("UICorner")
-    TradeMinCorner.CornerRadius = UDim.new(0, 6)
-    TradeMinCorner.Parent = TradeMinBtn
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AnimeMineHubUnified"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
 
-    local isTradeMinimized = false
-    TradeMinBtn.MouseButton1Click:Connect(function()
-        isTradeMinimized = not isTradeMinimized
-        TradeMinBtn.Text = isTradeMinimized and "+" or "—"
-        TweenService:Create(TradeMainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
-            Size = isTradeMinimized and UDim2.new(0, 420, 0, 42) or UDim2.new(0, 420, 0, 570)
+local Theme = {
+    Background = Color3.fromRGB(18, 18, 26),
+    Header = Color3.fromRGB(26, 22, 38),
+    Sidebar = Color3.fromRGB(22, 20, 32),
+    SidebarBtn = Color3.fromRGB(28, 26, 40),
+    SidebarBtnActive = Color3.fromRGB(115, 65, 210),
+    ContentBG = Color3.fromRGB(15, 15, 22),
+    Card = Color3.fromRGB(25, 25, 38),
+    CardHover = Color3.fromRGB(32, 32, 48),
+    InputBG = Color3.fromRGB(14, 14, 20),
+    Text = Color3.fromRGB(255, 255, 255),
+    SubText = Color3.fromRGB(155, 155, 180),
+    ToggleOn = Color3.fromRGB(46, 204, 113),
+    ToggleOff = Color3.fromRGB(231, 76, 60),
+    Accent = Color3.fromRGB(145, 80, 240),
+    AccentHover = Color3.fromRGB(165, 100, 255),
+    Border = Color3.fromRGB(65, 45, 105),
+    BadgeBG = Color3.fromRGB(36, 30, 56),
+    SpecialBtn = Color3.fromRGB(230, 126, 34),
+    RedBtn = Color3.fromRGB(190, 45, 45),
+    GreenBtn = Color3.fromRGB(45, 160, 90),
+    ChipActive = Color3.fromRGB(142, 68, 173),
+    ChipInactive = Color3.fromRGB(36, 36, 52),
+    ChipLocked = Color3.fromRGB(39, 174, 96),
+}
+
+-- -------------------------------------------------------------
+-- [1] MAIN FRAME & FLOATING TOGGLE
+-- -------------------------------------------------------------
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 560, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -280, 0.5, -210)
+MainFrame.BackgroundColor3 = Theme.Background
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+-- เชื่อมโยง TradeMainFrame เดิมให้ชี้มาที่ MainFrame เพื่อความเข้ากันได้
+TradeMainFrame = MainFrame
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1.6
+MainStroke.Color = Theme.Border
+MainStroke.Parent = MainFrame
+
+-- Floating Icon Button (ปุ่มกลมลอยพับเก็บ-เปิดหน้าจอได้สะดวกรวดเร็วบนมือถือ/UGPhone/PC)
+local FloatingIconBtn = Instance.new("TextButton")
+FloatingIconBtn.Name = "FloatingIconBtn"
+FloatingIconBtn.Size = UDim2.new(0, 42, 0, 42)
+FloatingIconBtn.Position = UDim2.new(0, 18, 0.5, -21)
+FloatingIconBtn.BackgroundColor3 = Theme.Accent
+FloatingIconBtn.Text = "⛏️"
+FloatingIconBtn.TextSize = 20
+FloatingIconBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+FloatingIconBtn.Font = Enum.Font.GothamBold
+FloatingIconBtn.Active = true
+FloatingIconBtn.Draggable = true
+FloatingIconBtn.Parent = ScreenGui
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(1, 0)
+FloatCorner.Parent = FloatingIconBtn
+
+local FloatStroke = Instance.new("UIStroke")
+FloatStroke.Thickness = 1.5
+FloatStroke.Color = Color3.fromRGB(200, 160, 255)
+FloatStroke.Parent = FloatingIconBtn
+
+FloatingIconBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- -------------------------------------------------------------
+-- [2] HEADER
+-- -------------------------------------------------------------
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 44)
+Header.BackgroundColor3 = Theme.Header
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 10)
+HeaderCorner.Parent = Header
+
+local HeaderFix = Instance.new("Frame")
+HeaderFix.Size = UDim2.new(1, 0, 0, 10)
+HeaderFix.Position = UDim2.new(0, 0, 1, -10)
+HeaderFix.BackgroundColor3 = Theme.Header
+HeaderFix.BorderSizePixel = 0
+HeaderFix.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(0, 240, 1, 0)
+Title.Position = UDim2.new(0, 14, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "⛏️ KUYKUY HUB | Anime Mine V17"
+Title.TextColor3 = Theme.Text
+Title.TextSize = 13.5
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local StatusBadge = Instance.new("TextLabel")
+StatusBadge.Name = "StatusBadge"
+StatusBadge.Size = UDim2.new(0, 180, 0, 24)
+StatusBadge.Position = UDim2.new(1, -260, 0.5, -12)
+StatusBadge.BackgroundColor3 = Theme.BadgeBG
+StatusBadge.Text = "🟢 ระบบพร้อมทำงาน"
+StatusBadge.TextColor3 = Theme.ToggleOn
+StatusBadge.TextSize = 10.5
+StatusBadge.Font = Enum.Font.GothamMedium
+StatusBadge.Parent = Header
+
+local BadgeCorner = Instance.new("UICorner")
+BadgeCorner.CornerRadius = UDim.new(0, 6)
+BadgeCorner.Parent = StatusBadge
+
+local function UpdateStatus(text)
+    if StatusBadge then
+        StatusBadge.Text = text
+    end
+end
+
+local isMinimized = false
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 26, 0, 26)
+MinBtn.Position = UDim2.new(1, -64, 0.5, -13)
+MinBtn.BackgroundColor3 = Color3.fromRGB(48, 48, 65)
+MinBtn.Text = "—"
+MinBtn.TextColor3 = Theme.Text
+MinBtn.TextSize = 14
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Parent = Header
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 6)
+MinCorner.Parent = MinBtn
+
+MinBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    MinBtn.Text = isMinimized and "+" or "—"
+    TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+        Size = isMinimized and UDim2.new(0, 560, 0, 44) or UDim2.new(0, 560, 0, 420)
+    }):Play()
+end)
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+CloseBtn.Position = UDim2.new(1, -34, 0.5, -13)
+CloseBtn.BackgroundColor3 = Theme.RedBtn
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Theme.Text
+CloseBtn.TextSize = 12
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = Header
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+-- -------------------------------------------------------------
+-- [3] SIDEBAR & TAB PAGES SETUP
+-- -------------------------------------------------------------
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, 136, 1, -54)
+Sidebar.Position = UDim2.new(0, 8, 0, 48)
+Sidebar.BackgroundColor3 = Theme.Sidebar
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
+
+local SidebarCorner = Instance.new("UICorner")
+SidebarCorner.CornerRadius = UDim.new(0, 8)
+SidebarCorner.Parent = Sidebar
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.Padding = UDim.new(0, 5)
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SidebarLayout.Parent = Sidebar
+
+local SidebarPad = Instance.new("UIPadding")
+SidebarPad.PaddingTop = UDim.new(0, 8)
+SidebarPad.PaddingLeft = UDim.new(0, 6)
+SidebarPad.PaddingRight = UDim.new(0, 6)
+SidebarPad.Parent = Sidebar
+
+local ContentArea = Instance.new("Frame")
+ContentArea.Name = "ContentArea"
+ContentArea.Size = UDim2.new(1, -158, 1, -54)
+ContentArea.Position = UDim2.new(0, 150, 0, 48)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
+
+local TabButtons = {}
+local TabPages = {}
+local CurrentActiveTab = "Farming"
+
+local function CreateTabPage(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = "Tab_" .. name
+    page.Size = UDim2.new(1, 0, 1, 0)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Theme.Accent
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.Visible = false
+    page.Parent = ContentArea
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = page
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingRight = UDim.new(0, 6)
+    pad.PaddingTop = UDim.new(0, 2)
+    pad.PaddingBottom = UDim.new(0, 8)
+    pad.Parent = page
+
+    TabPages[name] = page
+    return page
+end
+
+local function SwitchTab(tabName)
+    CurrentActiveTab = tabName
+    for name, page in pairs(TabPages) do
+        page.Visible = (name == tabName)
+    end
+    for name, data in pairs(TabButtons) do
+        local isActive = (name == tabName)
+        data.Btn.BackgroundColor3 = isActive and Theme.SidebarBtnActive or Theme.SidebarBtn
+        data.Btn.TextColor3 = isActive and Color3.fromRGB(255, 255, 255) or Theme.SubText
+        data.Indicator.Visible = isActive
+    end
+end
+
+local function CreateTabNavButton(tabKey, tabLabel, icon, order)
+    local btn = Instance.new("TextButton")
+    btn.Name = "Nav_" .. tabKey
+    btn.Size = UDim2.new(1, 0, 0, 36)
+    btn.BackgroundColor3 = Theme.SidebarBtn
+    btn.Text = "   " .. icon .. " " .. tabLabel
+    btn.TextColor3 = Theme.SubText
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 11
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.LayoutOrder = order
+    btn.Parent = Sidebar
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = btn
+
+    local indicator = Instance.new("Frame")
+    indicator.Size = UDim2.new(0, 3, 0, 18)
+    indicator.Position = UDim2.new(0, 3, 0.5, -9)
+    indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    indicator.BorderSizePixel = 0
+    indicator.Visible = false
+    indicator.Parent = btn
+
+    local indCorner = Instance.new("UICorner")
+    indCorner.CornerRadius = UDim.new(1, 0)
+    indCorner.Parent = indicator
+
+    TabButtons[tabKey] = { Btn = btn, Indicator = indicator }
+
+    btn.MouseButton1Click:Connect(function()
+        SwitchTab(tabKey)
+    end)
+end
+
+-- สร้างเมนูนำทางใน Sidebar 5 หมวดหมู่
+CreateTabNavButton("Farming", "ฟาร์ม & ขาย", "⛏️", 1)
+CreateTabNavButton("Workers", "คนงาน & สกิล", "👥", 2)
+CreateTabNavButton("Dungeon", "ดันเจี้ยน & กาชา", "⚔️", 3)
+CreateTabNavButton("Trade", "ระบบเทรด", "🤝", 4)
+CreateTabNavButton("Settings", "ตั้งค่าระบบ", "⚙️", 5)
+
+local TabFarming = CreateTabPage("Farming")
+local TabWorkers = CreateTabPage("Workers")
+local TabDungeon = CreateTabPage("Dungeon")
+local TabTrade = CreateTabPage("Trade")
+local TabSettings = CreateTabPage("Settings")
+
+local StartTradeBtn = nil
+local CancelTradeBtn = nil
+local TradeSwitchBadge = nil
+local TradeCloseBtn = nil
+local TradeMainToggleBtn = nil
+local ItemCountLabel = nil
+local ItemScrollBox = nil
+local StatusBar = nil
+
+-- -------------------------------------------------------------
+-- [4] UI BUILDER HELPERS
+-- -------------------------------------------------------------
+local ToggleControls = {}
+
+local function AddSectionHeader(title, parentTab, order)
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 26)
+    header.BackgroundColor3 = Theme.BadgeBG
+    header.BorderSizePixel = 0
+    header.LayoutOrder = order or 0
+    header.Parent = parentTab
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = header
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = title
+    lbl.TextColor3 = Theme.Accent
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = header
+    return header
+end
+
+local function AddToggle(key, name, desc, parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 42)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -65, 0, 18)
+    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = name
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 11.5
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local dLbl = Instance.new("TextLabel")
+    dLbl.Size = UDim2.new(1, -65, 0, 14)
+    dLbl.Position = UDim2.new(0, 10, 0, 22)
+    dLbl.BackgroundTransparency = 1
+    dLbl.Text = desc
+    dLbl.TextColor3 = Theme.SubText
+    dLbl.TextSize = 9.5
+    dLbl.Font = Enum.Font.Gotham
+    dLbl.TextXAlignment = Enum.TextXAlignment.Left
+    dLbl.Parent = Frame
+
+    local Switch = Instance.new("Frame")
+    Switch.Size = UDim2.new(0, 36, 0, 18)
+    Switch.Position = UDim2.new(1, -44, 0.5, -9)
+    Switch.BackgroundColor3 = Config[key] and Theme.ToggleOn or Theme.ToggleOff
+    Switch.BorderSizePixel = 0
+    Switch.Parent = Frame
+
+    local sCorner = Instance.new("UICorner")
+    sCorner.CornerRadius = UDim.new(1, 0)
+    sCorner.Parent = Switch
+
+    local Knob = Instance.new("Frame")
+    Knob.Size = UDim2.new(0, 14, 0, 14)
+    Knob.Position = Config[key] and UDim2.new(0, 19, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Knob.BorderSizePixel = 0
+    Knob.Parent = Switch
+
+    local kCorner = Instance.new("UICorner")
+    kCorner.CornerRadius = UDim.new(1, 0)
+    kCorner.Parent = Knob
+
+    local function UpdateVisual(val)
+        TweenService:Create(Switch, TweenInfo.new(0.2), {
+            BackgroundColor3 = val and Theme.ToggleOn or Theme.ToggleOff
+        }):Play()
+
+        TweenService:Create(Knob, TweenInfo.new(0.2, Enum.EasingStyle.Back), {
+            Position = val and UDim2.new(0, 19, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        }):Play()
+    end
+
+    ToggleControls[key] = {
+        Set = function(val)
+            Config[key] = val
+            UpdateVisual(val)
+            SaveConfig()
+        end
+    }
+
+    local Click = Instance.new("TextButton")
+    Click.Size = UDim2.new(1, 0, 1, 0)
+    Click.BackgroundTransparency = 1
+    Click.Text = ""
+    Click.Parent = Frame
+
+    Click.MouseButton1Click:Connect(function()
+        Config[key] = not Config[key]
+        UpdateVisual(Config[key])
+        SaveConfig()
+    end)
+    return Frame
+end
+
+local function AddActionButton(name, desc, btnText, btnColor, callback, parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 42)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -115, 0, 18)
+    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = name
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 11.5
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local dLbl = Instance.new("TextLabel")
+    dLbl.Size = UDim2.new(1, -115, 0, 14)
+    dLbl.Position = UDim2.new(0, 10, 0, 22)
+    dLbl.BackgroundTransparency = 1
+    dLbl.Text = desc
+    dLbl.TextColor3 = Theme.SubText
+    dLbl.TextSize = 9.5
+    dLbl.Font = Enum.Font.Gotham
+    dLbl.TextXAlignment = Enum.TextXAlignment.Left
+    dLbl.Parent = Frame
+
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(0, 95, 0, 26)
+    Btn.Position = UDim2.new(1, -102, 0.5, -13)
+    Btn.BackgroundColor3 = btnColor or Theme.SpecialBtn
+    Btn.Text = btnText
+    Btn.TextColor3 = Theme.Text
+    Btn.TextSize = 11
+    Btn.Font = Enum.Font.GothamBold
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Frame
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = Btn
+
+    Btn.MouseButton1Click:Connect(callback)
+    return Frame
+end
+
+local function AddLevelCapCustomInput(title, configKey, minVal, maxVal, step, parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 42)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(0, 180, 1, 0)
+    tLbl.Position = UDim2.new(0, 10, 0, 0)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = title
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 11
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local currentVal = tonumber(Config[configKey]) or maxVal
+
+    local ControlsContainer = Instance.new("Frame")
+    ControlsContainer.Size = UDim2.new(0, 160, 0, 26)
+    ControlsContainer.Position = UDim2.new(1, -168, 0.5, -13)
+    ControlsContainer.BackgroundTransparency = 1
+    ControlsContainer.Parent = Frame
+
+    local MinusBtn = Instance.new("TextButton")
+    MinusBtn.Size = UDim2.new(0, 24, 1, 0)
+    MinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    MinusBtn.Text = "-"
+    MinusBtn.TextColor3 = Theme.Text
+    MinusBtn.TextSize = 13
+    MinusBtn.Font = Enum.Font.GothamBold
+    MinusBtn.Parent = ControlsContainer
+
+    local mCorner = Instance.new("UICorner")
+    mCorner.CornerRadius = UDim.new(0, 4)
+    mCorner.Parent = MinusBtn
+
+    local ValBox = Instance.new("TextBox")
+    ValBox.Size = UDim2.new(0, 50, 1, 0)
+    ValBox.Position = UDim2.new(0, 28, 0, 0)
+    ValBox.BackgroundColor3 = Theme.InputBG
+    ValBox.Text = tostring(currentVal)
+    ValBox.TextColor3 = Color3.fromRGB(240, 200, 90)
+    ValBox.Font = Enum.Font.GothamBold
+    ValBox.TextSize = 11
+    ValBox.ClearTextOnFocus = false
+    ValBox.Parent = ControlsContainer
+
+    local vCorner = Instance.new("UICorner")
+    vCorner.CornerRadius = UDim.new(0, 4)
+    vCorner.Parent = ValBox
+
+    local PlusBtn = Instance.new("TextButton")
+    PlusBtn.Size = UDim2.new(0, 24, 1, 0)
+    PlusBtn.Position = UDim2.new(0, 82, 0, 0)
+    PlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    PlusBtn.Text = "+"
+    PlusBtn.TextColor3 = Theme.Text
+    PlusBtn.TextSize = 13
+    PlusBtn.Font = Enum.Font.GothamBold
+    PlusBtn.Parent = ControlsContainer
+
+    local pCorner = Instance.new("UICorner")
+    pCorner.CornerRadius = UDim.new(0, 4)
+    pCorner.Parent = PlusBtn
+
+    local MaxBtn = Instance.new("TextButton")
+    MaxBtn.Size = UDim2.new(0, 45, 1, 0)
+    MaxBtn.Position = UDim2.new(0, 110, 0, 0)
+    MaxBtn.BackgroundColor3 = Theme.Accent
+    MaxBtn.Text = "ตัน"
+    MaxBtn.TextColor3 = Theme.Text
+    MaxBtn.TextSize = 10.5
+    MaxBtn.Font = Enum.Font.GothamBold
+    MaxBtn.Parent = ControlsContainer
+
+    local maxCorner = Instance.new("UICorner")
+    maxCorner.CornerRadius = UDim.new(0, 4)
+    maxCorner.Parent = MaxBtn
+
+    local function ApplyValue(v)
+        local clamped = math.clamp(math.floor(v), minVal, maxVal)
+        currentVal = clamped
+        Config[configKey] = clamped
+        ValBox.Text = tostring(clamped)
+        SaveConfig()
+    end
+
+    MinusBtn.MouseButton1Click:Connect(function() ApplyValue(currentVal - step) end)
+    PlusBtn.MouseButton1Click:Connect(function() ApplyValue(currentVal + step) end)
+    MaxBtn.MouseButton1Click:Connect(function() ApplyValue(maxVal) end)
+
+    ValBox.FocusLost:Connect(function()
+        local num = tonumber(ValBox.Text)
+        if num then ApplyValue(num) else ValBox.Text = tostring(currentVal) end
+    end)
+    return Frame
+end
+
+local function AddUnifiedSellDropdown(parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 44)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.ClipsDescendants = true
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local TopBar = Instance.new("TextButton")
+    TopBar.Size = UDim2.new(1, 0, 0, 44)
+    TopBar.BackgroundTransparency = 1
+    TopBar.Text = ""
+    TopBar.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -40, 0, 18)
+    tLbl.Position = UDim2.new(0, 10, 0, 5)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = "💎 เลือกระดับที่จะขาย (Unified Sell Options)"
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 11.5
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = TopBar
+
+    local SummaryLbl = Instance.new("TextLabel")
+    SummaryLbl.Size = UDim2.new(1, -40, 0, 14)
+    SummaryLbl.Position = UDim2.new(0, 10, 0, 24)
+    SummaryLbl.BackgroundTransparency = 1
+    SummaryLbl.Text = "กำลังโหลดการตั้งค่า..."
+    SummaryLbl.TextColor3 = Color3.fromRGB(180, 140, 255)
+    SummaryLbl.TextSize = 9.5
+    SummaryLbl.Font = Enum.Font.Gotham
+    SummaryLbl.TextXAlignment = Enum.TextXAlignment.Left
+    SummaryLbl.Parent = TopBar
+
+    local ArrowLbl = Instance.new("TextLabel")
+    ArrowLbl.Size = UDim2.new(0, 30, 0, 30)
+    ArrowLbl.Position = UDim2.new(1, -34, 0, 7)
+    ArrowLbl.BackgroundTransparency = 1
+    ArrowLbl.Text = "▼"
+    ArrowLbl.TextColor3 = Theme.SubText
+    ArrowLbl.TextSize = 10
+    ArrowLbl.Font = Enum.Font.GothamBold
+    ArrowLbl.Parent = TopBar
+
+    local ChipContainer = Instance.new("Frame")
+    ChipContainer.Size = UDim2.new(1, -20, 0, 120)
+    ChipContainer.Position = UDim2.new(0, 10, 0, 48)
+    ChipContainer.BackgroundTransparency = 1
+    ChipContainer.Parent = Frame
+
+    local chipLayout = Instance.new("UIGridLayout")
+    chipLayout.CellSize = UDim2.new(0, 85, 0, 24)
+    chipLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+    chipLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    chipLayout.Parent = ChipContainer
+
+    local chipDefinitions = {
+        { Key = "Ores", Name = "🪨 แร่ทั้งหมด", Locked = false },
+        { Key = "OldPickaxes", Name = "⛏️ ขวานเก่า", Locked = false },
+        { Key = "Common", Name = "Common", Locked = false },
+        { Key = "Uncommon", Name = "Uncommon", Locked = false },
+        { Key = "Rare", Name = "Rare", Locked = false },
+        { Key = "Epic", Name = "Epic", Locked = false },
+        { Key = "Legendary", Name = "Legendary", Locked = false },
+        { Key = "Mythical", Name = "Mythical", Locked = false },
+        { Key = "Exotic", Name = "Exotic", Locked = false },
+        { Key = "OldZoneChars", Name = "👥 ตัวโซนเก่า", Locked = false },
+    }
+
+    local chipButtons = {}
+
+    local function UpdateSummary()
+        local activeList = {}
+        for _, def in ipairs(chipDefinitions) do
+            if Config.SellOptions and Config.SellOptions[def.Key] then
+                table.insert(activeList, def.Name)
+            end
+        end
+        if #activeList == 0 then
+            SummaryLbl.Text = "ยังไม่ได้เลือกรายการขายใดๆ"
+            SummaryLbl.TextColor3 = Theme.SubText
+        else
+            SummaryLbl.Text = table.concat(activeList, ", ")
+            SummaryLbl.TextColor3 = Color3.fromRGB(180, 140, 255)
+        end
+    end
+
+    for idx, def in ipairs(chipDefinitions) do
+        local chip = Instance.new("TextButton")
+        chip.Size = UDim2.new(0, 85, 0, 24)
+        chip.Font = Enum.Font.GothamBold
+        chip.TextSize = 9.5
+        chip.LayoutOrder = idx
+        chip.Parent = ChipContainer
+
+        local cCorner = Instance.new("UICorner")
+        cCorner.CornerRadius = UDim.new(0, 4)
+        cCorner.Parent = chip
+
+        local isSel = Config.SellOptions and Config.SellOptions[def.Key]
+        chip.BackgroundColor3 = isSel and Theme.ChipActive or Theme.ChipInactive
+        chip.TextColor3 = isSel and Color3.fromRGB(255, 255, 255) or Theme.SubText
+        chip.Text = (isSel and "✓ " or "") .. def.Name
+
+        chip.MouseButton1Click:Connect(function()
+            if not Config.SellOptions then Config.SellOptions = {} end
+            Config.SellOptions[def.Key] = not Config.SellOptions[def.Key]
+            local newSel = Config.SellOptions[def.Key]
+            chip.BackgroundColor3 = newSel and Theme.ChipActive or Theme.ChipInactive
+            chip.TextColor3 = newSel and Color3.fromRGB(255, 255, 255) or Theme.SubText
+            chip.Text = (newSel and "✓ " or "") .. def.Name
+            UpdateSummary()
+            SaveConfig()
+        end)
+        chipButtons[def.Key] = chip
+    end
+
+    UpdateSummary()
+
+    local isExpanded = false
+    TopBar.MouseButton1Click:Connect(function()
+        isExpanded = not isExpanded
+        ArrowLbl.Text = isExpanded and "▲" or "▼"
+        TweenService:Create(Frame, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+            Size = isExpanded and UDim2.new(1, 0, 0, 175) or UDim2.new(1, 0, 0, 44)
         }):Play()
     end)
+    return Frame
+end
 
-    local TradeCloseBtn = Instance.new("TextButton")
-    TradeCloseBtn.Size = UDim2.new(0, 26, 0, 26)
-    TradeCloseBtn.Position = UDim2.new(1, -34, 0, 8)
-    TradeCloseBtn.BackgroundColor3 = Color3.fromRGB(190, 45, 45)
-    TradeCloseBtn.Text = "✕"
-    TradeCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TradeCloseBtn.Font = Enum.Font.GothamBold
-    TradeCloseBtn.TextSize = 12
-    TradeCloseBtn.Parent = TradeHeader
-    
-    local CloseCorner = Instance.new("UICorner")
-    CloseCorner.CornerRadius = UDim.new(0, 6)
-    CloseCorner.Parent = TradeCloseBtn
-    
-    -- Status Bar
-    local StatusBar = Instance.new("TextLabel")
-    StatusBar.Size = UDim2.new(1, -20, 0, 26)
-    StatusBar.Position = UDim2.new(0, 10, 0, 48)
-    StatusBar.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-    StatusBar.Text = "💡 สถานะ: พร้อมทำงาน เลือกบทบาทบัญชีเพื่อเริ่มต้น"
-    StatusBar.TextColor3 = Color3.fromRGB(150, 220, 160)
-    StatusBar.Font = Enum.Font.GothamMedium
-    StatusBar.TextSize = 11
-    StatusBar.Parent = TradeMainFrame
-    
-    local StatusCorner = Instance.new("UICorner")
-    StatusCorner.CornerRadius = UDim.new(0, 6)
-    StatusCorner.Parent = StatusBar
-    
-    -- Main Scroll Container
-    local ScrollContainer = Instance.new("ScrollingFrame")
-    ScrollContainer.Size = UDim2.new(1, -20, 1, -88)
-    ScrollContainer.Position = UDim2.new(0, 10, 0, 80)
-    ScrollContainer.BackgroundTransparency = 1
-    ScrollContainer.BorderSizePixel = 0
-    ScrollContainer.ScrollBarThickness = 4
-    ScrollContainer.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
-    ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 800)
-    ScrollContainer.Parent = TradeMainFrame
-    
-    local ContainerLayout = Instance.new("UIListLayout")
-    ContainerLayout.Padding = UDim.new(0, 8)
-    ContainerLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    ContainerLayout.Parent = ScrollContainer
-    
-    local function CreateHeader(text, order)
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, 0, 0, 20)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = text
-        lbl.TextColor3 = Color3.fromRGB(200, 170, 255)
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = 11.5
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.LayoutOrder = order
-        lbl.Parent = ScrollContainer
-        return lbl
-    end
-    
-    -- ========================================================================
-    -- [1] ROLE SELECTION
-    -- ========================================================================
-    CreateHeader("👤 1. เลือกบทบาทของบัญชีนี้", 1)
-    
-    local RoleFrame = Instance.new("Frame")
-    RoleFrame.Size = UDim2.new(1, 0, 0, 32)
-    RoleFrame.BackgroundTransparency = 1
-    RoleFrame.LayoutOrder = 2
-    RoleFrame.Parent = ScrollContainer
-    
-    local SenderBtn = Instance.new("TextButton")
-    SenderBtn.Size = UDim2.new(0.485, 0, 1, 0)
-    SenderBtn.Position = UDim2.new(0, 0, 0, 0)
-    SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
-    SenderBtn.Text = "📤 โหมดผู้ส่ง (Sender)"
-    SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SenderBtn.Font = Enum.Font.GothamBold
-    SenderBtn.TextSize = 11
-    SenderBtn.Parent = RoleFrame
-    
-    local SenderCorner = Instance.new("UICorner")
-    SenderCorner.CornerRadius = UDim.new(0, 6)
-    SenderCorner.Parent = SenderBtn
-    
-    local ReceiverBtn = Instance.new("TextButton")
-    ReceiverBtn.Size = UDim2.new(0.485, 0, 1, 0)
-    ReceiverBtn.Position = UDim2.new(0.515, 0, 0, 0)
-    ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    ReceiverBtn.Text = "📥 โหมดผู้รับ (Receiver)"
-    ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
-    ReceiverBtn.Font = Enum.Font.GothamBold
-    ReceiverBtn.TextSize = 11
-    ReceiverBtn.Parent = RoleFrame
-    
-    local ReceiverCorner = Instance.new("UICorner")
-    ReceiverCorner.CornerRadius = UDim.new(0, 6)
-    ReceiverCorner.Parent = ReceiverBtn
-    
-    -- ========================================================================
-    -- [2] TARGET RECEIVER SELECTION (สำหรับ Sender)
-    -- ========================================================================
-    local TargetHeader = CreateHeader("🎯 2. เลือกผู้รับเป้าหมาย (Receiver)", 3)
-    
-    local PlayerSelectFrame = Instance.new("Frame")
-    PlayerSelectFrame.Size = UDim2.new(1, 0, 0, 32)
-    PlayerSelectFrame.BackgroundTransparency = 1
-    PlayerSelectFrame.LayoutOrder = 4
-    PlayerSelectFrame.Parent = ScrollContainer
-    
-    local CurrentPlayerLabel = Instance.new("TextLabel")
-    CurrentPlayerLabel.Size = UDim2.new(0.72, 0, 1, 0)
-    CurrentPlayerLabel.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-    CurrentPlayerLabel.Text = "กำลังค้นหาผู้เล่นในห้อง..."
-    CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
-    CurrentPlayerLabel.Font = Enum.Font.GothamBold
-    CurrentPlayerLabel.TextSize = 11
-    CurrentPlayerLabel.Parent = PlayerSelectFrame
-    
-    local CurPlayerCorner = Instance.new("UICorner")
-    CurPlayerCorner.CornerRadius = UDim.new(0, 6)
-    CurPlayerCorner.Parent = CurrentPlayerLabel
-    
-    local CyclePlayerBtn = Instance.new("TextButton")
-    CyclePlayerBtn.Size = UDim2.new(0.25, 0, 1, 0)
-    CyclePlayerBtn.Position = UDim2.new(0.75, 0, 0, 0)
-    CyclePlayerBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
-    CyclePlayerBtn.Text = "🔄 สลับผู้เล่น"
-    CyclePlayerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CyclePlayerBtn.Font = Enum.Font.GothamBold
-    CyclePlayerBtn.TextSize = 10.5
-    CyclePlayerBtn.Parent = PlayerSelectFrame
-    
-    local CycleCorner = Instance.new("UICorner")
-    CycleCorner.CornerRadius = UDim.new(0, 6)
-    CycleCorner.Parent = CyclePlayerBtn
-    
-    local function GetOtherPlayers()
-        local list = {}
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                table.insert(list, p)
-            end
-        end
-        return list
-    end
-    
-    local playerIndex = 1
-    local function UpdateSelectedPlayer(preferSaved)
-        local others = GetOtherPlayers()
-        if #others == 0 then
-            TradeState.TargetReceiver = nil
-            CurrentPlayerLabel.Text = "⚠️ ไม่มีผู้เล่นอื่นในห้อง"
-            CurrentPlayerLabel.TextColor3 = Color3.fromRGB(230, 90, 90)
-            return
-        end
-        if preferSaved and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
-            for idx, p in ipairs(others) do
-                if p.Name == TradeState.SavedReceiverName then
-                    playerIndex = idx
-                    break
-                end
-            end
-        end
-        if playerIndex > #others then playerIndex = 1 end
-        TradeState.TargetReceiver = others[playerIndex]
-        TradeState.SavedReceiverName = TradeState.TargetReceiver and TradeState.TargetReceiver.Name or TradeState.SavedReceiverName
-        CurrentPlayerLabel.Text = "👤 " .. TradeState.TargetReceiver.Name
-        CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
-    end
-    
-    UpdateSelectedPlayer(true)
-    
-    CyclePlayerBtn.MouseButton1Click:Connect(function()
-        local others = GetOtherPlayers()
-        if #others > 0 then
-            playerIndex = (playerIndex % #others) + 1
-            UpdateSelectedPlayer()
-            TradeNotify("เปลี่ยนผู้รับ", "เป้าหมายปัจจุบัน: " .. (TradeState.TargetReceiver and TradeState.TargetReceiver.Name or "None"))
-            SaveTradeConfig()
-        end
-    end)
-    
-    -- Receiver Options
-    local ReceiverAutoFrame = Instance.new("Frame")
-    ReceiverAutoFrame.Size = UDim2.new(1, 0, 0, 68)
-    ReceiverAutoFrame.BackgroundTransparency = 1
-    ReceiverAutoFrame.LayoutOrder = 5
-    ReceiverAutoFrame.Visible = false
-    ReceiverAutoFrame.Parent = ScrollContainer
-    
-    local ReceiverLayout = Instance.new("UIListLayout")
-    ReceiverLayout.Padding = UDim.new(0, 6)
-    ReceiverLayout.Parent = ReceiverAutoFrame
-    
-    local function CreateSmallToggle(parent, titleText, defaultVal, callback)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 28)
-        btn.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-        btn.Text = "  " .. titleText
-        btn.TextColor3 = Color3.fromRGB(220, 220, 230)
-        btn.Font = Enum.Font.GothamMedium
-        btn.TextSize = 10.5
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.Parent = parent
-    
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = btn
-    
-        local badge = Instance.new("TextLabel")
-        badge.Size = UDim2.new(0, 42, 0, 20)
-        badge.Position = UDim2.new(1, -48, 0.5, -10)
-        badge.BackgroundColor3 = defaultVal and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
-        badge.Text = defaultVal and "ON" or "OFF"
-        badge.TextColor3 = Color3.fromRGB(255, 255, 255)
-        badge.Font = Enum.Font.GothamBold
-        badge.TextSize = 10
-        badge.Parent = btn
-    
-        local bCorner = Instance.new("UICorner")
-        bCorner.CornerRadius = UDim.new(0, 4)
-        bCorner.Parent = badge
-    
-        local val = defaultVal
-        btn.MouseButton1Click:Connect(function()
-            val = not val
-            badge.Text = val and "ON" or "OFF"
-            badge.BackgroundColor3 = val and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
-            callback(val)
-            SaveTradeConfig()
+local function AddMultiSlotSelector(parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 60)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -20, 0, 16)
+    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = "🎯 เลือก Slot ตัวละครที่ต้องการสุ่มบัพ (ติ๊กได้หลายช่อง):"
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 10.5
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local SlotContainer = Instance.new("Frame")
+    SlotContainer.Size = UDim2.new(1, -20, 0, 28)
+    SlotContainer.Position = UDim2.new(0, 10, 0, 24)
+    SlotContainer.BackgroundTransparency = 1
+    SlotContainer.Parent = Frame
+
+    local sLayout = Instance.new("UIListLayout")
+    sLayout.FillDirection = Enum.FillDirection.Horizontal
+    sLayout.Padding = UDim.new(0, 4)
+    sLayout.Parent = SlotContainer
+
+    for s = 1, 8 do
+        local sBtn = Instance.new("TextButton")
+        sBtn.Size = UDim2.new(0.115, 0, 1, 0)
+        sBtn.Font = Enum.Font.GothamBold
+        sBtn.TextSize = 10
+        sBtn.Parent = SlotContainer
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = sBtn
+
+        local isChecked = Config.MutationSlots and Config.MutationSlots[s]
+        sBtn.BackgroundColor3 = isChecked and Theme.ChipActive or Theme.ChipInactive
+        sBtn.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Theme.SubText
+        sBtn.Text = (isChecked and "✓ " or "") .. "S" .. s
+
+        sBtn.MouseButton1Click:Connect(function()
+            if not Config.MutationSlots then Config.MutationSlots = {} end
+            Config.MutationSlots[s] = not Config.MutationSlots[s]
+            local cur = Config.MutationSlots[s]
+            sBtn.BackgroundColor3 = cur and Theme.ChipActive or Theme.ChipInactive
+            sBtn.TextColor3 = cur and Color3.fromRGB(255, 255, 255) or Theme.SubText
+            sBtn.Text = (cur and "✓ " or "") .. "S" .. s
+            SaveConfig()
         end)
     end
-    
-    CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Accept ตอบรับคำขอเทรดทันที", true, function(v) TradeState.AutoAccept = v end)
-    CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Ready & Confirm ยินยอมรับของอัตโนมัติ", true, function(v) TradeState.AutoReady = v TradeState.AutoConfirm = v end)
-    
-    local function SetRole(mode, skipSave)
-        TradeState.Mode = mode or "Sender"
-        if TradeState.Mode == "Sender" then
-            SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
-            SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-            ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
-            PlayerSelectFrame.Visible = true
-            TargetHeader.Visible = true
-            ReceiverAutoFrame.Visible = false
-            StatusBar.Text = "โหมดผู้ส่ง: เลือกผู้รับและติ๊กไอเทมที่จะส่ง"
+    return Frame
+end
+
+local function AddMultiMutationSelector(parentTab, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 88)
+    Frame.BackgroundColor3 = Theme.Card
+    Frame.BorderSizePixel = 0
+    Frame.LayoutOrder = order or 0
+    Frame.Parent = parentTab
+
+    local fCorner = Instance.new("UICorner")
+    fCorner.CornerRadius = UDim.new(0, 6)
+    fCorner.Parent = Frame
+
+    local tLbl = Instance.new("TextLabel")
+    tLbl.Size = UDim2.new(1, -20, 0, 16)
+    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.BackgroundTransparency = 1
+    tLbl.Text = "✨ เลือกบัพที่ยอมรับและหยุดสุ่มเมื่อได้ (ติ๊กได้หลายบัพ):"
+    tLbl.TextColor3 = Theme.Text
+    tLbl.TextSize = 10.5
+    tLbl.Font = Enum.Font.GothamSemibold
+    tLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tLbl.Parent = Frame
+
+    local MutContainer = Instance.new("Frame")
+    MutContainer.Size = UDim2.new(1, -20, 0, 60)
+    MutContainer.Position = UDim2.new(0, 10, 0, 24)
+    MutContainer.BackgroundTransparency = 1
+    MutContainer.Parent = Frame
+
+    local gLayout = Instance.new("UIGridLayout")
+    gLayout.CellSize = UDim2.new(0, 85, 0, 24)
+    gLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+    gLayout.Parent = MutContainer
+
+    local mutations = { "Shiny", "Giant", "Golden", "Void", "Rainbow", "Ghost", "Cataclysmic", "Abyssal" }
+    for _, mName in ipairs(mutations) do
+        local mBtn = Instance.new("TextButton")
+        mBtn.Size = UDim2.new(0, 85, 0, 24)
+        mBtn.Font = Enum.Font.GothamBold
+        mBtn.TextSize = 9.5
+        mBtn.Parent = MutContainer
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 4)
+        c.Parent = mBtn
+
+        local isChecked = Config.Mutations and Config.Mutations[mName]
+        mBtn.BackgroundColor3 = isChecked and Theme.ChipActive or Theme.ChipInactive
+        mBtn.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Theme.SubText
+        mBtn.Text = (isChecked and "✓ " or "") .. mName
+
+        mBtn.MouseButton1Click:Connect(function()
+            if not Config.Mutations then Config.Mutations = {} end
+            Config.Mutations[mName] = not Config.Mutations[mName]
+            local cur = Config.Mutations[mName]
+            mBtn.BackgroundColor3 = cur and Theme.ChipActive or Theme.ChipInactive
+            mBtn.TextColor3 = cur and Color3.fromRGB(255, 255, 255) or Theme.SubText
+            mBtn.Text = (cur and "✓ " or "") .. mName
+            SaveConfig()
+        end)
+    end
+    return Frame
+end
+
+-- -------------------------------------------------------------
+-- [5] POPULATE TAB 1: ฟาร์ม & ขาย (FARMING & SELL)
+-- -------------------------------------------------------------
+AddSectionHeader("📦 ระบบฟาร์มหลัก (Main Farming)", TabFarming, 1)
+AddToggle("AutoMine", "Auto Mine (ขุดหินในแปลง)", "ค้นหาและขุดหินในแปลง รวมถึงหินทดสอบอินฟินิตี้ก่อนเสมอ", TabFarming, 2)
+AddToggle("AutoChest", "Auto Take Chest (ดูดแร่จากหีบ)", "ดูดแร่จากหีบเข้ากระเป๋าอัตโนมัติเมื่อหินแตก", TabFarming, 3)
+AddToggle("AutoBuyZone", "Auto Unlock New Zone (ปลดล็อคโซนใหม่)", "ซื้อและปลดล็อกโซนใหม่ที่ ZoneBoard เมื่อวิจัยครบ", TabFarming, 4)
+AddToggle("AutoBuyBestPickaxe", "Auto Buy Best Pickaxe (ซื้อขวานดีสุดที่ปลดล็อค)", "ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อคเมื่อพร้อมเท่านั้น", TabFarming, 5)
+
+AddSectionHeader("💰 ระบบขายรวมอัจฉริยะ (Unified Auto-Sell)", TabFarming, 6)
+AddToggle("AutoSell", "Auto Sell (ระบบขายอัตโนมัติรวม)", "วาร์ปไปขายแร่, ขวานเก่า และตัวละครตามที่เลือกในดรอปดาวน์", TabFarming, 7)
+AddUnifiedSellDropdown(TabFarming, 8)
+AddActionButton("💰 วาร์ปไปขายทันที (ตามที่เลือก)", "วาร์ปไปร้านขายแร่ ขายทุกอย่างที่ติ๊กเลือกไว้ในดรอปดาวน์ทันที", "ขายทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
+            local sellKeys = GetUnifiedSellKeys(mg)
+            if #sellKeys == 0 then
+                UpdateStatus("ℹ️ ไม่มีไอเทมตามที่เลือกให้ขาย")
+                return
+            end
+            local char = LocalPlayer.Character
+            local sellStand = workspace:FindFirstChild("SellStand")
+            if not sellStand then
+                warn("⚠️ [Null-Safety] ไม่พบ 'SellStand' ใน workspace")
+                UpdateStatus("⚠️ ไม่พบร้านค้า SellStand")
+                return
+            end
+            local myPlot = GetMyPlot()
+            local returnPlot = GetPlotReturnCFrame(myPlot)
+            if char and sellStand then
+                UpdateStatus(string.format("💰 ขายไอเทมที่เลือก (%d รายการ)...", #sellKeys))
+                char:PivotTo(sellStand:GetPivot() + Vector3.new(0, 3, 5))
+                HumanWait(0.35, 0.5)
+
+                -- ส่งคำสั่งขายแบบ Batch ปลอดภัย (ครั้งละ 50 คีย์)
+                for i = 1, #sellKeys, 50 do
+                    local batch = {}
+                    for j = i, math.min(i + 49, #sellKeys) do
+                        table.insert(batch, sellKeys[j])
+                    end
+                    SafeSendEvent(Config.Events.SellItems, batch)
+                    HumanWait(0.25, 0.35)
+                end
+
+                if returnPlot then
+                    char:PivotTo(returnPlot)
+                    HumanWait(0.2, 0.3)
+                end
+                UpdateStatus(string.format("✅ ขายสำเร็จ %d รายการ!", #sellKeys))
+            end
+        end)
+        if not ok then
+            warn(string.format("⚠️ [Action Error: UnifiedSellNow] %s", tostring(err)))
+        end
+    end)
+end, TabFarming, 9)
+
+-- -------------------------------------------------------------
+-- [6] POPULATE TAB 2: คนงาน & สกิล (WORKERS & SKILLS)
+-- -------------------------------------------------------------
+AddSectionHeader("🌳 ผังสกิล & อัปเกรด (Skill Tree & Core)", TabWorkers, 1)
+AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (อัปเกรดผังสกิล)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", TabWorkers, 2)
+AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", TabWorkers, 3)
+
+AddSectionHeader("👥 คนงาน & สถิติตัวละคร (Miners & Stats)", TabWorkers, 4)
+AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", TabWorkers, 5)
+AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerEquipBest)
+        if ok then
+            UpdateStatus("✅ สวมใส่ตัวที่ดีที่สุดสำเร็จ!")
         else
-            ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 140, 90)
-            ReceiverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            SenderBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-            SenderBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
-            PlayerSelectFrame.Visible = false
-            TargetHeader.Visible = false
-            ReceiverAutoFrame.Visible = true
-            StatusBar.Text = "โหมดผู้รับ: รอรับคำขอเทรดและยืนยันอัตโนมัติ"
+            warn(string.format("⚠️ [Action Error: EquipBest] %s", tostring(err)))
         end
-        if not skipSave then
-            SaveTradeConfig()
-        end
-    end
-
-    SenderBtn.MouseButton1Click:Connect(function()
-        SetRole("Sender")
     end)
-    
-    ReceiverBtn.MouseButton1Click:Connect(function()
-        SetRole("Receiver")
-    end)
+end, TabWorkers, 6)
+AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters (อัปสถิติ)", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", TabWorkers, 7)
+AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, TabWorkers, 8)
+AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, TabWorkers, 9)
+AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, TabWorkers, 10)
 
-    SetRole(TradeState.Mode, true)
-    
-    -- ========================================================================
-    -- [3] SELECTIVE ITEM TRANSFER (รวมอัญมณี 💎 Gems)
-    -- ========================================================================
-    CreateHeader("🎒 3. เลือกไอเทม/อัญมณีที่จะส่ง (สูงสุด 8 กองต่อรอบ)", 6)
-    
-    local FilterFrame = Instance.new("Frame")
-    FilterFrame.Size = UDim2.new(1, 0, 0, 26)
-    FilterFrame.BackgroundTransparency = 1
-    FilterFrame.LayoutOrder = 7
-    FilterFrame.Parent = ScrollContainer
-    
-    local FilterLayout = Instance.new("UIListLayout")
-    FilterLayout.FillDirection = Enum.FillDirection.Horizontal
-    FilterLayout.Padding = UDim.new(0, 3)
-    FilterLayout.Parent = FilterFrame
-    
-    local ItemCountLabel = Instance.new("TextLabel")
-    ItemCountLabel.Size = UDim2.new(1, 0, 0, 18)
-    ItemCountLabel.BackgroundTransparency = 1
-    ItemCountLabel.Text = "เลือกแล้ว: 0 / 8 กอง"
-    ItemCountLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
-    ItemCountLabel.Font = Enum.Font.GothamMedium
-    ItemCountLabel.TextSize = 11
-    ItemCountLabel.TextXAlignment = Enum.TextXAlignment.Left
-    ItemCountLabel.LayoutOrder = 8
-    ItemCountLabel.Parent = ScrollContainer
-    
-    local ItemScrollBox = Instance.new("ScrollingFrame")
-    ItemScrollBox.Size = UDim2.new(1, 0, 0, 190)
-    ItemScrollBox.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
-    ItemScrollBox.ScrollBarThickness = 3
-    ItemScrollBox.ScrollBarImageColor3 = Color3.fromRGB(130, 80, 230)
-    ItemScrollBox.LayoutOrder = 9
-    ItemScrollBox.Parent = ScrollContainer
-    
-    local ItemScrollCorner = Instance.new("UICorner")
-    ItemScrollCorner.CornerRadius = UDim.new(0, 8)
-    ItemScrollCorner.Parent = ItemScrollBox
-    
-    local ItemListLayout = Instance.new("UIListLayout")
-    ItemListLayout.Padding = UDim.new(0, 4)
-    ItemListLayout.Parent = ItemScrollBox
-    
-    local function CountSelected()
-        local c = 0
-        for _ in pairs(TradeState.SelectedItems) do c = c + 1 end
-        return c
-    end
-    
-    local RenderInventoryList
-    
-    local function CreateTabBtn(name, cat)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0.192, -2, 1, 0)
-        btn.BackgroundColor3 = TradeState.CurrentCategory == cat and Color3.fromRGB(110, 65, 200) or Color3.fromRGB(36, 36, 48)
-        btn.Text = name
-        btn.TextColor3 = Color3.fromRGB(240, 240, 245)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 9.5
-        btn.Parent = FilterFrame
-    
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 5)
-        corner.Parent = btn
-    
-        btn.MouseButton1Click:Connect(function()
-            TradeState.CurrentCategory = cat
-            SaveTradeConfig()
-            for _, b in ipairs(FilterFrame:GetChildren()) do
-                if b:IsA("TextButton") then
-                    b.BackgroundColor3 = Color3.fromRGB(36, 36, 48)
+AddSectionHeader("🧬 การกลายพันธุ์ (Mutations)", TabWorkers, 11)
+AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ", TabWorkers, 12)
+AddMultiSlotSelector(TabWorkers, 13)
+AddMultiMutationSelector(TabWorkers, 14)
+
+-- -------------------------------------------------------------
+-- [7] POPULATE TAB 3: ดันเจี้ยน & กาชา (DUNGEON & GACHA)
+-- -------------------------------------------------------------
+AddSectionHeader("⚔️ ดันเจี้ยน & กล่องรางวัล (Trials & Crates)", TabDungeon, 1)
+AddToggle("AutoInfinityTrial", "Auto Infinity Trial (ทดสอบอินฟินิตี้)", "ลงทดสอบและเคลมรับรางวัลอินฟินิตี้อัตโนมัติเมื่อพร้อม", TabDungeon, 2)
+AddActionButton("⚡ ลง Infinity Trial ทันที", "สั่งเริ่มการทดสอบอินฟินิตี้รอบใหม่ทันที", "ลง Trial", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerInfinityTrial)
+        if not ok then warn(string.format("⚠️ [Action Error: InfinityTrial] %s", tostring(err))) end
+    end)
+end, TabDungeon, 3)
+AddActionButton("⚡ รับรางวัล Trial ทันที", "ตรวจสอบและกดรับรางวัล Infinity Trial ที่ผ่านเกณฑ์ทันที", "รับรางวัล", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerClaimTrial)
+        if not ok then warn(string.format("⚠️ [Action Error: ClaimTrial] %s", tostring(err))) end
+    end)
+end, TabDungeon, 4)
+AddToggle("AutoOpenPetalfallCrate", "Auto Open Petalfall Crate", "เปิดกล่อง Petalfall Crate ในคลังอัตโนมัติเมื่อมีกล่อง", TabDungeon, 5)
+AddActionButton("⚡ เปิด Petalfall Crate ทันที", "สั่งเปิดกล่อง Petalfall Crate ในคลังที่มีอยู่ทั้งหมดทันที", "เปิดกล่อง", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerOpenPetalfallCrate)
+        if not ok then warn(string.format("⚠️ [Action Error: OpenPetalfallCrate] %s", tostring(err))) end
+    end)
+end, TabDungeon, 6)
+
+AddSectionHeader("🎲 กาชา & รับรางวัล (Gacha & Claims)", TabDungeon, 7)
+AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อหมด)", TabDungeon, 8)
+AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", TabDungeon, 9)
+AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", TabDungeon, 10)
+AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
+            if not (mg and MineIndexRewardsConfig and MineIndexRewardsConfig.Enabled) then return end
+            local heldNames = MineIndexRewardsConfig.HeldNames(mg)
+            local claimedAny = 0
+            for _, catKey in ipairs(MineIndexRewardsConfig.Keys()) do
+                local state = MineIndexRewardsConfig.State(mg, catKey, heldNames)
+                for _, tier in ipairs(state.Track or {}) do
+                    if tier.Reached and not tier.Claimed then
+                        for rIdx, rDef in ipairs(tier.Rewards or {}) do
+                            local rIds = MineIndexRewardsConfig.RewardIds({rDef})
+                            local rId = rIds and rIds[1]
+                            local isClaimed = tier.ClaimedRewards and (tier.ClaimedRewards[rId] or 0) > 0
+                            if not isClaimed then
+                                UpdateStatus(string.format("📖 รับรางวัล Index: %s", catKey))
+                                SafeSendEvent(Config.Events.IndexClaim, catKey, tier.Key, rIdx)
+                                claimedAny = claimedAny + 1
+                                HumanWait(0.3, 0.45)
+                            end
+                        end
+                    end
                 end
             end
-            btn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
-            RenderInventoryList()
+            if claimedAny > 0 then
+                UpdateStatus(string.format("✅ รับรางวัล Index %d รายการสำเร็จ!", claimedAny))
+            else
+                UpdateStatus("ℹ️ ไม่มีรางวัล Index ที่ค้างรับ")
+            end
         end)
-    end
-    
-    CreateTabBtn("ทั้งหมด", "All")
-    CreateTabBtn("👤 คนขุด", "Miners")
-    CreateTabBtn("⛏️ ขวาน", "Pickaxes")
-    CreateTabBtn("💎 อัญมณี", "Gems")
-    CreateTabBtn("🧪 อื่นๆ", "Other")
-    
-    RenderInventoryList = function()
-        for _, child in ipairs(ItemScrollBox:GetChildren()) do
-            if child:IsA("Frame") then child:Destroy() end
+        if not ok then
+            warn(string.format("⚠️ [Action Error: ClaimIndex] %s", tostring(err)))
         end
-    
-        local rawItems = FetchOwnedInventory()
-        local items = {}
-    
-        for _, it in ipairs(rawItems) do
-            if TradeState.CurrentCategory == "All" or it.Category == TradeState.CurrentCategory then
-                table.insert(items, it)
+    end)
+end, TabDungeon, 11)
+AddToggle("AutoClaimEvents", "Auto Claim Events (รับรางวัลอีเว้น)", "รับรางวัล Milestone บนบอร์ดอีเว้นอัตโนมัติ", TabDungeon, 12)
+AddActionButton("⚡ รับรางวัล Event ทันที", "ตรวจสอบและกดรับรางวัลบอร์ด Event ที่ปลดล็อกทั้งหมดทันที", "รับ Event", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(function()
+            UpdateStatus("🏆 ตรวจสอบรางวัล Event...")
+            SafeSendEvent(Config.Events.EventsOpen)
+            HumanWait(0.4, 0.6)
+            if latestEventsPayload and latestEventsPayload.Events then
+                local claimedCount = 0
+                for _, ev in ipairs(latestEventsPayload.Events or {}) do
+                    local pts = tonumber(ev.Points) or 0
+                    for tIdx, targetPts in ipairs(ev.Thresholds or {}) do
+                        if pts >= targetPts and not (ev.Claimed and ev.Claimed[tIdx]) then
+                            local tiers = ev.Days and ev.Key and MineEventsConfig and MineEventsConfig.Catalog and MineEventsConfig.Catalog[ev.Key] and MineEventsConfig.Tiers and MineEventsConfig.Tiers(ev.Days, MineEventsConfig.Catalog[ev.Key])
+                            local tDef = tiers and tiers[tIdx]
+                            local rList = tDef and tDef.Rewards or {}
+                            local shownList = MineEventsConfig and MineEventsConfig.Shown and MineEventsConfig.Shown(rList) or rList
+                            for rIdx, rItem in ipairs(shownList) do
+                                local actualIdx = table.find(rList, rItem) or rIdx
+                                local gotMask = type(ev.Got) == "table" and (tonumber(ev.Got[tIdx]) or 0) or 0
+                                if not (gotMask > 0 and bit32.btest(gotMask, 2 ^ (actualIdx - 1))) then
+                                    SafeSendEvent(Config.Events.EventsClaim, ev.Id, tIdx, actualIdx)
+                                    claimedCount = claimedCount + 1
+                                    HumanWait(0.35, 0.5)
+                                end
+                            end
+                        end
+                    end
+                end
+                if claimedCount > 0 then
+                    UpdateStatus(string.format("✅ รับรางวัล Event %d รายการสำเร็จ!", claimedCount))
+                else
+                    UpdateStatus("ℹ️ ไม่มีรางวัล Event ที่ค้างรับ")
+                end
+            else
+                UpdateStatus("ℹ️ กำลังรอข้อมูลบอร์ด Event...")
+            end
+        end)
+        if not ok then
+            warn(string.format("⚠️ [Action Error: ClaimEvent] %s", tostring(err)))
+        end
+    end)
+end, TabDungeon, 13)
+
+-- -------------------------------------------------------------
+-- [8] POPULATE TAB 4: ระบบเทรด (TRADE SUITE)
+-- -------------------------------------------------------------
+StatusBar = Instance.new("TextLabel")
+StatusBar.Size = UDim2.new(1, 0, 0, 26)
+StatusBar.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+StatusBar.Text = "💡 สถานะ: พร้อมทำงาน เลือกบทบาทบัญชีเพื่อเริ่มต้น"
+StatusBar.TextColor3 = Color3.fromRGB(150, 220, 160)
+StatusBar.Font = Enum.Font.GothamMedium
+StatusBar.TextSize = 10.5
+StatusBar.LayoutOrder = 1
+StatusBar.Parent = TabTrade
+
+local sbCorner = Instance.new("UICorner")
+sbCorner.CornerRadius = UDim.new(0, 6)
+sbCorner.Parent = StatusBar
+
+-- Role Selection Frame
+AddSectionHeader("👤 1. เลือกบทบาทของบัญชีนี้", TabTrade, 2)
+local RoleFrame = Instance.new("Frame")
+RoleFrame.Size = UDim2.new(1, 0, 0, 32)
+RoleFrame.BackgroundTransparency = 1
+RoleFrame.LayoutOrder = 3
+RoleFrame.Parent = TabTrade
+
+local SenderBtn = Instance.new("TextButton")
+SenderBtn.Size = UDim2.new(0.485, 0, 1, 0)
+SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+SenderBtn.Text = "📤 โหมดผู้ส่ง (Sender)"
+SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SenderBtn.Font = Enum.Font.GothamBold
+SenderBtn.TextSize = 11
+SenderBtn.Parent = RoleFrame
+
+local sndCorner = Instance.new("UICorner")
+sndCorner.CornerRadius = UDim.new(0, 6)
+sndCorner.Parent = SenderBtn
+
+local ReceiverBtn = Instance.new("TextButton")
+ReceiverBtn.Size = UDim2.new(0.485, 0, 1, 0)
+ReceiverBtn.Position = UDim2.new(0.515, 0, 0, 0)
+ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+ReceiverBtn.Text = "📥 โหมดผู้รับ (Receiver)"
+ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+ReceiverBtn.Font = Enum.Font.GothamBold
+ReceiverBtn.TextSize = 11
+ReceiverBtn.Parent = RoleFrame
+
+local rcvCorner = Instance.new("UICorner")
+rcvCorner.CornerRadius = UDim.new(0, 6)
+rcvCorner.Parent = ReceiverBtn
+
+-- Target Receiver Selection Frame (สำหรับ Sender)
+local TargetHeader = AddSectionHeader("🎯 2. เลือกผู้รับเป้าหมาย (Receiver)", TabTrade, 4)
+
+local PlayerSelectFrame = Instance.new("Frame")
+PlayerSelectFrame.Size = UDim2.new(1, 0, 0, 32)
+PlayerSelectFrame.BackgroundTransparency = 1
+PlayerSelectFrame.LayoutOrder = 5
+PlayerSelectFrame.Parent = TabTrade
+
+local CurrentPlayerLabel = Instance.new("TextLabel")
+CurrentPlayerLabel.Size = UDim2.new(0.72, 0, 1, 0)
+CurrentPlayerLabel.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+CurrentPlayerLabel.Text = "กำลังค้นหาผู้เล่นในห้อง..."
+CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+CurrentPlayerLabel.Font = Enum.Font.GothamBold
+CurrentPlayerLabel.TextSize = 11
+CurrentPlayerLabel.Parent = PlayerSelectFrame
+
+local cplCorner = Instance.new("UICorner")
+cplCorner.CornerRadius = UDim.new(0, 6)
+cplCorner.Parent = CurrentPlayerLabel
+
+local CyclePlayerBtn = Instance.new("TextButton")
+CyclePlayerBtn.Size = UDim2.new(0.26, 0, 1, 0)
+CyclePlayerBtn.Position = UDim2.new(0.74, 0, 0, 0)
+CyclePlayerBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+CyclePlayerBtn.Text = "🔄 สลับผู้เล่น"
+CyclePlayerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CyclePlayerBtn.Font = Enum.Font.GothamBold
+CyclePlayerBtn.TextSize = 10.5
+CyclePlayerBtn.Parent = PlayerSelectFrame
+
+local cycCorner = Instance.new("UICorner")
+cycCorner.CornerRadius = UDim.new(0, 6)
+cycCorner.Parent = CyclePlayerBtn
+
+local function GetOtherPlayers()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(list, p)
+        end
+    end
+    return list
+end
+
+local playerIndex = 1
+local function UpdateSelectedPlayer(preferSaved)
+    local others = GetOtherPlayers()
+    if #others == 0 then
+        TradeState.TargetReceiver = nil
+        CurrentPlayerLabel.Text = "⚠️ ไม่มีผู้เล่นอื่นในห้อง"
+        CurrentPlayerLabel.TextColor3 = Color3.fromRGB(230, 90, 90)
+        return
+    end
+    if preferSaved and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
+        for idx, p in ipairs(others) do
+            if p.Name == TradeState.SavedReceiverName then
+                playerIndex = idx
+                break
             end
         end
-    
-        ItemScrollBox.CanvasSize = UDim2.new(0, 0, 0, #items * 34 + 10)
-    
-        for _, it in ipairs(items) do
-            -- คืนค่าไอเทมและจำนวนที่เคยบันทึกไว้ใน Config อัตโนมัติ
-            local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
-            if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and it.Count > 0 and not TradeState.SelectedItems[it.Key] then
-                local savedAmt = TradeState.SendAllAlways and maxAllowed or math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
+    end
+    if playerIndex > #others then playerIndex = 1 end
+    TradeState.TargetReceiver = others[playerIndex]
+    TradeState.SavedReceiverName = TradeState.TargetReceiver and TradeState.TargetReceiver.Name or TradeState.SavedReceiverName
+    CurrentPlayerLabel.Text = "👤 " .. TradeState.TargetReceiver.Name
+    CurrentPlayerLabel.TextColor3 = Color3.fromRGB(255, 215, 90)
+end
+
+UpdateSelectedPlayer(true)
+
+CyclePlayerBtn.MouseButton1Click:Connect(function()
+    local others = GetOtherPlayers()
+    if #others > 0 then
+        playerIndex = (playerIndex % #others) + 1
+        UpdateSelectedPlayer()
+        TradeNotify("เปลี่ยนผู้รับ", "เป้าหมายปัจจุบัน: " .. (TradeState.TargetReceiver and TradeState.TargetReceiver.Name or "None"))
+        SaveTradeConfig()
+    end
+end)
+
+-- Receiver Options
+local ReceiverAutoFrame = Instance.new("Frame")
+ReceiverAutoFrame.Size = UDim2.new(1, 0, 0, 68)
+ReceiverAutoFrame.BackgroundTransparency = 1
+ReceiverAutoFrame.LayoutOrder = 6
+ReceiverAutoFrame.Visible = false
+ReceiverAutoFrame.Parent = TabTrade
+
+local ReceiverLayout = Instance.new("UIListLayout")
+ReceiverLayout.Padding = UDim.new(0, 6)
+ReceiverLayout.Parent = ReceiverAutoFrame
+
+local function CreateSmallToggle(parent, titleText, defaultVal, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 28)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+    btn.Text = "  " .. titleText
+    btn.TextColor3 = Color3.fromRGB(220, 220, 230)
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 10.5
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    local badge = Instance.new("TextLabel")
+    badge.Size = UDim2.new(0, 42, 0, 20)
+    badge.Position = UDim2.new(1, -48, 0.5, -10)
+    badge.BackgroundColor3 = defaultVal and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
+    badge.Text = defaultVal and "ON" or "OFF"
+    badge.TextColor3 = Color3.fromRGB(255, 255, 255)
+    badge.Font = Enum.Font.GothamBold
+    badge.TextSize = 10
+    badge.Parent = btn
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 4)
+    bCorner.Parent = badge
+
+    local val = defaultVal
+    btn.MouseButton1Click:Connect(function()
+        val = not val
+        badge.Text = val and "ON" or "OFF"
+        badge.BackgroundColor3 = val and Color3.fromRGB(45, 160, 90) or Color3.fromRGB(65, 65, 80)
+        callback(val)
+        SaveTradeConfig()
+    end)
+end
+
+CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Accept ตอบรับคำขอเทรดทันที", true, function(v) TradeState.AutoAccept = v end)
+CreateSmallToggle(ReceiverAutoFrame, "⚡ Auto Ready & Confirm ยินยอมรับของอัตโนมัติ", true, function(v) TradeState.AutoReady = v TradeState.AutoConfirm = v end)
+
+local function SetRole(mode, skipSave)
+    TradeState.Mode = mode or "Sender"
+    if TradeState.Mode == "Sender" then
+        SenderBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+        SenderBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+        ReceiverBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+        PlayerSelectFrame.Visible = true
+        TargetHeader.Visible = true
+        ReceiverAutoFrame.Visible = false
+        StatusBar.Text = "โหมดผู้ส่ง: เลือกผู้รับและติ๊กไอเทมที่จะส่ง"
+    else
+        ReceiverBtn.BackgroundColor3 = Color3.fromRGB(45, 140, 90)
+        ReceiverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SenderBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+        SenderBtn.TextColor3 = Color3.fromRGB(190, 190, 205)
+        PlayerSelectFrame.Visible = false
+        TargetHeader.Visible = false
+        ReceiverAutoFrame.Visible = true
+        StatusBar.Text = "โหมดผู้รับ: รอรับคำขอเทรดและยืนยันอัตโนมัติ"
+    end
+    if not skipSave then
+        SaveTradeConfig()
+    end
+end
+
+SenderBtn.MouseButton1Click:Connect(function() SetRole("Sender") end)
+ReceiverBtn.MouseButton1Click:Connect(function() SetRole("Receiver") end)
+SetRole(TradeState.Mode, true)
+
+-- Item Selection Area
+AddSectionHeader("🎒 3. เลือกไอเทมที่จะส่ง (สูงสุด 8 กองต่อรอบ)", TabTrade, 7)
+
+local FilterFrame = Instance.new("Frame")
+FilterFrame.Size = UDim2.new(1, 0, 0, 26)
+FilterFrame.BackgroundTransparency = 1
+FilterFrame.LayoutOrder = 8
+FilterFrame.Parent = TabTrade
+
+local FilterLayout = Instance.new("UIListLayout")
+FilterLayout.FillDirection = Enum.FillDirection.Horizontal
+FilterLayout.Padding = UDim.new(0, 3)
+FilterLayout.Parent = FilterFrame
+
+ItemCountLabel = Instance.new("TextLabel")
+ItemCountLabel.Size = UDim2.new(1, 0, 0, 18)
+ItemCountLabel.BackgroundTransparency = 1
+ItemCountLabel.Text = "เลือกแล้ว: 0 / 8 กอง"
+ItemCountLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+ItemCountLabel.Font = Enum.Font.GothamMedium
+ItemCountLabel.TextSize = 10.5
+ItemCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+ItemCountLabel.LayoutOrder = 9
+ItemCountLabel.Parent = TabTrade
+
+ItemScrollBox = Instance.new("ScrollingFrame")
+ItemScrollBox.Size = UDim2.new(1, 0, 0, 150)
+ItemScrollBox.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
+ItemScrollBox.ScrollBarThickness = 3
+ItemScrollBox.ScrollBarImageColor3 = Theme.Accent
+ItemScrollBox.LayoutOrder = 10
+ItemScrollBox.Parent = TabTrade
+
+local isbCorner = Instance.new("UICorner")
+isbCorner.CornerRadius = UDim.new(0, 6)
+isbCorner.Parent = ItemScrollBox
+
+local ItemListLayout = Instance.new("UIListLayout")
+ItemListLayout.Padding = UDim.new(0, 4)
+ItemListLayout.Parent = ItemScrollBox
+
+local function CountSelected()
+    local c = 0
+    for _ in pairs(TradeState.SelectedItems) do c = c + 1 end
+    return c
+end
+
+local RenderInventoryList
+
+local function CreateCategoryTabBtn(name, cat)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.192, -2, 1, 0)
+    btn.BackgroundColor3 = TradeState.CurrentCategory == cat and Color3.fromRGB(110, 65, 200) or Color3.fromRGB(36, 36, 48)
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(240, 240, 245)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9.5
+    btn.Parent = FilterFrame
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 5)
+    corner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        TradeState.CurrentCategory = cat
+        SaveTradeConfig()
+        for _, b in ipairs(FilterFrame:GetChildren()) do
+            if b:IsA("TextButton") then
+                b.BackgroundColor3 = Color3.fromRGB(36, 36, 48)
+            end
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+        RenderInventoryList()
+    end)
+end
+
+CreateCategoryTabBtn("ทั้งหมด", "All")
+CreateCategoryTabBtn("👤 คนขุด", "Miners")
+CreateCategoryTabBtn("⛏️ ขวาน", "Pickaxes")
+CreateCategoryTabBtn("💎 อัญมณี", "Gems")
+CreateCategoryTabBtn("🧪 อื่นๆ", "Other")
+
+RenderInventoryList = function()
+    for _, child in ipairs(ItemScrollBox:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+
+    local rawItems = FetchOwnedInventory()
+    local items = {}
+
+    for _, it in ipairs(rawItems) do
+        if TradeState.CurrentCategory == "All" or it.Category == TradeState.CurrentCategory then
+            table.insert(items, it)
+        end
+    end
+
+    ItemScrollBox.CanvasSize = UDim2.new(0, 0, 0, #items * 32 + 8)
+
+    for _, it in ipairs(items) do
+        local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
+        if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and it.Count > 0 and not TradeState.SelectedItems[it.Key] then
+            local savedAmt = TradeState.SendAllAlways and maxAllowed or math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
+            TradeState.SelectedItems[it.Key] = {
+                Key = it.Key,
+                Name = it.Name,
+                Amount = savedAmt,
+                MaxCount = maxAllowed,
+                MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+            }
+        end
+
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -6, 0, 28)
+        row.Position = UDim2.new(0, 3, 0, 0)
+        row.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
+        row.Parent = ItemScrollBox
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 4)
+        rCorner.Parent = row
+
+        local checkBtn = Instance.new("TextButton")
+        checkBtn.Size = UDim2.new(0, 18, 0, 18)
+        checkBtn.Position = UDim2.new(0, 6, 0.5, -9)
+        checkBtn.BackgroundColor3 = TradeState.SelectedItems[it.Key] and Color3.fromRGB(45, 170, 95) or Color3.fromRGB(50, 50, 65)
+        checkBtn.Text = TradeState.SelectedItems[it.Key] and "✓" or ""
+        checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        checkBtn.Font = Enum.Font.GothamBold
+        checkBtn.TextSize = 10
+        checkBtn.Parent = row
+
+        local ckCorner = Instance.new("UICorner")
+        ckCorner.CornerRadius = UDim.new(0, 4)
+        ckCorner.Parent = checkBtn
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size = UDim2.new(1, -145, 1, 0)
+        nameLbl.Position = UDim2.new(0, 28, 0, 0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text = string.format("%s %s (มี %d)", it.Emoji or "📦", it.Name, it.Count)
+        nameLbl.TextColor3 = Color3.fromRGB(235, 235, 240)
+        nameLbl.Font = Enum.Font.GothamMedium
+        nameLbl.TextSize = 10
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.Parent = row
+
+        local amtBox = Instance.new("TextBox")
+        amtBox.Size = UDim2.new(0, 50, 0, 18)
+        amtBox.Position = UDim2.new(1, -95, 0.5, -9)
+        amtBox.BackgroundColor3 = Color3.fromRGB(36, 36, 50)
+        amtBox.TextColor3 = Color3.fromRGB(240, 200, 90)
+        amtBox.Font = Enum.Font.GothamBold
+        amtBox.TextSize = 9.5
+        amtBox.Text = tostring((TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or (maxAllowed > 0 and 1 or 0))
+        amtBox.ClearTextOnFocus = false
+        amtBox.Parent = row
+
+        local aCorner = Instance.new("UICorner")
+        aCorner.CornerRadius = UDim.new(0, 4)
+        aCorner.Parent = amtBox
+
+        local function SyncAmount()
+            local num = tonumber(amtBox.Text)
+            if num then
+                local clamped = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
+                if TradeState.SelectedItems[it.Key] then
+                    TradeState.SelectedItems[it.Key].Amount = clamped
+                end
+                amtBox.Text = tostring(clamped)
+                SavedTradeItems[it.Key] = clamped
+                SaveTradeConfig()
+            else
+                amtBox.Text = tostring((TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or 1)
+            end
+        end
+
+        amtBox.FocusLost:Connect(SyncAmount)
+
+        local maxBtn = Instance.new("TextButton")
+        maxBtn.Size = UDim2.new(0, 36, 0, 18)
+        maxBtn.Position = UDim2.new(1, -40, 0.5, -9)
+        maxBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+        maxBtn.Text = "สูงสุด"
+        maxBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
+        maxBtn.Font = Enum.Font.GothamBold
+        maxBtn.TextSize = 8.5
+        maxBtn.Parent = row
+
+        local mxCorner = Instance.new("UICorner")
+        mxCorner.CornerRadius = UDim.new(0, 4)
+        mxCorner.Parent = maxBtn
+
+        maxBtn.MouseButton1Click:Connect(function()
+            amtBox.Text = tostring(maxAllowed)
+            SyncAmount()
+            if not TradeState.SelectedItems[it.Key] and CountSelected() < 8 and it.Count > 0 then
                 TradeState.SelectedItems[it.Key] = {
                     Key = it.Key,
                     Name = it.Name,
-                    Amount = savedAmt,
+                    Amount = maxAllowed,
                     MaxCount = maxAllowed,
                     MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
                 }
-            end
-
-            local row = Instance.new("Frame")
-            row.Size = UDim2.new(1, -6, 0, 30)
-            row.Position = UDim2.new(0, 3, 0, 0)
-            row.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
-            row.Parent = ItemScrollBox
-    
-            local rowCorner = Instance.new("UICorner")
-            rowCorner.CornerRadius = UDim.new(0, 6)
-            rowCorner.Parent = row
-    
-            -- Checkbox
-            local checkBtn = Instance.new("TextButton")
-            checkBtn.Size = UDim2.new(0, 20, 0, 20)
-            checkBtn.Position = UDim2.new(0, 6, 0.5, -10)
-            checkBtn.BackgroundColor3 = TradeState.SelectedItems[it.Key] and Color3.fromRGB(45, 170, 95) or Color3.fromRGB(50, 50, 65)
-            checkBtn.Text = TradeState.SelectedItems[it.Key] and "✓" or ""
-            checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            checkBtn.Font = Enum.Font.GothamBold
-            checkBtn.TextSize = 11
-            checkBtn.Parent = row
-    
-            local checkCorner = Instance.new("UICorner")
-            checkCorner.CornerRadius = UDim.new(0, 4)
-            checkCorner.Parent = checkBtn
-    
-            -- Item Title & Count
-            local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(1, -145, 1, 0)
-            nameLbl.Position = UDim2.new(0, 32, 0, 0)
-            nameLbl.BackgroundTransparency = 1
-            nameLbl.Text = string.format("%s %s (มี %d)", it.Emoji or "📦", it.Name, it.Count)
-            nameLbl.TextColor3 = Color3.fromRGB(235, 235, 240)
-            nameLbl.Font = Enum.Font.GothamMedium
-            nameLbl.TextSize = 10.5
-            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-            nameLbl.Parent = row
-    
-            -- Amount Box
-            local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
-            local amtBox = Instance.new("TextBox")
-            amtBox.Size = UDim2.new(0, 55, 0, 20)
-            amtBox.Position = UDim2.new(1, -95, 0.5, -10)
-            amtBox.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-            amtBox.TextColor3 = Color3.fromRGB(240, 200, 90)
-            amtBox.Font = Enum.Font.GothamBold
-            amtBox.TextSize = 10
-            amtBox.Text = tostring((TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or (maxAllowed > 0 and 1 or 0))
-            amtBox.ClearTextOnFocus = false
-            amtBox.Parent = row
-    
-            local amtCorner = Instance.new("UICorner")
-            amtCorner.CornerRadius = UDim.new(0, 4)
-            amtCorner.Parent = amtBox
-    
-            local function SyncAmount()
-                local num = tonumber(amtBox.Text)
-                if num then
-                    local clamped = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
-                    if TradeState.SelectedItems[it.Key] then
-                        TradeState.SelectedItems[it.Key].Amount = clamped
-                    end
-                end
-            end
-    
-            amtBox:GetPropertyChangedSignal("Text"):Connect(SyncAmount)
-    
-            amtBox.FocusLost:Connect(function()
-                local num = tonumber(amtBox.Text) or 1
-                num = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
-                amtBox.Text = tostring(num)
-                if TradeState.SelectedItems[it.Key] then
-                    TradeState.SelectedItems[it.Key].Amount = num
-                    SavedTradeItems[it.Key] = num
-                    SaveTradeConfig()
-                end
-            end)
-    
-            -- Max Button
-            local maxBtn = Instance.new("TextButton")
-            maxBtn.Size = UDim2.new(0, 28, 0, 20)
-            maxBtn.Position = UDim2.new(1, -34, 0.5, -10)
-            maxBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-            maxBtn.Text = "Max"
-            maxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            maxBtn.Font = Enum.Font.GothamBold
-            maxBtn.TextSize = 9
-            maxBtn.Parent = row
-    
-            local maxCorner = Instance.new("UICorner")
-            maxCorner.CornerRadius = UDim.new(0, 4)
-            maxCorner.Parent = maxBtn
-    
-            maxBtn.MouseButton1Click:Connect(function()
-                local maxVal = math.max(1, maxAllowed)
-                amtBox.Text = tostring(maxVal)
-                if TradeState.SelectedItems[it.Key] then
-                    TradeState.SelectedItems[it.Key].Amount = maxVal
-                    SavedTradeItems[it.Key] = maxVal
-                    SaveTradeConfig()
-                end
-            end)
-    
-            checkBtn.MouseButton1Click:Connect(function()
-                if TradeState.SelectedItems[it.Key] then
-                    TradeState.SelectedItems[it.Key] = nil
-                    SavedTradeItems[it.Key] = nil
-                    SaveTradeConfig()
-                    checkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-                    checkBtn.Text = ""
-                else
-                    if it.Count <= 0 then
-                        TradeNotify("ไม่มีไอเทม", "ไอเทมนี้มีจำนวนเป็น 0 ไม่สามารถเลือกได้ครับ", 2)
-                        return
-                    end
-                    if CountSelected() >= 8 then
-                        TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
-                        return
-                    end
-                    local sendNum = TradeState.SendAllAlways and maxAllowed or (tonumber(amtBox.Text) or maxAllowed)
-                    sendNum = math.clamp(sendNum, 1, maxAllowed)
-                    TradeState.SelectedItems[it.Key] = {
-                        Key = it.Key,
-                        Name = it.Name,
-                        Amount = sendNum,
-                        MaxCount = maxAllowed,
-                        MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
-                    }
-                    SavedTradeItems[it.Key] = sendNum
-                    SaveTradeConfig()
-                    checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
-                    checkBtn.Text = "✓"
-                end
+                SavedTradeItems[it.Key] = maxAllowed
+                SaveTradeConfig()
+                checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
+                checkBtn.Text = "✓"
                 local curCount = CountSelected()
                 ItemCountLabel.Text = string.format("เลือกแล้ว: %d / 8 กอง", curCount)
                 ItemCountLabel.TextColor3 = curCount > 0 and Color3.fromRGB(120, 230, 160) or Color3.fromRGB(160, 160, 180)
-            end)
-        end
+            end
+        end)
+
+        checkBtn.MouseButton1Click:Connect(function()
+            if TradeState.SelectedItems[it.Key] then
+                TradeState.SelectedItems[it.Key] = nil
+                SavedTradeItems[it.Key] = nil
+                SaveTradeConfig()
+                checkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+                checkBtn.Text = ""
+            else
+                if it.Count <= 0 then
+                    TradeNotify("ไม่มีไอเทม", "ไอเทมนี้มีจำนวนเป็น 0 ไม่สามารถเลือกได้ครับ", 2)
+                    return
+                end
+                if CountSelected() >= 8 then
+                    TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
+                    return
+                end
+                local sendNum = TradeState.SendAllAlways and maxAllowed or (tonumber(amtBox.Text) or maxAllowed)
+                sendNum = math.clamp(sendNum, 1, maxAllowed)
+                TradeState.SelectedItems[it.Key] = {
+                    Key = it.Key,
+                    Name = it.Name,
+                    Amount = sendNum,
+                    MaxCount = maxAllowed,
+                    MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                }
+                SavedTradeItems[it.Key] = sendNum
+                SaveTradeConfig()
+                checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
+                checkBtn.Text = "✓"
+            end
+            local curCount = CountSelected()
+            ItemCountLabel.Text = string.format("เลือกแล้ว: %d / 8 กอง", curCount)
+            ItemCountLabel.TextColor3 = curCount > 0 and Color3.fromRGB(120, 230, 160) or Color3.fromRGB(160, 160, 180)
+        end)
     end
-    
+end
+
+RenderInventoryList()
+
+local RefreshInvBtn = Instance.new("TextButton")
+RefreshInvBtn.Size = UDim2.new(1, 0, 0, 26)
+RefreshInvBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+RefreshInvBtn.Text = "🔄 รีเฟรชคลังไอเทม (Refresh Inventory)"
+RefreshInvBtn.TextColor3 = Color3.fromRGB(220, 220, 230)
+RefreshInvBtn.Font = Enum.Font.GothamSemibold
+RefreshInvBtn.TextSize = 10.5
+RefreshInvBtn.LayoutOrder = 11
+RefreshInvBtn.Parent = TabTrade
+
+local refCorner = Instance.new("UICorner")
+refCorner.CornerRadius = UDim.new(0, 6)
+refCorner.Parent = RefreshInvBtn
+
+RefreshInvBtn.MouseButton1Click:Connect(function()
     RenderInventoryList()
-    
-    local RefreshInvBtn = Instance.new("TextButton")
-    RefreshInvBtn.Size = UDim2.new(1, 0, 0, 26)
-    RefreshInvBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    RefreshInvBtn.Text = "🔄 รีเฟรชคลังไอเทม (Refresh Inventory)"
-    RefreshInvBtn.TextColor3 = Color3.fromRGB(220, 220, 230)
-    RefreshInvBtn.Font = Enum.Font.GothamSemibold
-    RefreshInvBtn.TextSize = 10.5
-    RefreshInvBtn.LayoutOrder = 10
-    RefreshInvBtn.Parent = ScrollContainer
-    
-    local RefCorner = Instance.new("UICorner")
-    RefCorner.CornerRadius = UDim.new(0, 6)
-    RefCorner.Parent = RefreshInvBtn
-    
-    RefreshInvBtn.MouseButton1Click:Connect(function()
-        RenderInventoryList()
-        TradeNotify("รีเฟรชคลัง", "อัปเดตรายการไอเทมในกระเป๋าเรียบร้อย")
-    end)
-    
-    -- ========================================================================
-    -- [4] ACTIONS & TRADE EXECUTION
-    -- ========================================================================
-    CreateHeader("⚡ 4. คำสั่งเปิด-ปิดการเทรด (Trade Controls)", 11)
-    
-    local TradeToggleFrame = Instance.new("Frame")
-    TradeToggleFrame.Size = UDim2.new(1, 0, 0, 32)
-    TradeToggleFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
-    TradeToggleFrame.LayoutOrder = 12
-    TradeToggleFrame.Parent = ScrollContainer
-    
-    local ToggleFrameCorner = Instance.new("UICorner")
-    ToggleFrameCorner.CornerRadius = UDim.new(0, 6)
-    ToggleFrameCorner.Parent = TradeToggleFrame
-    
-    local ToggleLabel = Instance.new("TextLabel")
-    ToggleLabel.Size = UDim2.new(1, -70, 1, 0)
-    ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
-    ToggleLabel.BackgroundTransparency = 1
-    ToggleLabel.Text = "🔄 สวิตช์เปิด-ปิดระบบเทรด (Toggle Trade)"
-    ToggleLabel.TextColor3 = Color3.fromRGB(220, 220, 235)
-    ToggleLabel.Font = Enum.Font.GothamMedium
-    ToggleLabel.TextSize = 11
-    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    ToggleLabel.Parent = TradeToggleFrame
-    
-    local TradeSwitchBadge = Instance.new("TextButton")
-    TradeSwitchBadge.Size = UDim2.new(0, 52, 0, 22)
-    TradeSwitchBadge.Position = UDim2.new(1, -58, 0.5, -11)
-    TradeSwitchBadge.BackgroundColor3 = Color3.fromRGB(65, 65, 80)
-    TradeSwitchBadge.Text = "OFF"
-    TradeSwitchBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TradeSwitchBadge.Font = Enum.Font.GothamBold
-    TradeSwitchBadge.TextSize = 10.5
-    TradeSwitchBadge.Parent = TradeToggleFrame
-    
-    local SwitchCorner = Instance.new("UICorner")
-    SwitchCorner.CornerRadius = UDim.new(0, 4)
-    SwitchCorner.Parent = TradeSwitchBadge
+    TradeNotify("รีเฟรชคลัง", "อัปเดตรายการไอเทมในกระเป๋าเรียบร้อย")
+end)
 
-    local SendAllToggleFrame = Instance.new("Frame")
-    SendAllToggleFrame.Size = UDim2.new(1, 0, 0, 58)
-    SendAllToggleFrame.BackgroundTransparency = 1
-    SendAllToggleFrame.LayoutOrder = 13
-    SendAllToggleFrame.Parent = ScrollContainer
+-- Trade Options & Controls
+AddSectionHeader("⚡ 4. คำสั่งเปิด-ปิดการเทรด (Trade Controls)", TabTrade, 12)
 
-    local SendAllLayout = Instance.new("UIListLayout")
-    SendAllLayout.Padding = UDim.new(0, 4)
-    SendAllLayout.Parent = SendAllToggleFrame
+local SendAllToggleFrame = Instance.new("Frame")
+SendAllToggleFrame.Size = UDim2.new(1, 0, 0, 58)
+SendAllToggleFrame.BackgroundTransparency = 1
+SendAllToggleFrame.LayoutOrder = 13
+SendAllToggleFrame.Parent = TabTrade
 
-    CreateSmallToggle(SendAllToggleFrame, "⚡ ส่งของที่เลือกทั้งหมดทุกครั้ง (Send Max Always)", TradeState.SendAllAlways, function(v)
-        TradeState.SendAllAlways = v
-        SaveTradeConfig()
-        RenderInventoryList()
-    end)
+local SendAllLayout = Instance.new("UIListLayout")
+SendAllLayout.Padding = UDim.new(0, 4)
+SendAllLayout.Parent = SendAllToggleFrame
 
-    CreateSmallToggle(SendAllToggleFrame, "🔁 ส่งวนซ้ำจนกว่าของจะหมดกระเป๋า (Auto-Loop)", TradeState.AutoLoopUntilEmpty, function(v)
-        TradeState.AutoLoopUntilEmpty = v
-        SaveTradeConfig()
-    end)
+CreateSmallToggle(SendAllToggleFrame, "⚡ ส่งของที่เลือกทั้งหมดทุกครั้ง (Send Max Always)", TradeState.SendAllAlways, function(v)
+    TradeState.SendAllAlways = v
+    SaveTradeConfig()
+    RenderInventoryList()
+end)
 
-    local StartTradeBtn = Instance.new("TextButton")
-    StartTradeBtn.Size = UDim2.new(1, 0, 0, 36)
-    StartTradeBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
-    StartTradeBtn.Text = "🚀 เปิด/เริ่มส่งไอเทมที่เลือก (Start Transfer)"
-    StartTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    StartTradeBtn.Font = Enum.Font.GothamBold
-    StartTradeBtn.TextSize = 12
-    StartTradeBtn.LayoutOrder = 14
-    StartTradeBtn.Parent = ScrollContainer
-    
-    local StartCorner = Instance.new("UICorner")
-    StartCorner.CornerRadius = UDim.new(0, 8)
-    StartCorner.Parent = StartTradeBtn
-    
-    local CancelTradeBtn = Instance.new("TextButton")
-    CancelTradeBtn.Size = UDim2.new(1, 0, 0, 28)
-    CancelTradeBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
-    CancelTradeBtn.Text = "❌ ยกเลิกการเทรดทันที (Cancel Trade)"
-    CancelTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CancelTradeBtn.Font = Enum.Font.GothamBold
-    CancelTradeBtn.TextSize = 11
-    CancelTradeBtn.LayoutOrder = 15
-    CancelTradeBtn.Parent = ScrollContainer
-    
-    local CancelCorner = Instance.new("UICorner")
-    CancelCorner.CornerRadius = UDim.new(0, 6)
-    CancelCorner.Parent = CancelTradeBtn
+CreateSmallToggle(SendAllToggleFrame, "🔁 ส่งวนซ้ำจนกว่าของจะหมดกระเป๋า (Auto-Loop)", TradeState.AutoLoopUntilEmpty, function(v)
+    TradeState.AutoLoopUntilEmpty = v
+    SaveTradeConfig()
+end)
 
-    local SaveConfigBtn = Instance.new("TextButton")
-    SaveConfigBtn.Size = UDim2.new(1, 0, 0, 26)
-    SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(38, 55, 80)
-    SaveConfigBtn.Text = "💾 บันทึกการตั้งค่าเทรด (Save Trade Config)"
-    SaveConfigBtn.TextColor3 = Color3.fromRGB(200, 230, 255)
-    SaveConfigBtn.Font = Enum.Font.GothamSemibold
-    SaveConfigBtn.TextSize = 10.5
-    SaveConfigBtn.LayoutOrder = 16
-    SaveConfigBtn.Parent = ScrollContainer
-    
-    local SaveCorner = Instance.new("UICorner")
-    SaveCorner.CornerRadius = UDim.new(0, 6)
-    SaveCorner.Parent = SaveConfigBtn
+StartTradeBtn = Instance.new("TextButton")
+StartTradeBtn.Size = UDim2.new(1, 0, 0, 34)
+StartTradeBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 200)
+StartTradeBtn.Text = "🚀 เปิด/เริ่มส่งไอเทมที่เลือก (Start Transfer)"
+StartTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartTradeBtn.Font = Enum.Font.GothamBold
+StartTradeBtn.TextSize = 11.5
+StartTradeBtn.LayoutOrder = 14
+StartTradeBtn.Parent = TabTrade
 
-    SaveConfigBtn.MouseButton1Click:Connect(function()
-        SaveTradeConfig(true)
-    end)
-    
-    -- ========================================================================
-    -- 🔄 BACKGROUND AUTOMATION & WATCHDOG ENGINE
-    -- ========================================================================
-    
-    -- ฟังก์ชันช่วยคลิกปุ่มบนหน้าต่างเทรดจริงของเกม
+local stCorner = Instance.new("UICorner")
+stCorner.CornerRadius = UDim.new(0, 6)
+stCorner.Parent = StartTradeBtn
+
+CancelTradeBtn = Instance.new("TextButton")
+CancelTradeBtn.Size = UDim2.new(1, 0, 0, 28)
+CancelTradeBtn.BackgroundColor3 = Theme.RedBtn
+CancelTradeBtn.Text = "❌ ยกเลิกการเทรดทันที (Cancel Trade)"
+CancelTradeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CancelTradeBtn.Font = Enum.Font.GothamBold
+CancelTradeBtn.TextSize = 10.5
+CancelTradeBtn.LayoutOrder = 15
+CancelTradeBtn.Parent = TabTrade
+
+local ctCorner = Instance.new("UICorner")
+ctCorner.CornerRadius = UDim.new(0, 6)
+ctCorner.Parent = CancelTradeBtn
+
+local SaveConfigBtn = Instance.new("TextButton")
+SaveConfigBtn.Size = UDim2.new(1, 0, 0, 26)
+SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(38, 55, 80)
+SaveConfigBtn.Text = "💾 บันทึกการตั้งค่าเทรด (Save Trade Config)"
+SaveConfigBtn.TextColor3 = Color3.fromRGB(200, 230, 255)
+SaveConfigBtn.Font = Enum.Font.GothamSemibold
+SaveConfigBtn.TextSize = 10.5
+SaveConfigBtn.LayoutOrder = 16
+SaveConfigBtn.Parent = TabTrade
+
+local scCorner = Instance.new("UICorner")
+scCorner.CornerRadius = UDim.new(0, 6)
+scCorner.Parent = SaveConfigBtn
+
+SaveConfigBtn.MouseButton1Click:Connect(function()
+    SaveTradeConfig(true)
+end)
+
+-- -------------------------------------------------------------
+-- [9] POPULATE TAB 5: ตั้งค่าระบบ & สถานะ (SETTINGS & STATUS)
+-- -------------------------------------------------------------
+AddSectionHeader("🛡️ ระบบความปลอดภัย & AFK (Security & AFK)", TabSettings, 1)
+AddToggle("AntiAFK", "Anti-AFK Protection (ป้องกันหลุดเมื่อ AFK)", "ป้องกัน Roblox ตัดการเชื่อมต่อเมื่อปล่อยหน้าจอนานเกิน 20 นาที", TabSettings, 2)
+
+AddSectionHeader("📊 ข้อมูลผู้เล่นปัจจุบัน (Current Status)", TabSettings, 3)
+
+local InfoCard = Instance.new("Frame")
+InfoCard.Size = UDim2.new(1, 0, 0, 75)
+InfoCard.BackgroundColor3 = Theme.Card
+InfoCard.BorderSizePixel = 0
+InfoCard.LayoutOrder = 4
+InfoCard.Parent = TabSettings
+
+local icCorner = Instance.new("UICorner")
+icCorner.CornerRadius = UDim.new(0, 6)
+icCorner.Parent = InfoCard
+
+local InfoLbl = Instance.new("TextLabel")
+InfoLbl.Size = UDim2.new(1, -20, 1, -10)
+InfoLbl.Position = UDim2.new(0, 10, 0, 5)
+InfoLbl.BackgroundTransparency = 1
+InfoLbl.TextColor3 = Theme.Text
+InfoLbl.Font = Enum.Font.GothamMedium
+InfoLbl.TextSize = 10.5
+InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+InfoLbl.TextYAlignment = Enum.TextYAlignment.Top
+InfoLbl.Text = string.format("👤 ผู้เล่น: %s\\n📍 โซนปัจจุบัน: Zone %s\\n💎 สถานะสคริปต์: V17 Unified Edition (พร้อมใช้งาน 100%%)", LocalPlayer.Name, tostring(LocalPlayer:GetAttribute("Zone") or "1"))
+InfoLbl.Parent = InfoCard
+
+task.spawn(function()
+    while true do
+        task.wait(3.0)
+        pcall(function()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
+            local curZone = mg and mg.CurrentZone or 1
+            local gems = mg and mg.Gems or 0
+            InfoLbl.Text = string.format("👤 ผู้เล่น: %s\\n📍 โซนปัจจุบัน: Zone %s | 💎 Gems: %s\\n⚡ สถานะสคริปต์: V17 Unified Edition (ทำงานปกติ 100%%)", LocalPlayer.Name, tostring(curZone), tostring(gems))
+        end)
+    end
+end)
+
+AddSectionHeader("⚙️ การจัดการการตั้งค่า (Config Management)", TabSettings, 5)
+AddActionButton("💾 บันทึกการตั้งค่าทั้งหมดทันที", "บันทึกการตั้งค่าระบบฟาร์มและระบบเทรดลงไฟล์คอนฟิกทันที", "บันทึกข้อมูล", Theme.Accent, function()
+    SaveConfig()
+    SaveTradeConfig(true)
+    UpdateStatus("💾 บันทึกการตั้งค่าทั้งหมดเรียบร้อยแล้ว!")
+end, TabSettings, 6)
+
+-- เปิดแท็บเริ่มต้น
+SwitchTab("Farming")
+
+-- Hotkey F9 สำหรับสลับเปิด-ปิด UI
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if not gpe and input.KeyCode == Enum.KeyCode.F9 then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end)
+
+-- ═══════════════════════════════════════════════
+-- 🔄 BACKGROUND AUTOMATION & WATCHDOG ENGINE
+-- ═══════════════════════════════════════════════
+-- ฟังก์ชันช่วยคลิกปุ่มบนหน้าต่างเทรดจริงของเกม
     local function ClickTradeButtonUI()
         pcall(function()
             local mineGui = PlayerGui:FindFirstChild("MineGui")
@@ -3354,29 +3173,18 @@ do
         return TradeState.IsTradeActive
     end
 
-    TradeSwitchBadge.MouseButton1Click:Connect(function()
-        ToggleTrade()
-    end)
+    if TradeSwitchBadge then TradeSwitchBadge.MouseButton1Click:Connect(function() ToggleTrade() end) end
     
-    StartTradeBtn.MouseButton1Click:Connect(function()
-        ToggleTrade()
-    end)
+    if StartTradeBtn then StartTradeBtn.MouseButton1Click:Connect(function() ToggleTrade() end) end
     
-    CancelTradeBtn.MouseButton1Click:Connect(function()
-        ToggleTrade(false)
-    end)
+    if CancelTradeBtn then CancelTradeBtn.MouseButton1Click:Connect(function() ToggleTrade(false) end) end
     
-    TradeCloseBtn.MouseButton1Click:Connect(function()
-        ToggleTrade(false)
-        TradeMainFrame.Visible = false
-    end)
+    if TradeCloseBtn then TradeCloseBtn.MouseButton1Click:Connect(function() ToggleTrade(false) TradeMainFrame.Visible = false end) end
     
     _G.ToggleTrade = ToggleTrade
     _G.IsTradeActive = function() return TradeState.IsTradeActive end
     
     TradeNotify("Trade Suite V7.1 Pro", "หน้าต่างควบคุมการเทรด V7.1 Pro พร้อมใช้งานแล้ว!", 3)
-    
-end
 
 -- ═══════════════════════════════════════════════
 -- 🚀 4. MASTER WORKER PIPELINE (ISOLATED TASKS WITH PCALL)
