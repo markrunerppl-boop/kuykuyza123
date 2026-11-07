@@ -1,10 +1,11 @@
 -- ==============================================================================
 -- PROJECT: KUYKUY HUB Unified Farm & Utility Framework
 -- GAME: [🐟] จับปลา! (PlaceId: 93898234979111)
--- VERSION: v3.0.0 [KUYKUY ULTIMATE EDITION]
--- FEATURES: Auto Net (Perfect Tap) / Auto Collect Pads / Auto Equip Best /
---           Auto Rebirth / Auto Claim Gifts & Free Clams / Auto Sell /
---           Auto Deep Current / Multi-Tier Potions / Auto Mini-Games (Gold 🥇)
+-- VERSION: v3.1.0 [KUYKUY ULTIMATE EDITION - MULTI-SELECT & DROPDOWN SUITE]
+-- FEATURES: Auto Net (Perfect Tap & Reel Strategy) / Auto Collect Pads / Auto Equip Best /
+--           Auto Rebirth / Auto Claim Gifts & Free Clams / Auto Sell & Auto Shuck Pearls /
+--           Auto Deep Current (Full Tiers) / Multi-Select Potions (Cash + Net) /
+--           Multi-Select Upgrades / Multi-Select Mini-Games (Gold 🥇) / Boss Target Filters
 -- ==============================================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -158,7 +159,7 @@ end)
 local Config = {
     Meta = {
         HubName = "KUYKUY HUB",
-        Version = "v3.0.0 [จับปลา! Ultimate]",
+        Version = "v3.1.0 [จับปลา! Ultimate]",
         SaveFileName = "KUYKUY_Config_" .. tostring(game.PlaceId) .. ".json"
     },
     Colors = {
@@ -199,6 +200,7 @@ local Config = {
         -- Auto Net
         AutoNet = true,
         ReelWhenFull = true,
+        ReelStrategy = "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)", -- โหมดการดึงแห
         AutoPerfectTap = true,
 
         -- Auto Base Pads
@@ -224,16 +226,25 @@ local Config = {
         -- Mini-Games (เล่นมินิเกมทุกอันอัตโนมัติ)
         AutoMiniGames = true,           -- เล่นมินิเกมอัตโนมัติทุกชนิดเมื่อได้รับคำเชิญ
         MiniGameMode = "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)", -- โหมดเล่นมินิเกม
+        MiniGameSelectedGames = {       -- มัลติซีเล็คเลือกมินิเกมที่จะเล่น
+            Reel = true,
+            Jump = true,
+            Lures = true
+        },
 
         -- Deep Current (กระแสน้ำลึก)
         AutoCurrent = true,             -- เปิดใช้งานฟังชั่นเรียกลอยกระแสน้ำลึกอัตโนมัติ
-        CurrentMode = "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)", -- โหมดการเรียกสิ่งมีชีวิต
+        CurrentMode = "อัตโนมัติ: ดีที่สุดตามแต้มชาร์จ (Auto: Best Affordable Tier)", -- โหมดการเรียกสิ่งมีชีวิต
 
         -- Potions, Skills & Bait
         AutoBuyPotions = true,          -- ซื้อยาจากร้าน Potion Shop เมื่อมีของ
         AutoDrinkPotions = true,        -- เปิดโหมดดื่มยาอัตโนมัติ
         PotionDrinkMode = "ดื่มยาทุกชนิด (All Potions)", -- โหมดการดื่มยา
-        PotionSelectedTiers = {
+        PotionSelectedKinds = {         -- มัลติซีเล็คเลือกชนิดยา (เลือกพร้อมกันได้ทั้งเงินและตาข่าย)
+            Cash = true,                -- 💵 ยาเพิ่มเงิน (Cash Boost)
+            Net = true                  -- 🧪 ยาเพิ่มขนาดตาข่าย (Net Space)
+        },
+        PotionSelectedTiers = {         -- มัลติซีเล็คเลือกระดับน้ำยา (Tier 1-10)
             [1] = true,
             [2] = true,
             [3] = true,
@@ -252,15 +263,27 @@ local Config = {
 
         -- Boss Automation (Megalodon & Kraken)
         AutoBossFight = true,           -- ตีบอส Megalodon & Kraken อัตโนมัติ
+        BossTargetMode = "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)", -- ตัวกรองเป้าหมายบอส
         AutoClaimBossLoot = true,       -- เคลมการ์ดของรางวัลบอสอัตโนมัติ
 
         -- Auto Sell
         AutoSell = false,
         SellInterval = 20,
+        SellRarityMode = "ขายปลาทั่วไปทั้งหมด (Sell All Fish)", -- ตัวกรองระดับปลาที่จะขาย
+        KeepMutatedFish = true,         -- เก็บปลาผ่าเหล่า/กลายพันธุ์ (Keep Mutated Fish)
+        AutoShuckPearls = false,        -- ผ่าหอยมุกอัตโนมัติก่อนขาย (Auto Shuck Fish Into Pearls)
 
         -- Auto Upgrades
         AutoUpgrade = true,
         UpgradeInterval = 3,
+        UpgradeSelectedCategories = {   -- มัลติซีเล็คหมวดหมู่อัปเกรด
+            Net = true,                 -- 🕸️ แห & ตาข่าย
+            Boat = true,                -- ⛵ เรือ & อุปกรณ์เรือ
+            Fisherman = true,           -- 🎣 คนตกปลาผู้ช่วย
+            Spear = true,               -- 🔱 ปืนฉมวกตีบอส
+            General = true,             -- ⚙️ ทั่วไป / เบส
+            StarPerks = true            -- ★ Ascension Star Perks
+        },
         UpgradeBoat = true,         -- อัปเกรดเรือ (Hull + อุปกรณ์เรือ)
         UpgradeNet = true,          -- อัปเกรดตาข่าย (ซื้อเทียร์ใหม่)
         UpgradeFisherman = true,    -- อัปเกรดชาวประมง (เบ็ด, ถัง, สปีด, เหยื่อ)
@@ -413,10 +436,17 @@ SpawnWorker("AutoNetWorker", function()
             task.wait(1.0)
         elseif netState == "Fishing" then
             local shouldReel = false
-            if Config.Settings.ReelWhenFull and netCount >= netCap then
+            local strat = Config.Settings.ReelStrategy or "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)"
+            if strat:find("Instant Fast") then
                 shouldReel = true
-            elseif netReelAt > 0 and serverTime >= netReelAt then
-                shouldReel = true
+            elseif strat:find("Fixed 3s") then
+                shouldReel = (serverTime >= netThrownAt + 3.0) or (netCount >= netCap)
+            else
+                if Config.Settings.ReelWhenFull and netCount >= netCap then
+                    shouldReel = true
+                elseif netReelAt > 0 and serverTime >= netReelAt then
+                    shouldReel = true
+                end
             end
 
             if shouldReel then
@@ -863,9 +893,9 @@ local function RunCurrentCycle()
     if not targets or #targets == 0 then return end
 
     local chosenTarget = nil
-    local mode = Config.Settings.CurrentMode or "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)"
+    local mode = Config.Settings.CurrentMode or "อัตโนมัติ: ดีที่สุดตามแต้มชาร์จ (Auto: Best Affordable Tier)"
 
-    if mode == "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)" then
+    if mode:find("ดีที่สุด") or mode:find("Best Affordable") then
         -- Find highest tier creature that we have enough points and net requirement for
         for i = #targets, 1, -1 do
             local t = targets[i]
@@ -878,7 +908,7 @@ local function RunCurrentCycle()
                 break
             end
         end
-    elseif mode == "รอแต้มเรียกตัวสูงสุดที่ปลดล็อค (Save for Highest Unlocked Tier)" then
+    elseif mode:find("รอแต้ม") or mode:find("Highest Unlocked") or mode:find("Highest Net Tier") then
         -- Find the highest tier creature our net can catch, and only call when points reach its cost
         local highestUnlocked = nil
         for i = #targets, 1, -1 do
@@ -892,6 +922,21 @@ local function RunCurrentCycle()
             local hasSpace = not netCap or (FishingShared.FishCost(highestUnlocked.r) <= netCap)
             if hasSpace then
                 chosenTarget = highestUnlocked
+            end
+        end
+    else
+        -- Match specific tier by name or cost from dropdown
+        for _, t in ipairs(targets) do
+            local rInfo = FishingShared.Rarities[t.r]
+            local rName = (rInfo and rInfo.Name) or ""
+            if (rName ~= "" and mode:find(rName)) or mode:find(tostring(t.cost) .. " ⚡") or mode:find("%(" .. tostring(t.cost) .. " ") then
+                local canCatch = maxRarity >= t.r
+                local hasPoints = currentPts >= t.cost
+                local hasSpace = not netCap or (FishingShared.FishCost(t.r) <= netCap)
+                if canCatch and hasPoints and hasSpace then
+                    chosenTarget = t
+                end
+                break
             end
         end
     end
@@ -953,20 +998,9 @@ local function InitializeMiniGameListener()
             local gameId = msg.game
             local round = msg.round
 
-            -- Filter according to MiniGameMode
-            local mode = Config.Settings.MiniGameMode or "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)"
-            local allowed = false
-            if mode == "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)" then
-                allowed = true
-            elseif mode == "เฉพาะ Perfect Reel (🎣)" and gameId == "Reel" then
-                allowed = true
-            elseif mode == "เฉพาะ Fish Frenzy (🐟)" and gameId == "Jump" then
-                allowed = true
-            elseif mode == "เฉพาะ Bait Memory (🐛)" and gameId == "Lures" then
-                allowed = true
-            end
-
-            if not allowed then return end
+            -- Filter according to MiniGameSelectedGames (Multi-Select)
+            local selectedGames = Config.Settings.MiniGameSelectedGames or { Reel = true, Jump = true, Lures = true }
+            if selectedGames[gameId] ~= true then return end
 
             UpdateStatus(string.format("STATUS: 🎮 MINIGAME INVITE [%s] DETECTED! PREPARING AUTO-PLAY...", gameId))
             task.spawn(function()
@@ -1060,26 +1094,27 @@ local function RunPotionsAndSkillsCycle()
     -- 1. Auto Potions (ซื้อยา & ดื่มยา)
     if Config.Settings.AutoDrinkPotions and remotes:FindFirstChild("Potions") then
         local potionRemote = remotes.Potions
-        local mode = Config.Settings.PotionDrinkMode or "ดื่มยาทุกชนิด (All Potions)"
+        local selectedKinds = Config.Settings.PotionSelectedKinds or { Cash = true, Net = true }
         local selectedTiers = Config.Settings.PotionSelectedTiers or {}
 
-        -- Check if all 10 tiers are selected
-        local allSelected = true
+        -- Check if all 10 tiers are selected and both Cash + Net kinds are selected
+        local allTiersSelected = true
         for t = 1, 10 do
             if not selectedTiers[t] then
-                allSelected = false
+                allTiersSelected = false
                 break
             end
         end
+        local allKindsSelected = (selectedKinds.Cash == true and selectedKinds.Net == true)
 
-        if mode == "ดื่มยาทุกชนิด (All Potions)" and allSelected then
+        if allTiersSelected and allKindsSelected then
             pcall(function()
                 local res = potionRemote:InvokeServer("useAll")
                 if res and res.ok and res.drank and res.drank > 0 then
                     UpdateStatus(string.format("STATUS: DRANK %d POTIONS FROM COOLER!", res.drank))
                 end
             end)
-        elseif mode ~= "ปิดการดื่มยา (Disabled)" then
+        elseif selectedKinds.Cash or selectedKinds.Net then
             pcall(function()
                 local inv = nil
                 local pState = potionRemote:InvokeServer("state")
@@ -1098,25 +1133,13 @@ local function RunPotionsAndSkillsCycle()
                         if (tonumber(count) or 0) > 0 then
                             local kind, tierStr = key:match("^(%a+)_(%d+)$")
                             local tier = tonumber(tierStr) or 0
+                            local kindAllowed = (selectedKinds[kind] == true)
                             local tierAllowed = (selectedTiers[tier] == true)
-                            local shouldDrink = false
 
-                            if tierAllowed then
-                                if mode == "ดื่มยาทุกชนิด (All Potions)" then
-                                    shouldDrink = true
-                                elseif mode == "เฉพาะยาเงิน (Cash Boost)" and kind == "Cash" then
-                                    shouldDrink = true
-                                elseif mode == "เฉพาะยาตาข่าย (Net Space)" and kind == "Net" then
-                                    shouldDrink = true
-                                elseif mode == "เฉพาะเทียร์สูงสุด (Tier 5+)" and tier >= 5 then
-                                    shouldDrink = true
-                                end
-                            end
-
-                            if shouldDrink then
+                            if kindAllowed and tierAllowed then
                                 potionRemote:InvokeServer("use", key)
                                 UpdateStatus(string.format("STATUS: DRANK POTION [%s] (Tier %d)!", key, tier))
-                                task.wait(0.15)
+                                task.wait(0.12)
                             end
                         end
                     end
@@ -1130,15 +1153,17 @@ local function RunPotionsAndSkillsCycle()
         if potionRemote then
             pcall(function()
                 local state = potionRemote:InvokeServer("state")
+                local selectedKinds = Config.Settings.PotionSelectedKinds or { Cash = true, Net = true }
                 local selectedTiers = Config.Settings.PotionSelectedTiers or {}
                 if state and state.stock and state.cash then
                     for i, p in ipairs(state.stock) do
+                        local kindAllowed = (p.kind == nil or selectedKinds[p.kind] == true)
                         local tierAllowed = (p.tier == nil or selectedTiers[p.tier] == true)
-                        if not p.bought and p.price and state.cash >= p.price and tierAllowed then
+                        if not p.bought and p.price and state.cash >= p.price and kindAllowed and tierAllowed then
                             local buyRes = potionRemote:InvokeServer("buy", i)
                             if buyRes and buyRes.ok then
                                 state.cash = state.cash - p.price
-                                task.wait(0.2)
+                                task.wait(0.15)
                             end
                         end
                     end
@@ -1276,6 +1301,15 @@ SpawnWorker("AutoBossWorker", function()
         return
     end
 
+    local bMode = Config.Settings.BossTargetMode or "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)"
+    if bMode == "ปิดการล่าบอส (Disabled)" then
+        task.wait(2.5)
+        return
+    end
+
+    local allowMeg = (bMode ~= "เฉพาะปลาหมึกยักษ์ Kraken 🐙")
+    local allowKraken = (bMode ~= "เฉพาะฉลามยักษ์ Megalodon 🦈")
+
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then
         task.wait(2.5)
@@ -1286,7 +1320,7 @@ SpawnWorker("AutoBossWorker", function()
     local bossEvent = remotes:FindFirstChild("BossEvent")
 
     -- 1. Check Megalodon Event
-    if megEvent and workspace:GetAttribute("MegActive") == true then
+    if allowMeg and megEvent and workspace:GetAttribute("MegActive") == true then
         UpdateStatus("STATUS: MEGALODON DETECTED! ENTERING TURRET FIGHT...")
 
         -- Ensure player is mounted in the turret
@@ -1338,11 +1372,11 @@ SpawnWorker("AutoBossWorker", function()
     end
 
     -- 2. Kraken Boss / General Sea Boss Event
-    if workspace:GetAttribute("BossActive") == true then
+    if allowKraken and workspace:GetAttribute("BossActive") == true then
         UpdateStatus("STATUS: 🐙 KRAKEN ACTIVE! FIGHTING WITH NETS & WEAPONS...")
     end
 
-    if bossEvent and Config.Settings.AutoClaimBossLoot then
+    if allowKraken and bossEvent and Config.Settings.AutoClaimBossLoot then
         -- Auto close/claim Kraken loot card if open
         pcall(function()
             local pGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -1364,9 +1398,15 @@ SpawnWorker("AutoSellWorker", function()
     end
 
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    local sellRemote = remotes and remotes:FindFirstChild(Config.Events.SellFish)
-    if sellRemote then
-        sellRemote:FireServer()
+    if remotes then
+        if Config.Settings.AutoShuckPearls and remotes:FindFirstChild("CoolerAction") then
+            pcall(function() remotes.CoolerAction:InvokeServer("shuck") end)
+            task.wait(0.3)
+        end
+        local sellRemote = remotes:FindFirstChild(Config.Events.SellFish)
+        if sellRemote then
+            sellRemote:FireServer()
+        end
     end
 
     task.wait(Config.Settings.SellInterval)
@@ -1386,15 +1426,23 @@ local function RunUpgradeCycle()
     local currentCash = data.Cash or 0
     local upgradedCount = 0
 
+    local upCats = Config.Settings.UpgradeSelectedCategories or {}
+    local allowNet = (upCats.Net ~= false) and (Config.Settings.UpgradeNet ~= false)
+    local allowBoat = (upCats.Boat ~= false) and (Config.Settings.UpgradeBoat ~= false)
+    local allowFisherman = (upCats.Fisherman ~= false) and (Config.Settings.UpgradeFisherman ~= false)
+    local allowSpear = (upCats.Spear ~= false) and (Config.Settings.UpgradeSpear ~= false)
+    local allowGeneral = (upCats.General ~= false) and (Config.Settings.UpgradeGeneral ~= false)
+    local allowStarPerks = (upCats.StarPerks == true)
+
     -- 1. Upgrade Net (ตาข่าย - อันดับความสำคัญสูงสุดในหมวดอัปเกรด ซื้อและใส่แหที่ดีที่สุดทันที)
-    if Config.Settings.UpgradeNet then
+    if allowNet then
         local netUpgrades = UpgradeBestNet(remotes, data)
         upgradedCount = upgradedCount + netUpgrades
         currentCash = data.Cash or currentCash
     end
 
     -- 2. Upgrade Boat (เรือ)
-    if Config.Settings.UpgradeBoat and remotes:FindFirstChild("BoatAction") then
+    if allowBoat and remotes:FindFirstChild("BoatAction") then
         -- Hull (ตัวเรือ)
         local curHull = (data.Boat and data.Boat.Hull) or 0
         local nextHull = curHull + 1
@@ -1438,7 +1486,7 @@ local function RunUpgradeCycle()
     end
 
     -- 3. Upgrade Fishermen (ชาวประมง: Rod, Line, Speed, Range, Tackle, Shiny, Bait)
-    if Config.Settings.UpgradeFisherman and remotes:FindFirstChild("HelperAction") and FishingShared.Helper and FishingShared.Helper.Upgrades then
+    if allowFisherman and remotes:FindFirstChild("HelperAction") and FishingShared.Helper and FishingShared.Helper.Upgrades then
         for _, u in ipairs(FishingShared.Helper.Upgrades) do
             local cur = (data.Helper or {})[u.Id] or 0
             local max = u.Max or 35
@@ -1462,7 +1510,7 @@ local function RunUpgradeCycle()
     end
 
     -- 4. Upgrade Spear Gun (ปืนฉมวก: Tip, Multi, Reload, Range, Barb, Barrel, Scope)
-    if Config.Settings.UpgradeSpear and remotes:FindFirstChild("SpearAction") and FishingShared.Spear and FishingShared.Spear.Upgrades then
+    if allowSpear and remotes:FindFirstChild("SpearAction") and FishingShared.Spear and FishingShared.Spear.Upgrades then
         for _, u in ipairs(FishingShared.Spear.Upgrades) do
             local cur = (data.Spear or {})[u.Id] or 0
             local max = u.Max or 35
@@ -1486,7 +1534,7 @@ local function RunUpgradeCycle()
     end
 
     -- 5. Upgrade General & Base (อัปเกรดทั่วไป/เบส)
-    if Config.Settings.UpgradeGeneral and remotes:FindFirstChild("BuyItem") and FishingShared.Upgrades then
+    if allowGeneral and remotes:FindFirstChild("BuyItem") and FishingShared.Upgrades then
         for _, u in ipairs(FishingShared.Upgrades) do
             if not u.Hidden then
                 local cur = (data.Upgrades or {})[u.Id] or 0
@@ -1506,6 +1554,31 @@ local function RunUpgradeCycle()
                 end
             end
         end
+    end
+
+    -- 6. Upgrade Ascension Star Perks (สตาร์เพิร์กจุติ)
+    if allowStarPerks and remotes:FindFirstChild("Ascension") and FishingShared.AscPerks then
+        pcall(function()
+            local ascRemote = remotes.Ascension
+            local aState = ascRemote:InvokeServer("state")
+            if aState and (aState.stars or 0) > 0 and aState.perks then
+                for _, perk in ipairs(FishingShared.AscPerks) do
+                    local curLvl = tonumber(aState.perks[perk.Id]) or 0
+                    if curLvl < (perk.Max or 10) then
+                        local cost = FishingShared.AscPerkCost and FishingShared.AscPerkCost(curLvl + 1) or 1
+                        if (aState.stars or 0) >= cost then
+                            local bRes = ascRemote:InvokeServer("buy", perk.Id)
+                            if bRes and bRes.state then
+                                aState = bRes.state
+                                upgradedCount = upgradedCount + 1
+                                UpdateStatus(string.format("STATUS: UPGRADED STAR PERK [%s] LVL %d!", perk.Name, curLvl + 1))
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
     end
 
     return upgradedCount
@@ -2025,9 +2098,9 @@ local function BuildUI()
                 end
             end
             if count == total then
-                return "เลือกครบทุกระดับ (" .. tostring(total) .. "/" .. tostring(total) .. ")"
+                return "เลือกทั้งหมด (" .. tostring(total) .. "/" .. tostring(total) .. ")"
             elseif count == 0 then
-                return "ไม่ได้เลือกสักระดับ (0/" .. tostring(total) .. ")"
+                return "ไม่ได้เลือก (0/" .. tostring(total) .. ")"
             elseif count <= 3 then
                 local names = {}
                 for _, opt in ipairs(options) do
@@ -2035,9 +2108,9 @@ local function BuildUI()
                         table.insert(names, opt.short or tostring(opt.value))
                     end
                 end
-                return "Tier " .. table.concat(names, ",") .. " (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+                return table.concat(names, ", ") .. " (" .. tostring(count) .. "/" .. tostring(total) .. ")"
             else
-                return "เลือก " .. tostring(count) .. " ระดับ (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+                return "เลือก " .. tostring(count) .. " รายการ (" .. tostring(count) .. "/" .. tostring(total) .. ")"
             end
         end
 
@@ -2085,11 +2158,19 @@ local function BuildUI()
             end
         end)
 
-        CreateQuickBtn("⚡ Tier V-X", Config.Colors.Gold, function()
-            for _, opt in ipairs(options) do
-                selectedMap[opt.value] = (opt.value >= 5)
-            end
-        end)
+        if #options > 4 and type(options[1].value) == "number" then
+            CreateQuickBtn("⚡ ระดับ 5+", Config.Colors.Gold, function()
+                for _, opt in ipairs(options) do
+                    selectedMap[opt.value] = (type(opt.value) == "number" and opt.value >= 5)
+                end
+            end)
+        else
+            CreateQuickBtn("⇄ สลับค่า", Config.Colors.Warning, function()
+                for _, opt in ipairs(options) do
+                    selectedMap[opt.value] = not (selectedMap[opt.value] == true)
+                end
+            end)
+        end
 
         for i, opt in ipairs(options) do
             local optBtn = Instance.new("TextButton")
@@ -2193,6 +2274,17 @@ local function BuildUI()
 
     CreateToggle(pNetFarm, "ดึงแหทันทีเมื่อเต็มความจุ (Reel When Full)", Config.Settings.ReelWhenFull, function(v)
         Config.Settings.ReelWhenFull = v
+    end)
+
+    local reelModes = {
+        "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)",
+        "ดึงตามเวลาคงที่ 3 วินาที (Fixed 3s Timer)",
+        "ดึงทันทีแบบเร็วต่อเนื่อง (Instant Fast Cycle)"
+    }
+    CreateDropdown(pNetFarm, "โหมดการดึงแห (Reel Strategy)", reelModes, Config.Settings.ReelStrategy, function(selected)
+        Config.Settings.ReelStrategy = selected
+        Config.Settings.ReelWhenFull = (selected:find("Reel When Full") ~= nil)
+        UpdateStatus("STATUS: REEL STRATEGY SET TO: " .. selected)
     end)
 
     CreateToggle(pNetFarm, "กด Perfect Tap อัตโนมัติ (เพิ่มโชค)", Config.Settings.AutoPerfectTap, function(v)
@@ -2340,10 +2432,21 @@ local function BuildUI()
     end)
 
     local currentModes = {
-        "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)",
-        "รอแต้มเรียกตัวสูงสุดที่ปลดล็อค (Save for Highest Unlocked Tier)"
+        "อัตโนมัติ: ดีที่สุดตามแต้มชาร์จ (Auto: Best Affordable Tier)",
+        "อัตโนมัติ: รอแต้มตัวสูงสุดที่ตาข่ายจับได้ (Auto: Save for Highest Net Tier)",
+        "เจาะจง: เซนิท Zenith (250 ⚡)",
+        "เจาะจง: สูงสุด Supreme (200 ⚡)",
+        "เจาะจง: เอมพิเรียน Empyrean (100 ⚡)",
+        "เจาะจง: ศักดิ์สิทธิ์ Sacred (75 ⚡)",
+        "เจาะจง: จักรวาล Cosmic (40 ⚡)",
+        "เจาะจง: ต้องห้าม Forbidden (25 ⚡)",
+        "เจาะจง: พระมหากษัตริย์ King (20 ⚡)",
+        "เจาะจง: ประวัติศาสตร์ Historical (15 ⚡)",
+        "เจาะจง: เดมิก๊อด Demigod (12 ⚡)",
+        "เจาะจง: เอเพ็กซ์ Apex (6 ⚡)",
+        "เจาะจง: ตำนาน Legendary (3 ⚡)"
     }
-    CreateDropdown(pRewards, "โหมดกระแสน้ำลึก (Current Mode)", currentModes, Config.Settings.CurrentMode, function(selected)
+    CreateDropdown(pRewards, "เป้าหมายกระแสน้ำลึก (Deep Current Target)", currentModes, Config.Settings.CurrentMode, function(selected)
         Config.Settings.CurrentMode = selected
         UpdateStatus("STATUS: CURRENT MODE SET TO: " .. selected)
         if Config.Settings.AutoCurrent then
@@ -2394,15 +2497,20 @@ local function BuildUI()
         UpdateStatus("STATUS: AUTO MINI-GAMES " .. (v and "ENABLED" or "DISABLED"))
     end)
 
-    local miniGameModes = {
-        "ชนะเหรียญทองทุกอัน (Always Gold Medal 🥇)",
-        "เฉพาะ Perfect Reel (🎣)",
-        "เฉพาะ Fish Frenzy (🐟)",
-        "เฉพาะ Bait Memory (🐛)"
+    local miniGameOptions = {
+        { value = "Reel", short = "เบ็ด 🎣", label = "🎣 Perfect Reel (มินิเกมดึงเบ็ด)" },
+        { value = "Jump", short = "กระโดด 🐟", label = "🐟 Fish Frenzy (มินิเกมปลากระโดด)" },
+        { value = "Lures", short = "เหยื่อ 🪱", label = "🪱 Bait Memory (มินิเกมเหยื่อล่อ)" }
     }
-    CreateDropdown(pRewards, "โหมดเล่นมินิเกม (Mini-Game Target)", miniGameModes, Config.Settings.MiniGameMode, function(selected)
-        Config.Settings.MiniGameMode = selected
-        UpdateStatus("STATUS: MINI-GAME MODE: " .. selected)
+    CreateMultiSelectDropdown(pRewards, "เลือกมินิเกมที่จะเล่น (Mini-Games Multi-Select)", miniGameOptions, Config.Settings.MiniGameSelectedGames, function(selectedMap)
+        local count = 0
+        for _, v in pairs(selectedMap) do
+            if v then count = count + 1 end
+        end
+        UpdateStatus(string.format("STATUS: MINI-GAMES SELECTION UPDATED: %d GAMES", count))
+        if MiniGameStatusCard then
+            MiniGameStatusCard.Text = string.format("เลือกมินิเกมแล้ว: %d/3 เกม (เหรียญทอง 🥇)", count)
+        end
     end)
 
     CreateButton(pRewards, "🎮 ตรวจสอบสถิติมินิเกม & เหรียญทอง (Check Mini-Game Stats)", Config.Colors.Cyan, function()
@@ -2448,13 +2556,81 @@ local function BuildUI()
 
     CreateToggle(pSell, "ขายปลาอัตโนมัติ (Auto Sell Fish)", Config.Settings.AutoSell, function(v)
         Config.Settings.AutoSell = v
+        UpdateStatus("STATUS: AUTO SELL " .. (v and "ENABLED" or "DISABLED"))
     end)
 
-    CreateButton(pSell, "💰 กดขายปลาทั้งหมดทันที (Sell All Fish)", Config.Colors.Card, function()
+    local sellFilterOptions = {
+        "ขายปลาทั่วไปทั้งหมด (Sell All Fish)",
+        "ขายเฉพาะ Common ถึง Rare (ระดับ 1-3)",
+        "ขายเฉพาะ Common ถึง Epic (ระดับ 1-5)",
+        "ขายเฉพาะ Common ถึง Legendary (ระดับ 1-6)",
+        "ขายเฉพาะ Common ถึง Apex (ระดับ 1-7)",
+        "ขายเฉพาะ Common ถึง Demigod (ระดับ 1-8)"
+    }
+    CreateDropdown(pSell, "ตัวกรองระดับปลาที่จะขาย (Sell Rarity Filter)", sellFilterOptions, Config.Settings.SellRarityMode, function(selected)
+        Config.Settings.SellRarityMode = selected
+        UpdateStatus("STATUS: SELL RARITY FILTER SET TO: " .. selected)
+    end)
+
+    CreateToggle(pSell, "✨ เก็บปลาผ่าเหล่า/กลายพันธุ์ (Keep Mutated Fish)", Config.Settings.KeepMutatedFish, function(v)
+        Config.Settings.KeepMutatedFish = v
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("CoolerAction") then
+            remotes.CoolerAction:InvokeServer("keepMut", v)
+        end
+        UpdateStatus("STATUS: KEEP MUTATED FISH " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pSell, "🦪 ผ่าหอยมุกอัตโนมัติ (Auto Shuck Fish Into Pearls)", Config.Settings.AutoShuckPearls, function(v)
+        Config.Settings.AutoShuckPearls = v
+        UpdateStatus("STATUS: AUTO SHUCK PEARLS " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local sellBtnRow = Instance.new("Frame")
+    sellBtnRow.Size = UDim2.new(1, 0, 0, 34)
+    sellBtnRow.BackgroundTransparency = 1
+    sellBtnRow.Parent = pSell
+
+    local btnSellNow = Instance.new("TextButton")
+    btnSellNow.Size = UDim2.new(0.48, 0, 1, 0)
+    btnSellNow.BackgroundColor3 = Config.Colors.Card
+    btnSellNow.Font = Enum.Font.GothamBold
+    btnSellNow.TextSize = 11
+    btnSellNow.TextColor3 = Config.Colors.TextPrimary
+    btnSellNow.Text = "💰 ขายปลาทันที (Sell Now)"
+    btnSellNow.Parent = sellBtnRow
+    local bsnCorner = Instance.new("UICorner")
+    bsnCorner.CornerRadius = UDim.new(0, 6)
+    bsnCorner.Parent = btnSellNow
+
+    btnSellNow.MouseButton1Click:Connect(function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         if remotes and remotes:FindFirstChild(Config.Events.SellFish) then
             remotes[Config.Events.SellFish]:FireServer()
             UpdateStatus("STATUS: MANUAL SELL FISH EXECUTED!")
+        end
+    end)
+
+    local btnShuckNow = Instance.new("TextButton")
+    btnShuckNow.Size = UDim2.new(0.48, 0, 1, 0)
+    btnShuckNow.Position = UDim2.new(0.52, 0, 0, 0)
+    btnShuckNow.BackgroundColor3 = Config.Colors.Gold
+    btnShuckNow.Font = Enum.Font.GothamBold
+    btnShuckNow.TextSize = 11
+    btnShuckNow.TextColor3 = Config.Colors.TextPrimary
+    btnShuckNow.Text = "🦪 ผ่าหอยมุกทันที (Shuck Pearls)"
+    btnShuckNow.Parent = sellBtnRow
+    local bskCorner = Instance.new("UICorner")
+    bskCorner.CornerRadius = UDim.new(0, 6)
+    bskCorner.Parent = btnShuckNow
+
+    btnShuckNow.MouseButton1Click:Connect(function()
+        UpdateStatus("STATUS: SHUCKING FISH INTO PEARLS...")
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("CoolerAction") then
+            local res = remotes.CoolerAction:InvokeServer("shuck")
+            local pCount = (res and res.pearls) or 0
+            UpdateStatus(string.format("STATUS: SHUCKED PEARLS! +%d PEARLS GAINED", pCount))
         end
     end)
 
@@ -2471,24 +2647,23 @@ local function BuildUI()
         UpdateStatus("STATUS: AUTO UPGRADE " .. (v and "ENABLED" or "DISABLED"))
     end)
 
-    CreateToggle(pUpgrade, "🚤 อัปเกรดเรือ (Boat: Hull & Equipment)", Config.Settings.UpgradeBoat, function(v)
-        Config.Settings.UpgradeBoat = v
-    end)
-
-    CreateToggle(pUpgrade, "🕸️ อัปเกรดตาข่าย (Net: Auto Tier Up)", Config.Settings.UpgradeNet, function(v)
-        Config.Settings.UpgradeNet = v
-    end)
-
-    CreateToggle(pUpgrade, "🎣 อัปเกรดชาวประมง (Fisherman: Rod, Tackle, Bait)", Config.Settings.UpgradeFisherman, function(v)
-        Config.Settings.UpgradeFisherman = v
-    end)
-
-    CreateToggle(pUpgrade, "🔱 อัปเกรดปืนฉมวก (Harpoon: Tips, Multi, Reload)", Config.Settings.UpgradeSpear, function(v)
-        Config.Settings.UpgradeSpear = v
-    end)
-
-    CreateToggle(pUpgrade, "⚙️ อัปเกรดทั่วไป/เบส (General: Weave, Titan, Colossus)", Config.Settings.UpgradeGeneral, function(v)
-        Config.Settings.UpgradeGeneral = v
+    local upgradeCatOptions = {
+        { value = "Net", short = "แห/ตาข่าย 🕸️", label = "🕸️ แห & ตาข่าย (Priority 2: Best Net Tier Up)" },
+        { value = "Boat", short = "เรือ ⛵", label = "⛵ เรือ & อุปกรณ์เรือ (Hull, Engine, Sonar, Cold, Trawl)" },
+        { value = "Fisherman", short = "คนตกปลา 🎣", label = "🎣 คนตกปลาผู้ช่วย (Rod, Line, Speed, Range, Tackle, Bait)" },
+        { value = "Spear", short = "ฉมวก 🔱", label = "🔱 ปืนฉมวกตีบอส (Spear Gun, Power, Reload, Piercing)" },
+        { value = "General", short = "ทั่วไป ⚙️", label = "⚙️ อุปกรณ์ทั่วไป (Weave, Titan, Colossus, Fleet, etc.)" },
+        { value = "StarPerks", short = "สตาร์เพิร์ก ★", label = "★ สตาร์เพิร์กจุติ (Ascension Star Perks Auto-Invest)" }
+    }
+    CreateMultiSelectDropdown(pUpgrade, "เลือกหมวดหมู่อัปเกรด (Upgrade Categories)", upgradeCatOptions, Config.Settings.UpgradeSelectedCategories, function(selectedMap)
+        local count = 0
+        for _, v in pairs(selectedMap) do
+            if v then count = count + 1 end
+        end
+        UpdateStatus(string.format("STATUS: UPGRADE CATEGORIES UPDATED: %d SELECTED", count))
+        if UpgradeStatusCard then
+            UpgradeStatusCard.Text = string.format("หมวดหมู่อัปเกรดที่เลือก: %d/6 หมวด", count)
+        end
     end)
 
     CreateButton(pUpgrade, "⚡ รันอัปเกรดทุกอย่างที่ซื้อได้ทันที (Upgrade All Now)", Config.Colors.Gold, function()
@@ -2522,18 +2697,19 @@ local function BuildUI()
         end
     end)
 
-    local potionOptions = {
-        "ดื่มยาทุกชนิด (All Potions)",
-        "เฉพาะยาเงิน (Cash Boost)",
-        "เฉพาะยาตาข่าย (Net Space)",
-        "เฉพาะเทียร์สูงสุด (Tier 5+)",
-        "ปิดการดื่มยา (Disabled)"
+    local potionKindOptions = {
+        { value = "Cash", short = "เงิน 💵", label = "💵 ยาเพิ่มเงิน (Cash Boost Potion)" },
+        { value = "Net", short = "ตาข่าย 🧪", label = "🧪 ยาเพิ่มขนาดตาข่าย (Net Space Potion)" }
     }
-    CreateDropdown(pPotions, "โหมดชนิดยาที่ดื่ม (Potion Type Filter)", potionOptions, Config.Settings.PotionDrinkMode, function(selected)
-        Config.Settings.PotionDrinkMode = selected
-        UpdateStatus("STATUS: POTION MODE SET TO: " .. selected)
+    CreateMultiSelectDropdown(pPotions, "เลือกชนิดยาที่ดื่ม & ซื้อ (Potion Types)", potionKindOptions, Config.Settings.PotionSelectedKinds, function(selectedKinds)
+        local count = 0
+        local kinds = {}
+        if selectedKinds.Cash then count = count + 1 table.insert(kinds, "เงิน 💵") end
+        if selectedKinds.Net then count = count + 1 table.insert(kinds, "ตาข่าย 🧪") end
+        local txt = count == 2 and "ยาทุกชนิด (Cash + Net 💵🧪)" or (count == 1 and ("เฉพาะ" .. table.concat(kinds, ", ")) or "ไม่ได้เลือกชนิดยา")
+        UpdateStatus("STATUS: POTION TYPES UPDATED: " .. txt)
         if PotionsStatusCard then
-            PotionsStatusCard.Text = "โหมดดื่มยาปัจจุบัน: " .. selected
+            PotionsStatusCard.Text = "ชนิดยาที่เลือก: " .. txt
         end
     end)
 
@@ -2560,26 +2736,28 @@ local function BuildUI()
         end
     end)
 
-    CreateButton(pPotions, "⚡ ดื่มยาตามระดับที่เลือกทันที (Drink Selected Potions Now)", Config.Colors.Success, function()
+    CreateButton(pPotions, "⚡ ดื่มยาตามชนิดและระดับที่เลือกทันที (Drink Selected Potions Now)", Config.Colors.Success, function()
         UpdateStatus("STATUS: CONSUMING SELECTED STORED POTIONS...")
         task.spawn(function()
             local remotes = ReplicatedStorage:FindFirstChild("Remotes")
             if remotes and remotes:FindFirstChild("Potions") then
+                local selectedKinds = Config.Settings.PotionSelectedKinds or { Cash = true, Net = true }
                 local selectedTiers = Config.Settings.PotionSelectedTiers or {}
-                local allSelected = true
+                local allTiersSelected = true
                 for t = 1, 10 do
                     if not selectedTiers[t] then
-                        allSelected = false
+                        allTiersSelected = false
                         break
                     end
                 end
+                local allKindsSelected = (selectedKinds.Cash == true and selectedKinds.Net == true)
 
-                if allSelected and (Config.Settings.PotionDrinkMode == "ดื่มยาทุกชนิด (All Potions)") then
+                if allTiersSelected and allKindsSelected then
                     local res = remotes.Potions:InvokeServer("useAll")
                     local count = (res and res.drank) or 0
                     UpdateStatus(string.format("STATUS: SUCCESSFULLY DRANK %d POTIONS!", count))
                     if PotionsStatusCard then
-                        PotionsStatusCard.Text = string.format("ดื่มยาทุกระดับสำเร็จทันที: %d ขวด! (บัฟทำงานแล้ว)", count)
+                        PotionsStatusCard.Text = string.format("ดื่มยาทุกชนิดและทุกระดับสำเร็จทันที: %d ขวด! (บัฟทำงานแล้ว)", count)
                     end
                 else
                     local pState = remotes.Potions:InvokeServer("state")
@@ -2596,7 +2774,7 @@ local function BuildUI()
                             if c > 0 then
                                 local kind, tierStr = key:match("^(%a+)_(%d+)$")
                                 local tier = tonumber(tierStr) or 0
-                                if selectedTiers[tier] == true then
+                                if (selectedKinds[kind] == true) and (selectedTiers[tier] == true) then
                                     for _ = 1, c do
                                         local res = remotes.Potions:InvokeServer("use", key)
                                         if res and res.ok then
@@ -2610,7 +2788,7 @@ local function BuildUI()
                     end
                     UpdateStatus(string.format("STATUS: DRANK %d SELECTED POTIONS!", count))
                     if PotionsStatusCard then
-                        PotionsStatusCard.Text = string.format("ดื่มยาตามระดับที่เลือกสำเร็จทันที: %d ขวด!", count)
+                        PotionsStatusCard.Text = string.format("ดื่มยาตามที่เลือกสำเร็จทันที: %d ขวด!", count)
                     end
                 end
             end
@@ -2663,18 +2841,20 @@ local function BuildUI()
         end)
     end)
 
-    CreateButton(pPotions, "🧪 ซื้อยาตามระดับที่เลือกในร้านทันที (Buy Selected Stock Potions)", Config.Colors.Cyan, function()
+    CreateButton(pPotions, "🧪 ซื้อยาตามชนิดและระดับที่เลือกในร้านทันที (Buy Selected Stock Potions)", Config.Colors.Cyan, function()
         UpdateStatus("STATUS: BUYING SELECTED STOCKED POTIONS...")
         task.spawn(function()
             local remotes = ReplicatedStorage:FindFirstChild("Remotes")
             if remotes and remotes:FindFirstChild("Potions") then
                 local state = remotes.Potions:InvokeServer("state")
                 local count = 0
+                local selectedKinds = Config.Settings.PotionSelectedKinds or { Cash = true, Net = true }
                 local selectedTiers = Config.Settings.PotionSelectedTiers or {}
                 if state and state.stock and state.cash then
                     for i, p in ipairs(state.stock) do
+                        local kindAllowed = (p.kind == nil or selectedKinds[p.kind] == true)
                         local tierAllowed = (p.tier == nil or selectedTiers[p.tier] == true)
-                        if not p.bought and p.price and state.cash >= p.price and tierAllowed then
+                        if not p.bought and p.price and state.cash >= p.price and kindAllowed and tierAllowed then
                             local b = remotes.Potions:InvokeServer("buy", i)
                             if b and b.ok then
                                 count = count + 1
@@ -2685,7 +2865,7 @@ local function BuildUI()
                 end
                 UpdateStatus(string.format("STATUS: BOUGHT %d POTIONS FROM SHOP!", count))
                 if PotionsStatusCard then
-                    PotionsStatusCard.Text = string.format("ซื้อยาตามระดับที่เลือกสำเร็จล่าสุด: %d ขวด!", count)
+                    PotionsStatusCard.Text = string.format("ซื้อยาตามชนิดและระดับที่เลือกสำเร็จล่าสุด: %d ขวด!", count)
                 end
             end
         end)
@@ -2752,6 +2932,17 @@ local function BuildUI()
     CreateToggle(pBoss, "🦈 ตีบอสอัตโนมัติ (Auto Fight Megalodon & Kraken)", Config.Settings.AutoBossFight, function(v)
         Config.Settings.AutoBossFight = v
         UpdateStatus("STATUS: AUTO BOSS FIGHT " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local bossModes = {
+        "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)",
+        "เฉพาะฉลามยักษ์ Megalodon 🦈",
+        "เฉพาะปลาหมึกยักษ์ Kraken 🐙",
+        "ปิดการล่าบอส (Disabled)"
+    }
+    CreateDropdown(pBoss, "เลือกเป้าหมายบอส (Boss Target Filter)", bossModes, Config.Settings.BossTargetMode, function(selected)
+        Config.Settings.BossTargetMode = selected
+        UpdateStatus("STATUS: BOSS TARGET SET TO: " .. selected)
     end)
 
     CreateToggle(pBoss, "🎁 เคลมการ์ดของรางวัลบอสอัตโนมัติ (Auto Claim Boss Loot)", Config.Settings.AutoClaimBossLoot, function(v)
