@@ -917,16 +917,97 @@ SpawnWorker("PotionsAndSkillsWorker", function()
     task.wait(15.0 + math.random(1, 4))
 end)
 
+-- Helper: Accurate Megalodon Aim Position Resolver
+local function GetMegalodonAimPosition()
+    -- 1. Scan workspace.MegalodonLocal for the Megalodon part/model
+    local megFolder = workspace:FindFirstChild("MegalodonLocal")
+    if megFolder then
+        local meg = megFolder:FindFirstChild("Megalodon")
+            or megFolder:FindFirstChildWhichIsA("BasePart")
+            or megFolder:FindFirstChildWhichIsA("Model")
+        if meg then
+            if meg:IsA("BasePart") then
+                return meg.Position
+            elseif meg:IsA("Model") then
+                return meg:GetPivot().Position
+            end
+        end
+    end
+
+    -- 2. Compute path position using FishingShared.MegPos and elapsed time from MegStart
+    if FishingShared and FishingShared.MegPos then
+        local megStart = workspace:GetAttribute("MegStart") or 0
+        local elapsed = math.max(0, workspace:GetServerTimeNow() - megStart)
+        local ok, pos = pcall(function()
+            return FishingShared.MegPos(elapsed)
+        end)
+        if ok and typeof(pos) == "Vector3" then
+            return pos
+        end
+    end
+
+    -- 3. Fallback
+    return Vector3.new(0, -6, 200)
+end
+
+-- Helper: Universal Megalodon Spear Attack Trigger (UI Click + Space Key + Virtual Mouse + Remote)
+local function FireTurretSpearAtMegalodon(remotes)
+    local targetPos = GetMegalodonAimPosition()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local turretUI = pGui and pGui:FindFirstChild("MegTurretUI")
+
+    -- 1. Direct In-Game Client UI Trigger (If Turret UI is open)
+    if turretUI then
+        local fireBtn = turretUI:FindFirstChild("Fire", true)
+        if fireBtn then
+            if typeof(firesignal) == "function" then
+                pcall(function() firesignal(fireBtn.MouseButton1Click) end)
+                pcall(function() firesignal(fireBtn.Activated) end)
+            end
+        end
+    end
+
+    -- 2. Virtual Key Press (Space key directly triggers MegalodonClient fireNow)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+        task.wait(0.02)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+    end)
+
+    -- 3. Virtual Mouse Click with Aim Coordinate
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        local viewSize = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local screenPos = Vector2.new(viewSize.X / 2, viewSize.Y * 0.45)
+        if camera and targetPos then
+            local w2s, onScreen = camera:WorldToViewportPoint(targetPos)
+            if onScreen then
+                screenPos = Vector2.new(w2s.X, w2s.Y)
+            end
+        end
+        VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 0)
+        task.wait(0.02)
+        VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 0)
+    end)
+
+    -- 4. Direct Server Remote Call (Double-tap with exact target coordinates)
+    if remotes and remotes:FindFirstChild("MegEvent") and targetPos then
+        pcall(function()
+            remotes.MegEvent:FireServer("fire", targetPos)
+        end)
+    end
+end
+
 -- Task 9: Auto Boss Fighter (Megalodon & Kraken Auto Fight & Loot)
 SpawnWorker("AutoBossWorker", function()
     if not Config.Settings.AutoBossFight then
-        task.wait(3.0)
+        task.wait(2.5)
         return
     end
 
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then
-        task.wait(3.0)
+        task.wait(2.5)
         return
     end
 
@@ -935,53 +1016,73 @@ SpawnWorker("AutoBossWorker", function()
 
     -- 1. Check Megalodon Event
     if megEvent and workspace:GetAttribute("MegActive") == true then
-        UpdateStatus("STATUS: MEGALODON DETECTED! ENTERING FIGHT...")
+        UpdateStatus("STATUS: MEGALODON DETECTED! ENTERING TURRET FIGHT...")
+
+        -- Ensure player is mounted in the turret
         pcall(function()
-            -- Join the fight
-            megEvent:FireServer("enter")
-            task.wait(0.5)
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local turretUI = pGui and pGui:FindFirstChild("MegTurretUI")
+            if not (turretUI and turretUI.Enabled) then
+                megEvent:FireServer("enter")
+                task.wait(0.4)
+            end
+        end)
 
-            -- Fight loop while Megalodon is active
-            local fightStart = os.clock()
-            while workspace:GetAttribute("MegActive") == true and (os.clock() - fightStart < 190) and IsSessionValid() do
-                -- Calculate Megalodon aim position
-                local targetPos = nil
-                local megFolder = workspace:FindFirstChild("MegalodonLocal")
-                if megFolder and megFolder:FindFirstChild("Root") then
-                    targetPos = megFolder.Root.Position
-                elseif FishingShared and FishingShared.MegPos then
-                    targetPos = FishingShared.MegPos(workspace:GetServerTimeNow())
-                end
+        -- Combat loop while Megalodon is alive
+        local fightStart = os.clock()
+        while workspace:GetAttribute("MegActive") == true and (os.clock() - fightStart < 195) and IsSessionValid() do
+            if not Config.Settings.AutoBossFight then break end
 
-                if targetPos then
-                    megEvent:FireServer("fire", targetPos)
-                    UpdateStatus("STATUS: ATTACKING MEGALODON WITH SPEAR TURRET!")
-                end
-
-                task.wait(1.1)
+            -- Re-enter turret mode if dropped out
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local turretUI = pGui and pGui:FindFirstChild("MegTurretUI")
+            if not (turretUI and turretUI.Enabled) then
+                pcall(function() megEvent:FireServer("enter") end)
+                task.wait(0.3)
             end
 
-            -- Battle ended: claim victory rewards
-            task.wait(1.0)
+            -- Direct camera to face Megalodon for turret crosshair lock
+            pcall(function()
+                local targetPos = GetMegalodonAimPosition()
+                local cam = workspace.CurrentCamera
+                if cam and targetPos then
+                    cam.CFrame = CFrame.lookAt(cam.CFrame.Position, targetPos)
+                end
+            end)
+
+            -- Fire through all channels (UI, Space, Mouse, Remote)
+            FireTurretSpearAtMegalodon(remotes)
+            UpdateStatus("STATUS: 🔥 FIRING SPEARS AT MEGALODON!")
+
+            -- Poll at 0.5s interval to immediately fire once the 2.0s cooldown finishes
+            task.wait(0.5)
+        end
+
+        -- Battle finished: claim victory rewards
+        task.wait(1.5)
+        pcall(function()
             megEvent:FireServer("closed")
-            UpdateStatus("STATUS: MEGALODON DEFEATED! CLAIMED VICTORY LOOT!")
         end)
+        UpdateStatus("STATUS: MEGALODON DEFEATED! CLAIMED VICTORY LOOT!")
     end
 
-    -- 2. Kraken Boss / General Boss Event
+    -- 2. Kraken Boss / General Sea Boss Event
+    if workspace:GetAttribute("BossActive") == true then
+        UpdateStatus("STATUS: 🐙 KRAKEN ACTIVE! FIGHTING WITH NETS & WEAPONS...")
+    end
+
     if bossEvent and Config.Settings.AutoClaimBossLoot then
         -- Auto close/claim Kraken loot card if open
         pcall(function()
             local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-            local bossUI = pGui and (pGui:FindFirstChild("BossUI") or pGui:FindFirstChild("LootUI"))
-            if bossUI and bossUI.Enabled then
+            local bossUI = pGui and (pGui:FindFirstChild("BossUI") or pGui:FindFirstChild("LootUI") or pGui:FindFirstChild("BossDrops") or pGui:FindFirstChild("KrakenDrops"))
+            if (bossUI and bossUI.Enabled) or workspace:GetAttribute("BossActive") == false then
                 bossEvent:FireServer("closed")
-                UpdateStatus("STATUS: CLAIMED KRAKEN BOSS LOOT CARD!")
             end
         end)
     end
 
-    task.wait(3.0)
+    task.wait(1.5)
 end)
 
 -- Task 6: Auto Sell Worker
@@ -2021,20 +2122,19 @@ local function BuildUI()
 
     CreateButton(pBoss, "🎯 เล็งยิงฉมวกใส่ Megalodon ทันที (Fire Turret Spear)", Config.Colors.Cyan, function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        if remotes and remotes:FindFirstChild("MegEvent") then
-            local targetPos = nil
-            local megFolder = workspace:FindFirstChild("MegalodonLocal")
-            if megFolder and megFolder:FindFirstChild("Root") then
-                targetPos = megFolder.Root.Position
-            elseif FishingShared and FishingShared.MegPos then
-                targetPos = FishingShared.MegPos(workspace:GetServerTimeNow())
-            end
-            if targetPos then
-                remotes.MegEvent:FireServer("fire", targetPos)
-                UpdateStatus("STATUS: MANUAL SHOT FIRED AT MEGALODON!")
-            else
-                UpdateStatus("STATUS: MEGALODON TARGET NOT FOUND")
-            end
+        if remotes then
+            -- Make sure in turret
+            pcall(function()
+                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+                local turretUI = pGui and pGui:FindFirstChild("MegTurretUI")
+                if not (turretUI and turretUI.Enabled) and remotes:FindFirstChild("MegEvent") then
+                    remotes.MegEvent:FireServer("enter")
+                    task.wait(0.3)
+                end
+            end)
+
+            FireTurretSpearAtMegalodon(remotes)
+            UpdateStatus("STATUS: MANUAL SPEAR SHOT TRIGGERED!")
         end
     end)
 
