@@ -319,41 +319,163 @@ SpawnWorker("AutoEquipBestWorker", function()
     task.wait(Config.Settings.EquipBestInterval + math.random(1, 3))
 end)
 
--- Task 4: Auto Rebirth Worker (เกิดใหม่อัตโนมัติ)
-SpawnWorker("AutoRebirthWorker", function()
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    local getDataRemote = remotes and remotes:FindFirstChild(Config.Events.GetData)
-    local rebirthRemote = remotes and remotes:FindFirstChild(Config.Events.RebirthRequest)
+-- ==============================================================================
+-- PRIORITY 1 & 2 WORKERS & HELPERS
+-- 1. เกิดใหม่ทันทีเมื่อครบเกณฑ์ (Auto Rebirth)
+-- 2. ซื้อแหและใส่แหที่ดีที่สุดเสมอ (Buy & Equip Best Net)
+-- ==============================================================================
 
-    if getDataRemote and rebirthRemote and FishingShared then
-        local data = nil
-        pcall(function() data = getDataRemote:InvokeServer() end)
+local function UpgradeBestNet(remotes, data)
+    remotes = remotes or ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes or not remotes:FindFirstChild("BuyItem") or not FishingShared or not FishingShared.Nets then
+        return 0
+    end
 
-        if data then
-            local nextRebirth = (data.Rebirths or 0) + 1
-            local need = FishingShared.RebirthNeed and FishingShared.RebirthNeed(data, nextRebirth)
-            local canRebirth = false
-            pcall(function() canRebirth = FishingShared.CanRebirth(data) end)
-
-            if UIReferences.RebirthProgressLabel and need then
-                if canRebirth then
-                    UIReferences.RebirthProgressLabel.Text = string.format("REBIRTH %d: READY TO REBIRTH!", nextRebirth)
-                    UIReferences.RebirthProgressLabel.TextColor3 = Config.Colors.Success
-                else
-                    UIReferences.RebirthProgressLabel.Text = string.format("Rebirth %d Need: %s Cash, %d Fish", nextRebirth, FishingShared.Money(need.Cash), need.Caught)
-                    UIReferences.RebirthProgressLabel.TextColor3 = Config.Colors.Gold
-                end
-            end
-
-            if Config.Settings.AutoRebirth and canRebirth then
-                rebirthRemote:FireServer()
-                UpdateStatus(string.format("STATUS: REBIRTH %d EXECUTED!", nextRebirth))
-                task.wait(4.0)
-            end
+    if not data then
+        local getData = remotes:FindFirstChild(Config.Events.GetData)
+        local ok, res = pcall(function() return getData and getData:InvokeServer() end)
+        if ok and type(res) == "table" then
+            data = res
+        else
+            return 0
         end
     end
 
-    task.wait(5.0)
+    local currentCash = data.Cash or 0
+    local curTier = data.NetTier or 1
+    local upgradedCount = 0
+
+    for nextTier = curTier + 1, #FishingShared.Nets do
+        local netCfg = FishingShared.Nets[nextTier]
+        if not netCfg then break end
+        local cost = netCfg.Cost or (1/0)
+        local rOk = (FishingShared.NetRebirthOk == nil) or FishingShared.NetRebirthOk(data, nextTier)
+
+        if rOk and currentCash >= cost then
+            local success = pcall(function()
+                remotes.BuyItem:FireServer("Net", nextTier, true)
+            end)
+            if success then
+                currentCash = currentCash - cost
+                data.Cash = currentCash
+                data.NetTier = nextTier
+                curTier = nextTier
+                upgradedCount = upgradedCount + 1
+                UpdateStatus(string.format("PRIORITY 2: UPGRADED & EQUIPPED NET TIER %d (%s)!", nextTier, netCfg.Name or ""))
+                task.wait(0.2)
+            else
+                break
+            end
+        else
+            break
+        end
+    end
+
+    return upgradedCount
+end
+
+-- Task 4: Priority 1 & 2 Worker (Rebirth First, Then Best Net)
+SpawnWorker("PriorityRebirthAndNetWorker", function()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes or not FishingShared then
+        task.wait(2.0)
+        return
+    end
+
+    local getDataRemote = remotes:FindFirstChild(Config.Events.GetData)
+    local rebirthRemote = remotes:FindFirstChild(Config.Events.RebirthRequest)
+    if not getDataRemote or not rebirthRemote then
+        task.wait(2.0)
+        return
+    end
+
+    local ok, data = pcall(function() return getDataRemote:InvokeServer() end)
+    if not ok or type(data) ~= "table" then
+        task.wait(2.0)
+        return
+    end
+
+    local nextRebirth = (data.Rebirths or 0) + 1
+    local need = FishingShared.RebirthNeed and FishingShared.RebirthNeed(data, nextRebirth)
+    local canRebirth = false
+    pcall(function() canRebirth = FishingShared.CanRebirth(data) end)
+
+    if UIReferences.RebirthProgressLabel and need then
+        if canRebirth then
+            UIReferences.RebirthProgressLabel.Text = string.format("REBIRTH %d: พร้อมเกิดใหม่ทันที! (READY)", nextRebirth)
+            UIReferences.RebirthProgressLabel.TextColor3 = Config.Colors.Success
+        else
+            UIReferences.RebirthProgressLabel.Text = string.format("Rebirth %d ต้องการ: %s เงิน | %d ปลา", nextRebirth, FishingShared.Money(need.Cash), need.Caught)
+            UIReferences.RebirthProgressLabel.TextColor3 = Config.Colors.Gold
+        end
+    end
+
+    -- PRIORITY 1: AUTO REBIRTH
+    if Config.Settings.AutoRebirth and canRebirth then
+        UpdateStatus(string.format("PRIORITY 1: PERFORMING REBIRTH %d NOW!", nextRebirth))
+        rebirthRemote:FireServer()
+        task.wait(2.5)
+
+        -- ทันทีหลัง Rebirth: กวาดเงินฐาน -> ซื้อแหที่ดีที่สุด -> ใส่ปลาดีที่สุด
+        pcall(function()
+            local root = GetPlayerRoot()
+            local myBase = GetMyBase()
+            local collectRemote = remotes:FindFirstChild(Config.Events.CollectPad)
+            if root and myBase and collectRemote then
+                local pedestals = myBase:FindFirstChild("Pedestals")
+                if pedestals then
+                    local originalCF = root.CFrame
+                    for _, ped in ipairs(pedestals:GetChildren()) do
+                        local slot = ped:GetAttribute("Slot")
+                        local col = ped:FindFirstChild("Collect")
+                        local pad = col and col:FindFirstChild("Pad")
+                        if pad and slot then
+                            root.CFrame = pad.CFrame + Vector3.new(0, 2, 0)
+                            task.wait(0.06)
+                            collectRemote:FireServer(slot)
+                        end
+                    end
+                    task.wait(0.05)
+                    root.CFrame = originalCF
+                end
+            end
+        end)
+
+        -- PRIORITY 2: BUY & EQUIP BEST NET IMMEDIATELY
+        UpgradeBestNet(remotes)
+
+        -- PRIORITY 3: EQUIP BEST FISH IMMEDIATELY
+        if remotes:FindFirstChild(Config.Events.BestSetup) then
+            remotes[Config.Events.BestSetup]:FireServer()
+        end
+
+        task.wait(2.0)
+        return
+    end
+
+    -- PRIORITY 2: BUY & EQUIP BEST NET ALWAYS (หากมีเงินพอซื้อเทียร์ใหม่)
+    if Config.Settings.UpgradeNet then
+        UpgradeBestNet(remotes, data)
+    end
+
+    task.wait(2.5)
+end)
+
+-- Rebirth Event Listener: เมื่อเกิดใหม่สำเร็จจากทางใดก็ตาม รีบซื้อและใส่แหที่ดีที่สุดทันที
+task.spawn(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    local rebirthDone = remotes and remotes:WaitForChild("RebirthDone", 5)
+    if rebirthDone then
+        rebirthDone.OnClientEvent:Connect(function(newRebirthLvl)
+            if not IsSessionValid() then return end
+            UpdateStatus(string.format("REBIRTH %s CONFIRMED! AUTO BUYING BEST NET...", tostring(newRebirthLvl)))
+            task.wait(1.0)
+            UpgradeBestNet(remotes)
+            if remotes:FindFirstChild(Config.Events.BestSetup) then
+                remotes[Config.Events.BestSetup]:FireServer()
+            end
+        end)
+    end
 end)
 
 -- Task 5: Mega Auto Claim System (รับรางวัลภารกิจ & ของขวัญทุกหมวดหมู่อัตโนมัติ)
@@ -745,22 +867,11 @@ local function RunUpgradeCycle()
     local currentCash = data.Cash or 0
     local upgradedCount = 0
 
-    -- 1. Upgrade Net (ตาข่าย)
-    if Config.Settings.UpgradeNet and remotes:FindFirstChild("BuyItem") then
-        local nextTier = (data.NetTier or 1) + 1
-        local netCfg = FishingShared.Nets and FishingShared.Nets[nextTier]
-        if netCfg and (netCfg.Cost or (1/0)) <= currentCash then
-            local rOk = (FishingShared.NetRebirthOk == nil) or FishingShared.NetRebirthOk(data, nextTier)
-            if rOk then
-                pcall(function()
-                    remotes.BuyItem:FireServer("Net", nextTier, true)
-                end)
-                currentCash = currentCash - netCfg.Cost
-                upgradedCount = upgradedCount + 1
-                UpdateStatus(string.format("STATUS: UPGRADED NET TIER %d (%s)!", nextTier, netCfg.Name or ""))
-                task.wait(0.2)
-            end
-        end
+    -- 1. Upgrade Net (ตาข่าย - อันดับความสำคัญสูงสุดในหมวดอัปเกรด ซื้อและใส่แหที่ดีที่สุดทันที)
+    if Config.Settings.UpgradeNet then
+        local netUpgrades = UpgradeBestNet(remotes, data)
+        upgradedCount = upgradedCount + netUpgrades
+        currentCash = data.Cash or currentCash
     end
 
     -- 2. Upgrade Boat (เรือ)
@@ -1069,7 +1180,7 @@ local function BuildUI()
         return scroll
     end
 
-    local function AddTabButton(tabId, tabName, isDefault)
+    local function AddTabButton(tabId, tabName, isDefault, layoutOrder)
         local btn = Instance.new("TextButton")
         btn.Name = "TabBtn_" .. tabId
         btn.Size = UDim2.new(1, 0, 0, 32)
@@ -1078,6 +1189,7 @@ local function BuildUI()
         btn.TextSize = 11
         btn.TextColor3 = isDefault and Config.Colors.TextPrimary or Config.Colors.TextSecondary
         btn.Text = tabName
+        if layoutOrder then btn.LayoutOrder = layoutOrder end
         btn.Parent = Sidebar
 
         local corner = Instance.new("UICorner")
@@ -1296,13 +1408,47 @@ local function BuildUI()
     end
 
     -- ==========================================================================
-    -- TAB 1: ระบบโยนแห & ฟาร์มหลัก (Net & Main Farm)
+    -- TAB 1: 🔄 1. เกิดใหม่ & วิวัฒนาการ (Rebirth - Priority 1)
     -- ==========================================================================
-    AddTabButton("NetFarm", "โยนแห & ฟาร์ม", true)
+    AddTabButton("RebirthTab", "🔄 1. เกิดใหม่", true, 1)
+    local pRebirth = CreateTabPage("RebirthTab")
+    pRebirth.Visible = true
+
+    UIReferences.RebirthProgressLabel = CreateStatusCard(pRebirth, "Rebirth Requirement: กำลังคำนวณเงื่อนไข...")
+
+    CreateToggle(pRebirth, "เกิดใหม่อัตโนมัติเมื่อครบเกณฑ์ (Priority 1: Auto Rebirth)", Config.Settings.AutoRebirth, function(v)
+        Config.Settings.AutoRebirth = v
+    end)
+
+    CreateButton(pRebirth, "🔄 กดเกิดใหม่ทันที (Rebirth Now)", Config.Colors.Gold, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild(Config.Events.RebirthRequest) then
+            remotes[Config.Events.RebirthRequest]:FireServer()
+            UpdateStatus("STATUS: REBIRTH REQUEST SENT!")
+        end
+    end)
+
+    CreateStatusCard(pRebirth, "⚡ ลำดับสำคัญ 1: เกิดใหม่ทันทีเมื่อครบเกณฑ์ เพื่อรับตัวคูณเงินถาวร\n(เมื่อเกิดใหม่แล้ว ระบบจะซื้อและใส่แหที่ดีที่สุดต่อทันที)")
+
+    -- ==========================================================================
+    -- TAB 2: 🕸️ 2. แห & โยนแหตกปลา (Net & Fishing - Priority 2)
+    -- ==========================================================================
+    AddTabButton("NetFarm", "🕸️ 2. แห & โยนแห", false, 2)
     local pNetFarm = CreateTabPage("NetFarm")
-    pNetFarm.Visible = true
 
     UIReferences.NetStateLabel = CreateStatusCard(pNetFarm, "Net: Scanning...")
+
+    CreateToggle(pNetFarm, "ซื้อและใส่แหที่ดีที่สุดอัตโนมัติ (Priority 2: Auto Best Net)", Config.Settings.UpgradeNet, function(v)
+        Config.Settings.UpgradeNet = v
+    end)
+
+    CreateButton(pNetFarm, "⭐ ซื้อและสวมใส่แหที่ดีที่สุดทันที (Buy & Equip Best Net Now)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: UPGRADING TO HIGHEST AFFORDABLE NET...")
+        task.spawn(function()
+            local count = UpgradeBestNet()
+            UpdateStatus(string.format("STATUS: EQUIPPED BEST NET! (%d TIERS UPGRADED)", count))
+        end)
+    end)
 
     CreateToggle(pNetFarm, "โยนแห & ดึงแหอัตโนมัติ (Auto Net Loop)", Config.Settings.AutoNet, function(v)
         Config.Settings.AutoNet = v
@@ -1364,9 +1510,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 2: แท่นวาง & เงินในฐาน (Base & Cash Pads)
+    -- TAB 3: แท่นวาง & เงินในฐาน (Base & Cash Pads)
     -- ==========================================================================
-    AddTabButton("BasePads", "แท่นวาง & เงิน", false)
+    AddTabButton("BasePads", "💰 3. แท่นวาง & เงิน", false, 3)
     local pBasePads = CreateTabPage("BasePads")
 
     CreateToggle(pBasePads, "กวาดเงินแท่นวางอัตโนมัติ (Auto Collect Pads)", Config.Settings.AutoCollectPads, function(v)
@@ -1420,9 +1566,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 3: ภารกิจ & รางวัลทั้งหมด (Mega Quests & Rewards)
+    -- TAB 7: ภารกิจ & รางวัลทั้งหมด (Mega Quests & Rewards)
     -- ==========================================================================
-    AddTabButton("RewardsTab", "ภารกิจ & ของขวัญ", false)
+    AddTabButton("RewardsTab", "🎁 7. ภารกิจ & ของขวัญ", false, 7)
     local pRewards = CreateTabPage("RewardsTab")
 
     local QuestStatusCard = CreateStatusCard(pRewards, "ระบบภารกิจ: สแกนเควสและของขวัญทุกระบบอัตโนมัติ...")
@@ -1467,29 +1613,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 4: เกิดใหม่ & วิวัฒนาการ (Rebirth)
+    -- TAB 8: ขายปลา/ร้านค้า (Market & Sell)
     -- ==========================================================================
-    AddTabButton("RebirthTab", "เกิดใหม่", false)
-    local pRebirth = CreateTabPage("RebirthTab")
-
-    UIReferences.RebirthProgressLabel = CreateStatusCard(pRebirth, "Rebirth Requirement: Calculating...")
-
-    CreateToggle(pRebirth, "เกิดใหม่อัตโนมัติเมื่อครบเกณฑ์ (Auto Rebirth)", Config.Settings.AutoRebirth, function(v)
-        Config.Settings.AutoRebirth = v
-    end)
-
-    CreateButton(pRebirth, "🔄 กดเกิดใหม่ทันที (Rebirth Now)", Config.Colors.Gold, function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        if remotes and remotes:FindFirstChild(Config.Events.RebirthRequest) then
-            remotes[Config.Events.RebirthRequest]:FireServer()
-            UpdateStatus("STATUS: REBIRTH REQUEST SENT!")
-        end
-    end)
-
-    -- ==========================================================================
-    -- TAB 5: ขายปลา/ร้านค้า (Market & Sell)
-    -- ==========================================================================
-    AddTabButton("SellTab", "ขายปลา", false)
+    AddTabButton("SellTab", "🏷️ 8. ขายปลา", false, 8)
     local pSell = CreateTabPage("SellTab")
 
     CreateToggle(pSell, "ขายปลาอัตโนมัติ (Auto Sell Fish)", Config.Settings.AutoSell, function(v)
@@ -1505,9 +1631,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 6: ระบบอัปเกรดอัตโนมัติ (Auto Upgrades)
+    -- TAB 4: ระบบอัปเกรดอัตโนมัติ (Auto Upgrades)
     -- ==========================================================================
-    AddTabButton("UpgradeTab", "⚡ อัปเกรด", false)
+    AddTabButton("UpgradeTab", "⚡ 4. อัปเกรดอื่นๆ", false, 4)
     local pUpgrade = CreateTabPage("UpgradeTab")
 
     local UpgradeStatusCard = CreateStatusCard(pUpgrade, "ระบบอัปเกรด: กำลังตรวจสอบไอเทมที่สามารถอัปเกรดได้...")
@@ -1549,9 +1675,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 7: ยา & สกิลทรี (Potions & Skill Tree)
+    -- TAB 6: ยา & สกิลทรี (Potions & Skill Tree)
     -- ==========================================================================
-    AddTabButton("PotionsTab", "🧪 ยา & สกิล", false)
+    AddTabButton("PotionsTab", "🧪 6. ยา & สกิล", false, 6)
     local pPotions = CreateTabPage("PotionsTab")
 
     local PotionsStatusCard = CreateStatusCard(pPotions, "ระบบยาและสกิล: กำลังตรวจสอบร้านค้าและแต้มสกิล...")
@@ -1669,9 +1795,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 8: ระบบล่าบอส (Boss Fights: Megalodon & Kraken)
+    -- TAB 5: ระบบล่าบอส (Boss Fights: Megalodon & Kraken)
     -- ==========================================================================
-    AddTabButton("BossTab", "🦈 ล่าบอส", false)
+    AddTabButton("BossTab", "🦈 5. ล่าบอส", false, 5)
     local pBoss = CreateTabPage("BossTab")
 
     local BossStatusCard = CreateStatusCard(pBoss, "ระบบบอส: กำลังสแกนสถานะ Megalodon & Kraken...")
@@ -1746,7 +1872,7 @@ local function BuildUI()
     -- ==========================================================================
     -- TAB 9: ตั้งค่าระบบ (Settings & System)
     -- ==========================================================================
-    AddTabButton("SettingsTab", "ตั้งค่าระบบ", false)
+    AddTabButton("SettingsTab", "⚙️ 9. ตั้งค่าระบบ", false, 9)
     local pSettings = CreateTabPage("SettingsTab")
 
     CreateButton(pSettings, "EMERGENCY KILL SWITCH (หยุดการทำงานทั้งหมด)", Config.Colors.Danger, function()
