@@ -188,7 +188,9 @@ local Config = {
         RebirthRequest = "RebirthRequest",
         GetData = "GetData",
         Rewards = "Rewards",
-        PearlShop = "PearlShop"
+        PearlShop = "PearlShop",
+        Current = "Current",
+        CurrentPing = "CurrentPing"
     },
     Settings = {
         -- Auto Net
@@ -215,6 +217,10 @@ local Config = {
         AutoClaimRetention = true,      -- เคลมเควสประจำวัน & หมุนวงล้อฟรี (Daily & Spins)
         AutoClaimIndexPages = true,     -- เคลมรางวัลสะสมปลาครบหน้า (Index Page Rewards)
         AutoLikeBases = true,           -- กด Like เบสผู้เล่นอื่นรับโบนัส
+
+        -- Deep Current (กระแสน้ำลึก)
+        AutoCurrent = true,             -- เปิดใช้งานฟังชั่นเรียกลอยกระแสน้ำลึกอัตโนมัติ
+        CurrentMode = "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)", -- โหมดการเรียกสิ่งมีชีวิต
 
         -- Potions, Skills & Bait
         AutoBuyPotions = true,          -- ซื้อยาจากร้าน Potion Shop เมื่อมีของ
@@ -799,6 +805,115 @@ end
 SpawnWorker("AutoClaimWorker", function()
     RunMegaClaimCycle()
     task.wait(15.0 + math.random(1, 5))
+end)
+
+-- ==============================================================================
+-- Task: Deep Current Automation (ระบบเรียกลอยกระแสน้ำลึกอัตโนมัติ)
+-- ==============================================================================
+local CurrentStateCache = nil
+
+local function RunCurrentCycle()
+    if not Config.Settings.AutoCurrent then return end
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes or not FishingShared or not FishingShared.Current then return end
+
+    local currentRemote = remotes:FindFirstChild("Current")
+    if not currentRemote then return end
+
+    local ok, state = pcall(function()
+        return currentRemote:InvokeServer("state")
+    end)
+    if not ok or type(state) ~= "table" then return end
+    CurrentStateCache = state
+
+    -- If a creature is already riding the current, wait for it to be caught by the net
+    if state.active ~= nil then
+        return
+    end
+
+    local currentPts = state.pts or 0
+    if currentPts < 3 then
+        return
+    end
+
+    local currentNet = FishingShared.Nets[state.net or 1]
+    local maxRarity = currentNet and (currentNet.MaxRarity or 3) or 3
+    local netCap = state.cap or (currentNet and currentNet.Capacity) or 999999
+
+    local targets = FishingShared.Current.Targets
+    if not targets or #targets == 0 then return end
+
+    local chosenTarget = nil
+    local mode = Config.Settings.CurrentMode or "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)"
+
+    if mode == "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)" then
+        -- Find highest tier creature that we have enough points and net requirement for
+        for i = #targets, 1, -1 do
+            local t = targets[i]
+            local canCatch = maxRarity >= t.r
+            local hasPoints = currentPts >= t.cost
+            local hasSpace = not netCap or (FishingShared.FishCost(t.r) <= netCap)
+
+            if canCatch and hasPoints and hasSpace then
+                chosenTarget = t
+                break
+            end
+        end
+    elseif mode == "รอแต้มเรียกตัวสูงสุดที่ปลดล็อค (Save for Highest Unlocked Tier)" then
+        -- Find the highest tier creature our net can catch, and only call when points reach its cost
+        local highestUnlocked = nil
+        for i = #targets, 1, -1 do
+            local t = targets[i]
+            if maxRarity >= t.r then
+                highestUnlocked = t
+                break
+            end
+        end
+        if highestUnlocked and currentPts >= highestUnlocked.cost then
+            local hasSpace = not netCap or (FishingShared.FishCost(highestUnlocked.r) <= netCap)
+            if hasSpace then
+                chosenTarget = highestUnlocked
+            end
+        end
+    end
+
+    if chosenTarget then
+        local rInfo = FishingShared.Rarities[chosenTarget.r]
+        local rName = rInfo and rInfo.Name or tostring(chosenTarget.r)
+        local callOk, callRes = pcall(function()
+            return currentRemote:InvokeServer("call", chosenTarget.r)
+        end)
+        if callOk and type(callRes) == "table" and callRes.ok then
+            CurrentStateCache = callRes.state or CurrentStateCache
+            local creatureName = callRes.state and callRes.state.active and callRes.state.active.s or rName
+            UpdateStatus(string.format("STATUS: 🌊 SUMMONED BEST DEEP CURRENT: %s (Tier %d, Cost %d)!", tostring(creatureName), chosenTarget.r, chosenTarget.cost))
+        end
+    end
+end
+
+-- Realtime Listener for Deep Current State Updates
+local function InitializeCurrentPing()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local currentPing = remotes and remotes:FindFirstChild("CurrentPing")
+    if currentPing then
+        currentPing.OnClientEvent:Connect(function(state)
+            if not IsSessionValid() then return end
+            if type(state) == "table" then
+                CurrentStateCache = state
+                if Config.Settings.AutoCurrent and state.active == nil and (state.pts or 0) >= 3 then
+                    task.spawn(RunCurrentCycle)
+                end
+            end
+        end)
+    end
+end
+task.spawn(InitializeCurrentPing)
+
+SpawnWorker("DeepCurrentWorker", function()
+    if Config.Settings.AutoCurrent then
+        RunCurrentCycle()
+    end
+    task.wait(6.0 + math.random(1, 3))
 end)
 
 -- Task 8: Potions, Skill Tree & Best Bait Worker
@@ -1820,6 +1935,54 @@ local function BuildUI()
     local pRewards = CreateTabPage("RewardsTab")
 
     local QuestStatusCard = CreateStatusCard(pRewards, "ระบบภารกิจ: สแกนเควสและของขวัญทุกระบบอัตโนมัติ...")
+    local CurrentStatusCard = CreateStatusCard(pRewards, "🌊 กระแสน้ำลึก: กำลังตรวจสอบสถานะ...")
+
+    -- Live update for CurrentStatusCard
+    task.spawn(function()
+        while IsSessionValid() do
+            if CurrentStatusCard and CurrentStatusCard.Parent then
+                local s = CurrentStateCache
+                if s then
+                    local pts = s.pts or 0
+                    if s.active then
+                        local cName = s.active.s or "Unknown"
+                        local rName = FishingShared and FishingShared.Rarities[s.active.r] and FishingShared.Rarities[s.active.r].Name or tostring(s.active.r)
+                        CurrentStatusCard.Text = string.format("🌊 กระแสน้ำลึก | ⚡ ชาร์จ: %d | 🔴 กำลังมา: %s (%s)", pts, cName, rName)
+                    else
+                        CurrentStatusCard.Text = string.format("🌊 กระแสน้ำลึก | ⚡ ชาร์จ: %d | 🟢 พร้อมเรียกตัวที่ดีที่สุด!", pts)
+                    end
+                end
+            end
+            task.wait(2.5)
+        end
+    end)
+
+    CreateToggle(pRewards, "🌊 เรียกลอยกระแสน้ำลึกอัตโนมัติ (Auto Deep Current Summon)", Config.Settings.AutoCurrent, function(v)
+        Config.Settings.AutoCurrent = v
+        UpdateStatus("STATUS: AUTO DEEP CURRENT " .. (v and "ENABLED" or "DISABLED"))
+        if v then
+            task.spawn(RunCurrentCycle)
+        end
+    end)
+
+    local currentModes = {
+        "ดีที่สุดตามแต้มชาร์จ (Best Affordable Tier)",
+        "รอแต้มเรียกตัวสูงสุดที่ปลดล็อค (Save for Highest Unlocked Tier)"
+    }
+    CreateDropdown(pRewards, "โหมดกระแสน้ำลึก (Current Mode)", currentModes, Config.Settings.CurrentMode, function(selected)
+        Config.Settings.CurrentMode = selected
+        UpdateStatus("STATUS: CURRENT MODE SET TO: " .. selected)
+        if Config.Settings.AutoCurrent then
+            task.spawn(RunCurrentCycle)
+        end
+    end)
+
+    CreateButton(pRewards, "🌊 เรียกกระแสน้ำลึกตัวที่ดีที่สุดทันที (Call Best Current Now)", Config.Colors.Cyan, function()
+        UpdateStatus("STATUS: CALLING BEST DEEP CURRENT CREATURE...")
+        task.spawn(function()
+            RunCurrentCycle()
+        end)
+    end)
 
     CreateToggle(pRewards, "เคลมเควสสัญญาจับปลา (Auto Claim Contracts)", Config.Settings.AutoClaimContracts, function(v)
         Config.Settings.AutoClaimContracts = v
