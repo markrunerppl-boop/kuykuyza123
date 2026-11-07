@@ -226,6 +226,18 @@ local Config = {
         AutoBuyPotions = true,          -- ซื้อยาจากร้าน Potion Shop เมื่อมีของ
         AutoDrinkPotions = true,        -- เปิดโหมดดื่มยาอัตโนมัติ
         PotionDrinkMode = "ดื่มยาทุกชนิด (All Potions)", -- โหมดการดื่มยา
+        PotionSelectedTiers = {
+            [1] = true,
+            [2] = true,
+            [3] = true,
+            [4] = true,
+            [5] = true,
+            [6] = true,
+            [7] = true,
+            [8] = true,
+            [9] = true,
+            [10] = true,
+        },
         AutoInvestSkills = true,        -- อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี
         AutoEquipBait = true,           -- สวมใส่เหยื่อที่ดีที่สุด
         AutoBuyBait = true,             -- ซื้อเหยื่อที่ดีที่สุดอัตโนมัติเมื่อหมด (ครั้งละ 10 อัน)
@@ -925,7 +937,18 @@ local function RunPotionsAndSkillsCycle()
     if Config.Settings.AutoDrinkPotions and remotes:FindFirstChild("Potions") then
         local potionRemote = remotes.Potions
         local mode = Config.Settings.PotionDrinkMode or "ดื่มยาทุกชนิด (All Potions)"
-        if mode == "ดื่มยาทุกชนิด (All Potions)" then
+        local selectedTiers = Config.Settings.PotionSelectedTiers or {}
+
+        -- Check if all 10 tiers are selected
+        local allSelected = true
+        for t = 1, 10 do
+            if not selectedTiers[t] then
+                allSelected = false
+                break
+            end
+        end
+
+        if mode == "ดื่มยาทุกชนิด (All Potions)" and allSelected then
             pcall(function()
                 local res = potionRemote:InvokeServer("useAll")
                 if res and res.ok and res.drank and res.drank > 0 then
@@ -949,19 +972,26 @@ local function RunPotionsAndSkillsCycle()
                 if inv then
                     for key, count in pairs(inv) do
                         if (tonumber(count) or 0) > 0 then
-                            local kind, tier = key:match("^(%a+)_(%d+)$")
+                            local kind, tierStr = key:match("^(%a+)_(%d+)$")
+                            local tier = tonumber(tierStr) or 0
+                            local tierAllowed = (selectedTiers[tier] == true)
                             local shouldDrink = false
-                            if mode == "เฉพาะยาเงิน (Cash Boost)" and kind == "Cash" then
-                                shouldDrink = true
-                            elseif mode == "เฉพาะยาตาข่าย (Net Space)" and kind == "Net" then
-                                shouldDrink = true
-                            elseif mode == "เฉพาะเทียร์สูงสุด (Tier 5+)" and (tonumber(tier) or 0) >= 5 then
-                                shouldDrink = true
+
+                            if tierAllowed then
+                                if mode == "ดื่มยาทุกชนิด (All Potions)" then
+                                    shouldDrink = true
+                                elseif mode == "เฉพาะยาเงิน (Cash Boost)" and kind == "Cash" then
+                                    shouldDrink = true
+                                elseif mode == "เฉพาะยาตาข่าย (Net Space)" and kind == "Net" then
+                                    shouldDrink = true
+                                elseif mode == "เฉพาะเทียร์สูงสุด (Tier 5+)" and tier >= 5 then
+                                    shouldDrink = true
+                                end
                             end
 
                             if shouldDrink then
                                 potionRemote:InvokeServer("use", key)
-                                UpdateStatus(string.format("STATUS: DRANK POTION [%s]!", key))
+                                UpdateStatus(string.format("STATUS: DRANK POTION [%s] (Tier %d)!", key, tier))
                                 task.wait(0.15)
                             end
                         end
@@ -976,9 +1006,11 @@ local function RunPotionsAndSkillsCycle()
         if potionRemote then
             pcall(function()
                 local state = potionRemote:InvokeServer("state")
+                local selectedTiers = Config.Settings.PotionSelectedTiers or {}
                 if state and state.stock and state.cash then
                     for i, p in ipairs(state.stock) do
-                        if not p.bought and p.price and state.cash >= p.price then
+                        local tierAllowed = (p.tier == nil or selectedTiers[p.tier] == true)
+                        if not p.bought and p.price and state.cash >= p.price and tierAllowed then
                             local buyRes = potionRemote:InvokeServer("buy", i)
                             if buyRes and buyRes.ok then
                                 state.cash = state.cash - p.price
@@ -1770,6 +1802,206 @@ local function BuildUI()
         return card
     end
 
+    local function CreateMultiSelectDropdown(parent, title, options, selectedMap, callback)
+        local isExpanded = false
+        selectedMap = selectedMap or {}
+
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(1, 0, 0, 42)
+        card.BackgroundColor3 = Config.Colors.Card
+        card.ClipsDescendants = true
+        card.Parent = parent
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = card
+
+        local header = Instance.new("Frame")
+        header.Size = UDim2.new(1, 0, 0, 42)
+        header.BackgroundTransparency = 1
+        header.Parent = card
+
+        local titleLabel = Instance.new("TextLabel")
+        titleLabel.Size = UDim2.new(0.48, -12, 1, 0)
+        titleLabel.Position = UDim2.new(0, 12, 0, 0)
+        titleLabel.BackgroundTransparency = 1
+        titleLabel.Font = Enum.Font.GothamMedium
+        titleLabel.TextSize = 12
+        titleLabel.TextColor3 = Config.Colors.TextPrimary
+        titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+        titleLabel.Text = title
+        titleLabel.Parent = header
+
+        local selectBtn = Instance.new("TextButton")
+        selectBtn.Size = UDim2.new(0.52, -12, 0, 28)
+        selectBtn.Position = UDim2.new(0.48, 0, 0.5, -14)
+        selectBtn.BackgroundColor3 = Config.Colors.Sidebar
+        selectBtn.Font = Enum.Font.GothamMedium
+        selectBtn.TextSize = 11
+        selectBtn.TextColor3 = Config.Colors.AccentLight
+        selectBtn.Parent = header
+
+        local selectCorner = Instance.new("UICorner")
+        selectCorner.CornerRadius = UDim.new(0, 4)
+        selectCorner.Parent = selectBtn
+
+        -- Options container
+        local optionsContainer = Instance.new("Frame")
+        optionsContainer.Position = UDim2.new(0, 12, 0, 44)
+        optionsContainer.Size = UDim2.new(1, -24, 0, 0)
+        optionsContainer.BackgroundTransparency = 1
+        optionsContainer.Visible = false
+        optionsContainer.Parent = card
+
+        local listLayout = Instance.new("UIListLayout")
+        listLayout.Padding = UDim.new(0, 4)
+        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        listLayout.Parent = optionsContainer
+
+        -- Quick actions bar
+        local quickBar = Instance.new("Frame")
+        quickBar.Name = "00_QuickBar"
+        quickBar.LayoutOrder = 0
+        quickBar.Size = UDim2.new(1, 0, 0, 26)
+        quickBar.BackgroundTransparency = 1
+        quickBar.Parent = optionsContainer
+
+        local quickBarLayout = Instance.new("UIListLayout")
+        quickBarLayout.FillDirection = Enum.FillDirection.Horizontal
+        quickBarLayout.Padding = UDim.new(0, 6)
+        quickBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        quickBarLayout.Parent = quickBar
+
+        local optionButtons = {}
+
+        local function GetSummaryText()
+            local total = #options
+            local count = 0
+            for _, opt in ipairs(options) do
+                if selectedMap[opt.value] then
+                    count = count + 1
+                end
+            end
+            if count == total then
+                return "เลือกครบทุกระดับ (" .. tostring(total) .. "/" .. tostring(total) .. ")"
+            elseif count == 0 then
+                return "ไม่ได้เลือกสักระดับ (0/" .. tostring(total) .. ")"
+            elseif count <= 3 then
+                local names = {}
+                for _, opt in ipairs(options) do
+                    if selectedMap[opt.value] then
+                        table.insert(names, opt.short or tostring(opt.value))
+                    end
+                end
+                return "Tier " .. table.concat(names, ",") .. " (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+            else
+                return "เลือก " .. tostring(count) .. " ระดับ (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+            end
+        end
+
+        local function RefreshUI()
+            selectBtn.Text = GetSummaryText() .. (isExpanded and " ▲" or " ▼")
+            for _, item in ipairs(optionButtons) do
+                local isChecked = (selectedMap[item.value] == true)
+                item.btn.BackgroundColor3 = isChecked and Color3.fromRGB(48, 38, 72) or Config.Colors.Sidebar
+                item.btn.TextColor3 = isChecked and Config.Colors.TextPrimary or Config.Colors.TextSecondary
+                item.btn.Text = (isChecked and " [✓]  " or " [  ]  ") .. item.label
+            end
+        end
+
+        local function CreateQuickBtn(text, color, onClick)
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(0.31, 0, 1, 0)
+            btn.BackgroundColor3 = color
+            btn.Font = Enum.Font.GothamBold
+            btn.TextSize = 10
+            btn.TextColor3 = Config.Colors.TextPrimary
+            btn.Text = text
+            btn.Parent = quickBar
+
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 4)
+            btnCorner.Parent = btn
+
+            btn.MouseButton1Click:Connect(function()
+                onClick()
+                RefreshUI()
+                if callback then callback(selectedMap) end
+            end)
+            return btn
+        end
+
+        CreateQuickBtn("✓ ทั้งหมด", Config.Colors.Accent, function()
+            for _, opt in ipairs(options) do
+                selectedMap[opt.value] = true
+            end
+        end)
+
+        CreateQuickBtn("✕ ล้างหมด", Config.Colors.Danger, function()
+            for _, opt in ipairs(options) do
+                selectedMap[opt.value] = false
+            end
+        end)
+
+        CreateQuickBtn("⚡ Tier V-X", Config.Colors.Gold, function()
+            for _, opt in ipairs(options) do
+                selectedMap[opt.value] = (opt.value >= 5)
+            end
+        end)
+
+        for i, opt in ipairs(options) do
+            local optBtn = Instance.new("TextButton")
+            optBtn.Name = "Opt_" .. string.format("%02d", i)
+            optBtn.LayoutOrder = i
+            optBtn.Size = UDim2.new(1, 0, 0, 26)
+            optBtn.BackgroundColor3 = (selectedMap[opt.value] == true) and Color3.fromRGB(48, 38, 72) or Config.Colors.Sidebar
+            optBtn.Font = Enum.Font.GothamMedium
+            optBtn.TextSize = 11
+            optBtn.TextColor3 = (selectedMap[opt.value] == true) and Config.Colors.TextPrimary or Config.Colors.TextSecondary
+            optBtn.TextXAlignment = Enum.TextXAlignment.Left
+            optBtn.Text = ((selectedMap[opt.value] == true) and " [✓]  " or " [  ]  ") .. opt.label
+            optBtn.Parent = optionsContainer
+
+            local optCorner = Instance.new("UICorner")
+            optCorner.CornerRadius = UDim.new(0, 4)
+            optCorner.Parent = optBtn
+
+            local optPad = Instance.new("UIPadding")
+            optPad.PaddingLeft = UDim.new(0, 8)
+            optPad.Parent = optBtn
+
+            optBtn.MouseButton1Click:Connect(function()
+                selectedMap[opt.value] = not (selectedMap[opt.value] == true)
+                RefreshUI()
+                if callback then
+                    callback(selectedMap)
+                end
+            end)
+
+            table.insert(optionButtons, { btn = optBtn, value = opt.value, label = opt.label })
+        end
+
+        local totalContentHeight = 26 + 4 + (#options * 30) + 12
+
+        local function ToggleExpand(state)
+            isExpanded = (state ~= nil) and state or (not isExpanded)
+            optionsContainer.Visible = isExpanded
+            RefreshUI()
+            if isExpanded then
+                card.Size = UDim2.new(1, 0, 0, 48 + totalContentHeight)
+            else
+                card.Size = UDim2.new(1, 0, 0, 42)
+            end
+        end
+
+        selectBtn.MouseButton1Click:Connect(function()
+            ToggleExpand()
+        end)
+
+        RefreshUI()
+        return card
+    end
+
     -- ==========================================================================
     -- TAB 1: 🔄 1. เกิดใหม่ & วิวัฒนาการ (Rebirth - Priority 1)
     -- ==========================================================================
@@ -2093,7 +2325,7 @@ local function BuildUI()
 
     local PotionsStatusCard = CreateStatusCard(pPotions, "ระบบยาและสกิล: กำลังตรวจสอบร้านค้าและแต้มสกิล...")
 
-    CreateToggle(pPotions, "ซื้อยาบัฟทุกชนิดเมื่อร้านรีเฟรช (Auto Buy Potions)", Config.Settings.AutoBuyPotions, function(v)
+    CreateToggle(pPotions, "ซื้อยาบัฟตามระดับที่เลือกเมื่อร้านรีเฟรช (Auto Buy Potions)", Config.Settings.AutoBuyPotions, function(v)
         Config.Settings.AutoBuyPotions = v
     end)
 
@@ -2112,7 +2344,7 @@ local function BuildUI()
         "เฉพาะเทียร์สูงสุด (Tier 5+)",
         "ปิดการดื่มยา (Disabled)"
     }
-    CreateDropdown(pPotions, "โหมดการดื่มยา (Drink Mode)", potionOptions, Config.Settings.PotionDrinkMode, function(selected)
+    CreateDropdown(pPotions, "โหมดชนิดยาที่ดื่ม (Potion Type Filter)", potionOptions, Config.Settings.PotionDrinkMode, function(selected)
         Config.Settings.PotionDrinkMode = selected
         UpdateStatus("STATUS: POTION MODE SET TO: " .. selected)
         if PotionsStatusCard then
@@ -2120,16 +2352,81 @@ local function BuildUI()
         end
     end)
 
-    CreateButton(pPotions, "⚡ ดื่มยาทุกขวดในคูลเลอร์ทันที (Drink All Potions Now)", Config.Colors.Success, function()
-        UpdateStatus("STATUS: CONSUMING ALL STORED POTIONS...")
+    local potionTierOptions = {
+        { value = 1, short = "I", label = "Tier I (ระดับ 1 - เริ่มต้น)" },
+        { value = 2, short = "II", label = "Tier II (ระดับ 2)" },
+        { value = 3, short = "III", label = "Tier III (ระดับ 3)" },
+        { value = 4, short = "IV", label = "Tier IV (ระดับ 4)" },
+        { value = 5, short = "V", label = "Tier V (ระดับ 5 - ปานกลาง)" },
+        { value = 6, short = "VI", label = "Tier VI (ระดับ 6)" },
+        { value = 7, short = "VII", label = "Tier VII (ระดับ 7)" },
+        { value = 8, short = "VIII", label = "Tier VIII (ระดับ 8)" },
+        { value = 9, short = "IX", label = "Tier IX (ระดับ 9 - หายาก)" },
+        { value = 10, short = "X", label = "Tier X (ระดับ 10 - เทพสุด)" }
+    }
+    CreateMultiSelectDropdown(pPotions, "เลือกระดับน้ำยา (Potion Tiers Multi-Select)", potionTierOptions, Config.Settings.PotionSelectedTiers, function(selectedMap)
+        local count = 0
+        for _, v in pairs(selectedMap) do
+            if v then count = count + 1 end
+        end
+        UpdateStatus(string.format("STATUS: POTION TIERS UPDATED: %d TIERS SELECTED", count))
+        if PotionsStatusCard then
+            PotionsStatusCard.Text = string.format("เลือกระดับน้ำยาแล้ว: %d/10 ระดับ", count)
+        end
+    end)
+
+    CreateButton(pPotions, "⚡ ดื่มยาตามระดับที่เลือกทันที (Drink Selected Potions Now)", Config.Colors.Success, function()
+        UpdateStatus("STATUS: CONSUMING SELECTED STORED POTIONS...")
         task.spawn(function()
             local remotes = ReplicatedStorage:FindFirstChild("Remotes")
             if remotes and remotes:FindFirstChild("Potions") then
-                local res = remotes.Potions:InvokeServer("useAll")
-                local count = (res and res.drank) or 0
-                UpdateStatus(string.format("STATUS: SUCCESSFULLY DRANK %d POTIONS!", count))
-                if PotionsStatusCard then
-                    PotionsStatusCard.Text = string.format("ดื่มยาสำเร็จทันที: %d ขวด! (บัฟทำงานแล้ว)", count)
+                local selectedTiers = Config.Settings.PotionSelectedTiers or {}
+                local allSelected = true
+                for t = 1, 10 do
+                    if not selectedTiers[t] then
+                        allSelected = false
+                        break
+                    end
+                end
+
+                if allSelected and (Config.Settings.PotionDrinkMode == "ดื่มยาทุกชนิด (All Potions)") then
+                    local res = remotes.Potions:InvokeServer("useAll")
+                    local count = (res and res.drank) or 0
+                    UpdateStatus(string.format("STATUS: SUCCESSFULLY DRANK %d POTIONS!", count))
+                    if PotionsStatusCard then
+                        PotionsStatusCard.Text = string.format("ดื่มยาทุกระดับสำเร็จทันที: %d ขวด! (บัฟทำงานแล้ว)", count)
+                    end
+                else
+                    local pState = remotes.Potions:InvokeServer("state")
+                    local inv = pState and pState.inv
+                    if not inv then
+                        local getData = remotes:FindFirstChild(Config.Events.GetData)
+                        local data = getData and getData:InvokeServer()
+                        inv = data and data.PotionInv
+                    end
+                    local count = 0
+                    if inv then
+                        for key, amt in pairs(inv) do
+                            local c = tonumber(amt) or 0
+                            if c > 0 then
+                                local kind, tierStr = key:match("^(%a+)_(%d+)$")
+                                local tier = tonumber(tierStr) or 0
+                                if selectedTiers[tier] == true then
+                                    for _ = 1, c do
+                                        local res = remotes.Potions:InvokeServer("use", key)
+                                        if res and res.ok then
+                                            count = count + 1
+                                        end
+                                        task.wait(0.05)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    UpdateStatus(string.format("STATUS: DRANK %d SELECTED POTIONS!", count))
+                    if PotionsStatusCard then
+                        PotionsStatusCard.Text = string.format("ดื่มยาตามระดับที่เลือกสำเร็จทันที: %d ขวด!", count)
+                    end
                 end
             end
         end)
@@ -2181,16 +2478,18 @@ local function BuildUI()
         end)
     end)
 
-    CreateButton(pPotions, "🧪 ซื้อยาทุกชนิดในร้านตอนนี้ทันที (Buy All Stock Potions)", Config.Colors.Cyan, function()
-        UpdateStatus("STATUS: BUYING ALL STOCKED POTIONS...")
+    CreateButton(pPotions, "🧪 ซื้อยาตามระดับที่เลือกในร้านทันที (Buy Selected Stock Potions)", Config.Colors.Cyan, function()
+        UpdateStatus("STATUS: BUYING SELECTED STOCKED POTIONS...")
         task.spawn(function()
             local remotes = ReplicatedStorage:FindFirstChild("Remotes")
             if remotes and remotes:FindFirstChild("Potions") then
                 local state = remotes.Potions:InvokeServer("state")
                 local count = 0
+                local selectedTiers = Config.Settings.PotionSelectedTiers or {}
                 if state and state.stock and state.cash then
                     for i, p in ipairs(state.stock) do
-                        if not p.bought and p.price and state.cash >= p.price then
+                        local tierAllowed = (p.tier == nil or selectedTiers[p.tier] == true)
+                        if not p.bought and p.price and state.cash >= p.price and tierAllowed then
                             local b = remotes.Potions:InvokeServer("buy", i)
                             if b and b.ok then
                                 count = count + 1
@@ -2201,7 +2500,7 @@ local function BuildUI()
                 end
                 UpdateStatus(string.format("STATUS: BOUGHT %d POTIONS FROM SHOP!", count))
                 if PotionsStatusCard then
-                    PotionsStatusCard.Text = string.format("ซื้อยาสำเร็จล่าสุด: %d ขวด!", count)
+                    PotionsStatusCard.Text = string.format("ซื้อยาตามระดับที่เลือกสำเร็จล่าสุด: %d ขวด!", count)
                 end
             end
         end)
