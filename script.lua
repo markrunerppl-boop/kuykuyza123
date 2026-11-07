@@ -94,6 +94,15 @@ local SupportedGames = {
         Category = "Simulator",
         Path = "simulator/pet_simulator.lua"
     },
+
+    -- --------------------------------------------------------------------
+    -- 🐟 7. จับปลา! (Catch Fish)
+    -- --------------------------------------------------------------------
+    [93898234979111] = {
+        Name = "[🐟] จับปลา! (Catch Fish)",
+        Category = "Fishing / Simulator",
+        Path = "fishing/main.lua"
+    },
 }
 
 -- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/ดันเจี้ยน/วาป
@@ -112,6 +121,11 @@ local SupportedUniverses = {
         Name = "ดันเจี้ยนลุกขึ้น (Dungeon Rise)",
         Category = "Anime / Action",
         Path = "dungeon_rise/main.lua"
+    },
+    [10771053183] = {
+        Name = "[🐟] จับปลา! (Catch Fish)",
+        Category = "Fishing / Simulator",
+        Path = "fishing/main.lua"
     }
 }
 
@@ -191,6 +205,8 @@ task.spawn(function()
         local modules = rep:FindFirstChild("Modules")
         if workspace:FindFirstChild("MineWorld") or (modules and modules:FindFirstChild("MineConfig")) then
             gameInfo = SupportedGames[79389059854988]
+        elseif (rep:FindFirstChild("Remotes") and rep.Remotes:FindFirstChild("ThrowNet")) or workspace:FindFirstChild("FishingDocks") then
+            gameInfo = SupportedGames[93898234979111]
         end
     end
 
