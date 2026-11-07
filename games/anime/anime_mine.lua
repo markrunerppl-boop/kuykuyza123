@@ -34,6 +34,19 @@ while not LocalPlayer do
 end
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 30)
 
+-- 🛑 KILL SWITCH FOR PREVIOUS RUNNING WORKER THREADS
+if getgenv then
+    if getgenv()._AnimeMineWorkerActive then
+        getgenv()._AnimeMineWorkerActive = false
+        task.wait(0.3)
+    end
+    getgenv()._AnimeMineWorkerActive = true
+end
+local scriptSessionId = tostring(math.random()) .. "_" .. tostring(os.clock())
+if getgenv then
+    getgenv()._AnimeMineSessionId = scriptSessionId
+end
+
 -- 🛡️ ปิดกั้นสคริปต์ IdleRejoin ของตัวเกมเพื่อป้องกัน Roblox Error 769 100%
 local function NeutralizeIdleRejoin()
     pcall(function()
@@ -3200,6 +3213,14 @@ local lastEquipTime = 0
 
 task.spawn(function()
     while true do
+        -- 🛑 หยุดการทำงานของเธรดเก่าทันที หากมีการรันสคริปต์ตัวใหม่ หรือ UI ถูกทำลาย
+        if getgenv and (getgenv()._AnimeMineWorkerActive == false or getgenv()._AnimeMineSessionId ~= scriptSessionId) then
+            break
+        end
+        if ScreenGui and not ScreenGui.Parent then
+            break
+        end
+
         -- ⏸️ PAUSE WHILE TRADING: หากกำลังเทรดหรือเปิดเซสชันเทรดอยู่ ให้หยุดการทำงานฟาร์มชั่วคราว
         if TradeState and (TradeState.IsTradeActive or (TradeState.CurrentSession and TradeState.CurrentSession.Stage and TradeState.CurrentSession.Stage ~= "closed" and TradeState.CurrentSession.Stage ~= "saving")) then
             UpdateStatus("🤝 หยุดฟาร์มชั่วคราว (กำลังเทรดไอเทม)...")
@@ -3357,8 +3378,9 @@ task.spawn(function()
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
                         if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly and not pick.RobuxCost then
-                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ไม่รวมขวานจำกัด/กิจกรรมที่ยังไม่เปิดขาย)
-                            local isForSale = (type(pick.Stock) == "table") or (MineConfig.PickaxeObtainable and MineConfig.PickaxeObtainable(pick) == true)
+                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ตัด Dragonrise Pickaxe ออกเด็ดขาด 100%)
+                            local isDragonrise = (pick.Name == "Dragonrise Pickaxe") or (string.find(string.lower(pick.Name or ""), "dragonrise") ~= nil)
+                            local isForSale = not isDragonrise and ((type(pick.Stock) == "table") or (MineConfig.PickaxeObtainable and MineConfig.PickaxeObtainable(pick) == true))
                             local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
                             local mult = tonumber(pick.Multiplier) or 1
                             if isForSale and isZoneUnlocked then
