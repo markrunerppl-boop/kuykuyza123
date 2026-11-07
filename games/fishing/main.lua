@@ -113,9 +113,20 @@ local Config = {
         -- Auto Rebirth
         AutoRebirth = true,
 
-        -- Auto Claim
-        AutoClaimRewards = true,
-        AutoClaimClam = true,
+        -- Mega Quest & Reward Auto Claims
+        AutoClaimRewards = true,        -- ของขวัญเล่นเกม & รางวัลประจำวัน
+        AutoClaimClam = true,           -- หอยมุกฟรี
+        AutoClaimContracts = true,      -- เคลมเควสสัญญาจับปลา (Contracts)
+        AutoClaimChallenges = true,     -- เคลมเควสท้าทาย (Challenges)
+        AutoClaimRetention = true,      -- เคลมเควสประจำวัน & หมุนวงล้อฟรี (Daily & Spins)
+        AutoClaimIndexPages = true,     -- เคลมรางวัลสะสมปลาครบหน้า (Index Page Rewards)
+        AutoLikeBases = true,           -- กด Like เบสผู้เล่นอื่นรับโบนัส
+
+        -- Potions, Skills & Bait
+        AutoBuyPotions = true,          -- ซื้อยาจากร้าน Potion Shop เมื่อมีของ
+        AutoDrinkPotions = true,        -- เปิดโหมดดื่มยาอัตโนมัติ
+        AutoInvestSkills = true,        -- อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี
+        AutoEquipBait = true,           -- สวมใส่เหยื่อที่ดีที่สุด
 
         -- Auto Sell
         AutoSell = false,
@@ -340,17 +351,20 @@ SpawnWorker("AutoRebirthWorker", function()
     task.wait(5.0)
 end)
 
--- Task 5: Auto Claim Rewards & Free Pearls (รับของขวัญและหอยมุกฟรีอัตโนมัติ)
-SpawnWorker("AutoClaimWorker", function()
+-- Task 5: Mega Auto Claim System (รับรางวัลภารกิจ & ของขวัญทุกหมวดหมู่อัตโนมัติ)
+local function RunMegaClaimCycle()
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return 0 end
+    local claimedCount = 0
 
     -- 1. Free Pearl Clam
-    if Config.Settings.AutoClaimClam and LocalPlayer:GetAttribute("PearlFreeClam") == true then
-        local pearlRemote = remotes and remotes:FindFirstChild(Config.Events.PearlShop)
+    if Config.Settings.AutoClaimClam then
+        local pearlRemote = remotes:FindFirstChild(Config.Events.PearlShop)
         if pearlRemote then
             pcall(function()
                 local res = pearlRemote:InvokeServer("freeClam")
                 if res and res.ok then
+                    claimedCount = claimedCount + 1
                     UpdateStatus("STATUS: CLAIMED FREE PEARL CLAM!")
                 end
             end)
@@ -359,7 +373,7 @@ SpawnWorker("AutoClaimWorker", function()
 
     -- 2. Playtime Gifts & Daily Rewards
     if Config.Settings.AutoClaimRewards then
-        local rewardsRemote = remotes and remotes:FindFirstChild(Config.Events.Rewards)
+        local rewardsRemote = remotes:FindFirstChild(Config.Events.Rewards)
         if rewardsRemote then
             pcall(function()
                 local state = rewardsRemote:InvokeServer("state")
@@ -367,20 +381,226 @@ SpawnWorker("AutoClaimWorker", function()
                     for i, gift in ipairs(state.gifts) do
                         if gift.ready and not gift.claimed then
                             rewardsRemote:InvokeServer("claimGift", i)
+                            claimedCount = claimedCount + 1
                             UpdateStatus(string.format("STATUS: CLAIMED GIFT #%d (%s)!", i, gift.text or "Reward"))
-                            task.wait(0.5)
+                            task.wait(0.3)
                         end
                     end
                 end
                 if state and state.daily and state.daily.claimable then
                     rewardsRemote:InvokeServer("claimDaily")
+                    claimedCount = claimedCount + 1
                     UpdateStatus("STATUS: CLAIMED DAILY REWARD!")
                 end
             end)
         end
     end
 
+    -- 3. Contracts / Quests (เควสสัญญาจับปลา)
+    if Config.Settings.AutoClaimContracts then
+        local contractsRemote = remotes:FindFirstChild("Contracts")
+        if contractsRemote then
+            pcall(function()
+                local state = contractsRemote:InvokeServer("state")
+                if state and state.list then
+                    for i, c in ipairs(state.list) do
+                        if (c.done == true or (c.goal and c.p and c.p >= c.goal)) and c.k ~= "wait" then
+                            local res = contractsRemote:InvokeServer("claim", i)
+                            if res and res.ok then
+                                claimedCount = claimedCount + 1
+                                UpdateStatus(string.format("STATUS: CLAIMED CONTRACT #%d (%s)!", i, tostring(res.reward or "Reward")))
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 4. Daily Retention Missions & Free Lucky Spins (ภารกิจรายวัน & วงล้อหมุนฟรี)
+    if Config.Settings.AutoClaimRetention then
+        local retRemote = remotes:FindFirstChild("Retention")
+        if retRemote then
+            pcall(function()
+                local state = retRemote:InvokeServer("state")
+                -- Claim Daily
+                if state and state.daily and not state.daily.claimed then
+                    local dRes = retRemote:InvokeServer("claimDaily")
+                    if dRes then claimedCount = claimedCount + 1 end
+                end
+                -- Lucky Spins
+                if state and state.spin and (state.spin.spins or 0) > 0 then
+                    for s = 1, state.spin.spins do
+                        local sRes = retRemote:InvokeServer("spin")
+                        if sRes and sRes.ok then
+                            claimedCount = claimedCount + 1
+                            UpdateStatus(string.format("STATUS: LUCKY SPIN #%d WON: %s!", s, tostring(sRes.text or "Reward")))
+                            task.wait(0.25)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 5. Challenge Pass Quests (เควสท้าทายประจำซีซั่น)
+    if Config.Settings.AutoClaimChallenges then
+        local chalRemote = remotes:FindFirstChild("Challenge")
+        if chalRemote then
+            pcall(function()
+                local state = chalRemote:InvokeServer("state")
+                if state and state.tiers then
+                    for i, t in ipairs(state.tiers) do
+                        if t.done and not t.claimed then
+                            local cRes = chalRemote:InvokeServer("claim", i)
+                            if cRes then
+                                claimedCount = claimedCount + 1
+                                UpdateStatus(string.format("STATUS: CLAIMED CHALLENGE TIER #%d!", i))
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 6. Index Page Milestones (รางวัลสะสมปลาครบหน้า)
+    if Config.Settings.AutoClaimIndexPages then
+        local rewardsRemote = remotes:FindFirstChild("Rewards")
+        if rewardsRemote then
+            pcall(function()
+                local res = rewardsRemote:InvokeServer("pageRewards")
+                if res and res.done and res.claims then
+                    for _, pNum in ipairs(res.done) do
+                        if not res.claims[tostring(pNum)] then
+                            local pRes = rewardsRemote:InvokeServer("claimPage", pNum)
+                            if pRes and pRes.ok then
+                                claimedCount = claimedCount + 1
+                                UpdateStatus(string.format("STATUS: CLAIMED INDEX PAGE #%d REWARD!", pNum))
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 7. Auto Like Bases (กด Like เบสผู้เล่นอื่นรับโบนัส)
+    if Config.Settings.AutoLikeBases then
+        local likeRemote = remotes:FindFirstChild("LikeBase")
+        if likeRemote then
+            pcall(function()
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then
+                        likeRemote:InvokeServer("like", p.UserId)
+                        task.wait(0.1)
+                    end
+                end
+            end)
+        end
+    end
+
+    return claimedCount
+end
+
+SpawnWorker("AutoClaimWorker", function()
+    RunMegaClaimCycle()
     task.wait(15.0 + math.random(1, 5))
+end)
+
+-- Task 8: Potions, Skill Tree & Best Bait Worker
+local function RunPotionsAndSkillsCycle()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return end
+
+    -- 1. Auto Potions (ซื้อยา & ดื่มยา)
+    if Config.Settings.AutoDrinkPotions then
+        local potionRemote = remotes:FindFirstChild("Potions")
+        if potionRemote then
+            pcall(function()
+                potionRemote:InvokeServer("auto", true)
+            end)
+        end
+    end
+
+    if Config.Settings.AutoBuyPotions then
+        local potionRemote = remotes:FindFirstChild("Potions")
+        if potionRemote then
+            pcall(function()
+                local state = potionRemote:InvokeServer("state")
+                if state and state.stock and state.cash then
+                    for i, p in ipairs(state.stock) do
+                        if not p.bought and p.price and state.cash >= p.price then
+                            local buyRes = potionRemote:InvokeServer("buy", i)
+                            if buyRes and buyRes.ok then
+                                state.cash = state.cash - p.price
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 2. Auto Skill Tree Invest
+    if Config.Settings.AutoInvestSkills then
+        local skillRemote = remotes:FindFirstChild("SkillTree")
+        local SkillTreeModule = nil
+        pcall(function() SkillTreeModule = require(ReplicatedStorage:FindFirstChild("SkillTree")) end)
+
+        if skillRemote and SkillTreeModule then
+            pcall(function()
+                local state = skillRemote:InvokeServer("state")
+                if state and (state.free or 0) > 0 and SkillTreeModule.Nodes then
+                    for _, node in ipairs(SkillTreeModule.Nodes) do
+                        local cur = tonumber(state.skills[node.Id]) or 0
+                        local max = node.Max or 5
+                        local cost = node.Cost or 1
+                        local unlocked = SkillTreeModule.unlocked and SkillTreeModule.unlocked(state.skills, node.Id)
+                        while cur < max and unlocked and (state.free or 0) >= cost do
+                            local res = skillRemote:InvokeServer("buy", node.Id)
+                            if res and res.ok then
+                                state = res.state
+                                cur = cur + 1
+                                UpdateStatus(string.format("STATUS: LEARNED SKILL [%s] LVL %d!", node.Name or node.Id, cur))
+                                task.wait(0.2)
+                            else
+                                break
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 3. Auto Best Bait Equip
+    if Config.Settings.AutoEquipBait then
+        local tackleRemote = remotes:FindFirstChild("Tackle")
+        if tackleRemote then
+            pcall(function()
+                local state = tackleRemote:InvokeServer("state")
+                if state and state.baits then
+                    local baitPriority = {"VoidPearl", "Phoenix", "KrakenInk", "Starworm", "Shrimp", "Glitter", "Chum", "Grub", "Crumbs", "Crawlers"}
+                    for _, bName in ipairs(baitPriority) do
+                        if (state.baits[bName] or 0) > 0 and state.bait ~= bName then
+                            tackleRemote:InvokeServer("equipBait", bName)
+                            break
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end
+
+SpawnWorker("PotionsAndSkillsWorker", function()
+    RunPotionsAndSkillsCycle()
+    task.wait(15.0 + math.random(1, 4))
 end)
 
 -- Task 6: Auto Sell Worker
@@ -984,55 +1204,49 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 3: รางวัล & ไข่มุก (Rewards & Pearls)
+    -- TAB 3: ภารกิจ & รางวัลทั้งหมด (Mega Quests & Rewards)
     -- ==========================================================================
-    AddTabButton("RewardsTab", "รางวัล & มุก", false)
+    AddTabButton("RewardsTab", "ภารกิจ & ของขวัญ", false)
     local pRewards = CreateTabPage("RewardsTab")
 
-    CreateToggle(pRewards, "รับของขวัญออนไลน์อัตโนมัติ (Auto Claim Gifts)", Config.Settings.AutoClaimRewards, function(v)
+    local QuestStatusCard = CreateStatusCard(pRewards, "ระบบภารกิจ: สแกนเควสและของขวัญทุกระบบอัตโนมัติ...")
+
+    CreateToggle(pRewards, "เคลมเควสสัญญาจับปลา (Auto Claim Contracts)", Config.Settings.AutoClaimContracts, function(v)
+        Config.Settings.AutoClaimContracts = v
+    end)
+
+    CreateToggle(pRewards, "รับของขวัญออนไลน์ & ล็อกอิน (Playtime Gifts & Daily)", Config.Settings.AutoClaimRewards, function(v)
         Config.Settings.AutoClaimRewards = v
+    end)
+
+    CreateToggle(pRewards, "เควสประจำวัน & หมุนวงล้อฟรี (Daily Quests & Lucky Spins)", Config.Settings.AutoClaimRetention, function(v)
+        Config.Settings.AutoClaimRetention = v
+    end)
+
+    CreateToggle(pRewards, "เควสท้าทายประจำซีซั่น (Challenge Pass Quests)", Config.Settings.AutoClaimChallenges, function(v)
+        Config.Settings.AutoClaimChallenges = v
+    end)
+
+    CreateToggle(pRewards, "รางวัลสะสมปลาครบหน้า (Index Milestone Rewards)", Config.Settings.AutoClaimIndexPages, function(v)
+        Config.Settings.AutoClaimIndexPages = v
     end)
 
     CreateToggle(pRewards, "รับหอยมุกฟรีอัตโนมัติ (Auto Free Pearl Clam)", Config.Settings.AutoClaimClam, function(v)
         Config.Settings.AutoClaimClam = v
     end)
 
-    CreateButton(pRewards, "🎁 กดรับรางวัลและหอยมุกทั้งหมดทันที", Config.Colors.Cyan, function()
+    CreateToggle(pRewards, "กด Like เบสผู้เล่นอื่นรับบัฟ (Auto Like Other Bases)", Config.Settings.AutoLikeBases, function(v)
+        Config.Settings.AutoLikeBases = v
+    end)
+
+    CreateButton(pRewards, "🎁 กดรับรางวัลและเควสทุกหมวดหมู่ทันที (Claim ALL Now)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: RUNNING MEGA CLAIM CYCLE FOR ALL QUESTS & REWARDS...")
         task.spawn(function()
-            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-            local claimedCount = 0
-
-            -- Free Clam
-            local pearlRemote = remotes and remotes:FindFirstChild(Config.Events.PearlShop)
-            if pearlRemote then
-                pcall(function()
-                    local res = pearlRemote:InvokeServer("freeClam")
-                    if res and res.ok then claimedCount = claimedCount + 1 end
-                end)
+            local count = RunMegaClaimCycle()
+            UpdateStatus(string.format("STATUS: CLAIMED %d REWARDS & SPINS SUCCESSFULLY!", count))
+            if QuestStatusCard then
+                QuestStatusCard.Text = string.format("เคลมรางวัลและหมุนวงล้อสำเร็จล่าสุด: %d รายการ!", count)
             end
-
-            -- Gifts
-            local rewardsRemote = remotes and remotes:FindFirstChild(Config.Events.Rewards)
-            if rewardsRemote then
-                pcall(function()
-                    local state = rewardsRemote:InvokeServer("state")
-                    if state and state.gifts then
-                        for i, g in ipairs(state.gifts) do
-                            if g.ready and not g.claimed then
-                                rewardsRemote:InvokeServer("claimGift", i)
-                                claimedCount = claimedCount + 1
-                                task.wait(0.3)
-                            end
-                        end
-                    end
-                    if state and state.daily and state.daily.claimable then
-                        rewardsRemote:InvokeServer("claimDaily")
-                        claimedCount = claimedCount + 1
-                    end
-                end)
-            end
-
-            UpdateStatus("STATUS: CLAIMED ALL AVAILABLE GIFTS & PEARLS!")
         end)
     end)
 
@@ -1119,7 +1333,97 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 7: ตั้งค่าระบบ (Settings & System)
+    -- TAB 7: ยา & สกิลทรี (Potions & Skill Tree)
+    -- ==========================================================================
+    AddTabButton("PotionsTab", "🧪 ยา & สกิล", false)
+    local pPotions = CreateTabPage("PotionsTab")
+
+    local PotionsStatusCard = CreateStatusCard(pPotions, "ระบบยาและสกิล: กำลังตรวจสอบร้านค้าและแต้มสกิล...")
+
+    CreateToggle(pPotions, "ซื้อยาบัฟทุกชนิดเมื่อร้านรีเฟรช (Auto Buy Potions)", Config.Settings.AutoBuyPotions, function(v)
+        Config.Settings.AutoBuyPotions = v
+    end)
+
+    CreateToggle(pPotions, "เปิดระบบดื่มยาบัฟอัตโนมัติ (Auto Drink Potions)", Config.Settings.AutoDrinkPotions, function(v)
+        Config.Settings.AutoDrinkPotions = v
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("Potions") then
+            remotes.Potions:InvokeServer("auto", v)
+        end
+    end)
+
+    CreateToggle(pPotions, "อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี (Auto Invest Skills)", Config.Settings.AutoInvestSkills, function(v)
+        Config.Settings.AutoInvestSkills = v
+    end)
+
+    CreateToggle(pPotions, "สวมใส่เหยื่อที่ดีที่สุดเสมอ (Auto Equip Best Bait)", Config.Settings.AutoEquipBait, function(v)
+        Config.Settings.AutoEquipBait = v
+    end)
+
+    CreateButton(pPotions, "🧪 ซื้อยาทุกชนิดในร้านตอนนี้ทันที (Buy All Stock Potions)", Config.Colors.Cyan, function()
+        UpdateStatus("STATUS: BUYING ALL STOCKED POTIONS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes and remotes:FindFirstChild("Potions") then
+                local state = remotes.Potions:InvokeServer("state")
+                local count = 0
+                if state and state.stock and state.cash then
+                    for i, p in ipairs(state.stock) do
+                        if not p.bought and p.price and state.cash >= p.price then
+                            local b = remotes.Potions:InvokeServer("buy", i)
+                            if b and b.ok then
+                                count = count + 1
+                                state.cash = state.cash - p.price
+                            end
+                        end
+                    end
+                end
+                UpdateStatus(string.format("STATUS: BOUGHT %d POTIONS FROM SHOP!", count))
+                if PotionsStatusCard then
+                    PotionsStatusCard.Text = string.format("ซื้อยาสำเร็จล่าสุด: %d ขวด!", count)
+                end
+            end
+        end)
+    end)
+
+    CreateButton(pPotions, "🌳 อัปเกรดแต้มสกิลฟรีที่มีทั้งหมดทันที (Invest All Skill Points)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: INVESTING ALL FREE SKILL POINTS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local SkillTreeModule = nil
+            pcall(function() SkillTreeModule = require(ReplicatedStorage:FindFirstChild("SkillTree")) end)
+            if remotes and remotes:FindFirstChild("SkillTree") and SkillTreeModule then
+                local state = remotes.SkillTree:InvokeServer("state")
+                local count = 0
+                if state and (state.free or 0) > 0 and SkillTreeModule.Nodes then
+                    for _, node in ipairs(SkillTreeModule.Nodes) do
+                        local cur = tonumber(state.skills[node.Id]) or 0
+                        local max = node.Max or 5
+                        local cost = node.Cost or 1
+                        local unlocked = SkillTreeModule.unlocked and SkillTreeModule.unlocked(state.skills, node.Id)
+                        while cur < max and unlocked and (state.free or 0) >= cost do
+                            local res = remotes.SkillTree:InvokeServer("buy", node.Id)
+                            if res and res.ok then
+                                count = count + 1
+                                state = res.state
+                                cur = cur + 1
+                                task.wait(0.2)
+                            else
+                                break
+                            end
+                        end
+                    end
+                end
+                UpdateStatus(string.format("STATUS: INVESTED %d SKILL POINTS!", count))
+                if PotionsStatusCard then
+                    PotionsStatusCard.Text = string.format("อัปเกรดสกิลสำเร็จล่าสุด: %d แต้ม!", count)
+                end
+            end
+        end)
+    end)
+
+    -- ==========================================================================
+    -- TAB 8: ตั้งค่าระบบ (Settings & System)
     -- ==========================================================================
     AddTabButton("SettingsTab", "ตั้งค่าระบบ", false)
     local pSettings = CreateTabPage("SettingsTab")
