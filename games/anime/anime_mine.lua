@@ -3378,10 +3378,12 @@ task.spawn(function()
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
                         if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly and not pick.RobuxCost then
+                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ไม่รวมขวานจำกัด/กิจกรรมที่ยังไม่เปิดขาย)
+                            local isForSale = (type(pick.Stock) == "table") or (MineConfig.PickaxeObtainable and MineConfig.PickaxeObtainable(pick) == true)
                             local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
                             local mult = tonumber(pick.Multiplier) or 1
-                            if isZoneUnlocked then
-                                -- ยึดอันสุดท้ายที่มีตัวคูณสูงสุด (อันสุดท้ายที่ดีที่สุดเสมอ)
+                            if isForSale and isZoneUnlocked then
+                                -- ยึดอันสุดท้ายที่มีตัวคูณสูงสุด (อันสุดท้ายที่ดีที่สุดที่เปิดขายจริงเสมอ)
                                 if mult >= bestUnlockedMult then
                                     bestUnlockedMult = mult
                                     targetBestPick = pick
