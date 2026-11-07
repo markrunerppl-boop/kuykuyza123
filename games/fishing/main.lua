@@ -128,6 +128,8 @@ local Config = {
         PotionDrinkMode = "ดื่มยาทุกชนิด (All Potions)", -- โหมดการดื่มยา
         AutoInvestSkills = true,        -- อัปเกรด Skill Tree อัตโนมัติเมื่อได้แต้มฟรี
         AutoEquipBait = true,           -- สวมใส่เหยื่อที่ดีที่สุด
+        AutoBuyBait = true,             -- ซื้อเหยื่อที่ดีที่สุดอัตโนมัติเมื่อหมด (ครั้งละ 10 อัน)
+        BaitBatchAmount = 10,           -- จำนวนเหยื่อที่ซื้อต่อครั้ง (10 ชิ้น)
 
         -- Boss Automation (Megalodon & Kraken)
         AutoBossFight = true,           -- ตีบอส Megalodon & Kraken อัตโนมัติ
@@ -190,6 +192,67 @@ local function EnsureOnDock()
     end
 end
 
+-- Bait Manager (Auto Buy Best Bait x10 when empty & Auto Equip Best)
+local function ProcessBaitCycle(remotes)
+    if not Config.Settings.AutoEquipBait and not Config.Settings.AutoBuyBait then return end
+    remotes = remotes or ReplicatedStorage:FindFirstChild("Remotes")
+    local tackleRemote = remotes and remotes:FindFirstChild("Tackle")
+    if not tackleRemote then return end
+
+    pcall(function()
+        local state = tackleRemote:InvokeServer("state")
+        if not state or not state.baits then return end
+
+        local playerRebirths = state.rebirths or 0
+        local playerCash = state.cash or 0
+        local prices = state.prices or {}
+        local currentEquipped = state.bait
+        local batchSize = Config.Settings.BaitBatchAmount or 10
+
+        -- 1. Identify the best unlocked bait for the player
+        local targetBaitId = nil
+        local targetBaitName = nil
+
+        if FishingShared and FishingShared.Baits then
+            for i = #FishingShared.Baits, 1, -1 do
+                local b = FishingShared.Baits[i]
+                if playerRebirths >= (b.Rebirth or 0) then
+                    local price = prices[b.Id] or 0
+                    if (state.baits[b.Id] or 0) > 0 or playerCash >= price then
+                        targetBaitId = b.Id
+                        targetBaitName = b.Name or b.Id
+                        break
+                    end
+                end
+            end
+        end
+
+        if not targetBaitId then
+            targetBaitId = "Crumbs"
+            targetBaitName = "Bread Crumbs"
+        end
+
+        -- 2. If best bait is out (count <= 0), buy 10 at a time
+        local currentCount = tonumber(state.baits[targetBaitId]) or 0
+        if Config.Settings.AutoBuyBait and currentCount <= 0 then
+            local buyRes = tackleRemote:InvokeServer("buyBait", targetBaitId, batchSize)
+            if buyRes and buyRes.ok then
+                UpdateStatus(string.format("STATUS: BOUGHT %d BEST BAIT [%s]!", batchSize, targetBaitName))
+                currentCount = batchSize
+                task.wait(0.2)
+            end
+        end
+
+        -- 3. Equip the best bait if not currently equipped and we have stock
+        if Config.Settings.AutoEquipBait and currentCount > 0 and currentEquipped ~= targetBaitId then
+            local equipRes = tackleRemote:InvokeServer("equipBait", targetBaitId)
+            if equipRes and equipRes.ok then
+                UpdateStatus(string.format("STATUS: EQUIPPED BEST BAIT [%s]! (%d REMAINING)", targetBaitName, currentCount))
+            end
+        end
+    end)
+end
+
 -- ==============================================================================
 -- 3. ADVANCED LOGIC WORKERS
 -- ==============================================================================
@@ -220,6 +283,7 @@ SpawnWorker("AutoNetWorker", function()
 
         if netState == "Idle" then
             EnsureOnDock()
+            ProcessBaitCycle(remotes)
             throwRemote:FireServer()
             UpdateStatus("STATUS: NET THROWN! [FISHING STARTED]")
             task.wait(1.0)
@@ -745,24 +809,8 @@ local function RunPotionsAndSkillsCycle()
         end
     end
 
-    -- 3. Auto Best Bait Equip
-    if Config.Settings.AutoEquipBait then
-        local tackleRemote = remotes:FindFirstChild("Tackle")
-        if tackleRemote then
-            pcall(function()
-                local state = tackleRemote:InvokeServer("state")
-                if state and state.baits then
-                    local baitPriority = {"VoidPearl", "Phoenix", "KrakenInk", "Starworm", "Shrimp", "Glitter", "Chum", "Grub", "Crumbs", "Crawlers"}
-                    for _, bName in ipairs(baitPriority) do
-                        if (state.baits[bName] or 0) > 0 and state.bait ~= bName then
-                            tackleRemote:InvokeServer("equipBait", bName)
-                            break
-                        end
-                    end
-                end
-            end)
-        end
-    end
+    -- 3. Auto Best Bait Equip & Buy (ซื้อเหยื่อที่ดีที่สุดครั้งละ 10 เมื่อหมด & ใส่เหยื่อดีสุด)
+    ProcessBaitCycle(remotes)
 end
 
 SpawnWorker("PotionsAndSkillsWorker", function()
@@ -1730,6 +1778,44 @@ local function BuildUI()
 
     CreateToggle(pPotions, "สวมใส่เหยื่อที่ดีที่สุดเสมอ (Auto Equip Best Bait)", Config.Settings.AutoEquipBait, function(v)
         Config.Settings.AutoEquipBait = v
+    end)
+
+    CreateToggle(pPotions, "ซื้อเหยื่อที่ดีที่สุดอัตโนมัติเมื่อหมด x10 (Auto Buy Best Bait x10)", Config.Settings.AutoBuyBait, function(v)
+        Config.Settings.AutoBuyBait = v
+    end)
+
+    CreateButton(pPotions, "🪱 ซื้อเหยื่อที่ดีที่สุด 10 ชิ้นทันที (Buy 10x Best Bait Now)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: BUYING 10x BEST BAIT...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local tackleRemote = remotes and remotes:FindFirstChild("Tackle")
+            if tackleRemote and FishingShared and FishingShared.Baits then
+                local state = tackleRemote:InvokeServer("state")
+                if state then
+                    local playerRebirths = state.rebirths or 0
+                    local targetBait = nil
+                    for i = #FishingShared.Baits, 1, -1 do
+                        local b = FishingShared.Baits[i]
+                        if playerRebirths >= (b.Rebirth or 0) then
+                            targetBait = b
+                            break
+                        end
+                    end
+                    if targetBait then
+                        local res = tackleRemote:InvokeServer("buyBait", targetBait.Id, 10)
+                        if res and res.ok then
+                            tackleRemote:InvokeServer("equipBait", targetBait.Id)
+                            UpdateStatus(string.format("STATUS: BOUGHT 10x %s & EQUIPPED!", targetBait.Name or targetBait.Id))
+                            if PotionsStatusCard then
+                                PotionsStatusCard.Text = string.format("ซื้อเหยื่อ %s สำเร็จ 10 ชิ้น!", targetBait.Name or targetBait.Id)
+                            end
+                        else
+                            UpdateStatus("STATUS: FAILED TO BUY BAIT (INSUFFICIENT FUNDS)")
+                        end
+                    end
+                end
+            end
+        end)
     end)
 
     CreateButton(pPotions, "🧪 ซื้อยาทุกชนิดในร้านตอนนี้ทันที (Buy All Stock Potions)", Config.Colors.Cyan, function()
