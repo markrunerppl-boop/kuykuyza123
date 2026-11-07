@@ -451,7 +451,11 @@ Config = {
         ["M5"] = true,
         ["M6"] = true,
         ["M7"] = true,
-        ["M8"] = true
+        ["M8"] = true,
+        ["M9"] = true,
+        ["M10"] = true,
+        ["M11"] = true,
+        ["M12"] = true
     },
 
     TargetLevelDamage = 200,
@@ -540,6 +544,14 @@ local function LoadConfig()
                         if k == "SellOptions" and type(v) == "table" then
                             for optKey, optVal in pairs(v) do
                                 Config.SellOptions[optKey] = optVal
+                            end
+                        elseif k == "MutationSlots" and type(v) == "table" then
+                            for sKey, sVal in pairs(v) do
+                                Config.MutationSlots[sKey] = sVal
+                            end
+                        elseif k == "TargetMutations" and type(v) == "table" then
+                            for mKey, mVal in pairs(v) do
+                                Config.TargetMutations[mKey] = mVal
                             end
                         else
                             Config[k] = v
@@ -1831,7 +1843,7 @@ end
 
 local function AddMultiSlotSelector(parentTab, order)
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 60)
+    Frame.Size = UDim2.new(1, 0, 0, 84)
     Frame.BackgroundColor3 = Theme.Card
     Frame.BorderSizePixel = 0
     Frame.LayoutOrder = order or 0
@@ -1843,9 +1855,9 @@ local function AddMultiSlotSelector(parentTab, order)
 
     local tLbl = Instance.new("TextLabel")
     tLbl.Size = UDim2.new(1, -20, 0, 16)
-    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.Position = UDim2.new(0, 10, 0, 6)
     tLbl.BackgroundTransparency = 1
-    tLbl.Text = "🎯 เลือก Slot ตัวละครที่ต้องการสุ่มบัพ (ติ๊กได้หลายช่อง):"
+    tLbl.Text = "🎯 เลือก Slot แท่นขุดที่ต้องการสุ่มบัพ (ติ๊กได้หลายช่อง S1-S12):"
     tLbl.TextColor3 = Theme.Text
     tLbl.TextSize = 10.5
     tLbl.Font = Enum.Font.GothamSemibold
@@ -1853,19 +1865,19 @@ local function AddMultiSlotSelector(parentTab, order)
     tLbl.Parent = Frame
 
     local SlotContainer = Instance.new("Frame")
-    SlotContainer.Size = UDim2.new(1, -20, 0, 28)
-    SlotContainer.Position = UDim2.new(0, 10, 0, 24)
+    SlotContainer.Size = UDim2.new(1, -20, 0, 52)
+    SlotContainer.Position = UDim2.new(0, 10, 0, 26)
     SlotContainer.BackgroundTransparency = 1
     SlotContainer.Parent = Frame
 
-    local sLayout = Instance.new("UIListLayout")
-    sLayout.FillDirection = Enum.FillDirection.Horizontal
-    sLayout.Padding = UDim.new(0, 4)
-    sLayout.Parent = SlotContainer
+    local sGrid = Instance.new("UIGridLayout")
+    sGrid.CellSize = UDim2.new(0.155, 0, 0, 23)
+    sGrid.CellPadding = UDim2.new(0.014, 0, 0, 4)
+    sGrid.Parent = SlotContainer
 
-    for s = 1, 8 do
+    for s = 1, 12 do
+        local slotKey = "M" .. s
         local sBtn = Instance.new("TextButton")
-        sBtn.Size = UDim2.new(0.115, 0, 1, 0)
         sBtn.Font = Enum.Font.GothamBold
         sBtn.TextSize = 10
         sBtn.Parent = SlotContainer
@@ -1874,15 +1886,16 @@ local function AddMultiSlotSelector(parentTab, order)
         c.CornerRadius = UDim.new(0, 4)
         c.Parent = sBtn
 
-        local isChecked = Config.MutationSlots and Config.MutationSlots[s]
+        local isChecked = Config.MutationSlots and (Config.MutationSlots[slotKey] == true or Config.MutationSlots[s] == true)
         sBtn.BackgroundColor3 = isChecked and Theme.ChipActive or Theme.ChipInactive
         sBtn.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Theme.SubText
         sBtn.Text = (isChecked and "✓ " or "") .. "S" .. s
 
         sBtn.MouseButton1Click:Connect(function()
             if not Config.MutationSlots then Config.MutationSlots = {} end
-            Config.MutationSlots[s] = not Config.MutationSlots[s]
-            local cur = Config.MutationSlots[s]
+            local cur = not (Config.MutationSlots[slotKey] == true or Config.MutationSlots[s] == true)
+            Config.MutationSlots[slotKey] = cur
+            Config.MutationSlots[s] = cur
             sBtn.BackgroundColor3 = cur and Theme.ChipActive or Theme.ChipInactive
             sBtn.TextColor3 = cur and Color3.fromRGB(255, 255, 255) or Theme.SubText
             sBtn.Text = (cur and "✓ " or "") .. "S" .. s
@@ -1894,7 +1907,7 @@ end
 
 local function AddMultiMutationSelector(parentTab, order)
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, 0, 0, 88)
+    Frame.Size = UDim2.new(1, 0, 0, 172)
     Frame.BackgroundColor3 = Theme.Card
     Frame.BorderSizePixel = 0
     Frame.LayoutOrder = order or 0
@@ -1906,7 +1919,7 @@ local function AddMultiMutationSelector(parentTab, order)
 
     local tLbl = Instance.new("TextLabel")
     tLbl.Size = UDim2.new(1, -20, 0, 16)
-    tLbl.Position = UDim2.new(0, 10, 0, 4)
+    tLbl.Position = UDim2.new(0, 10, 0, 6)
     tLbl.BackgroundTransparency = 1
     tLbl.Text = "✨ เลือกบัพที่ยอมรับและหยุดสุ่มเมื่อได้ (ติ๊กได้หลายบัพ):"
     tLbl.TextColor3 = Theme.Text
@@ -1916,20 +1929,33 @@ local function AddMultiMutationSelector(parentTab, order)
     tLbl.Parent = Frame
 
     local MutContainer = Instance.new("Frame")
-    MutContainer.Size = UDim2.new(1, -20, 0, 60)
-    MutContainer.Position = UDim2.new(0, 10, 0, 24)
+    MutContainer.Size = UDim2.new(1, -20, 0, 138)
+    MutContainer.Position = UDim2.new(0, 10, 0, 26)
     MutContainer.BackgroundTransparency = 1
     MutContainer.Parent = Frame
 
     local gLayout = Instance.new("UIGridLayout")
-    gLayout.CellSize = UDim2.new(0, 85, 0, 24)
-    gLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+    gLayout.CellSize = UDim2.new(0.485, 0, 0, 24)
+    gLayout.CellPadding = UDim2.new(0.03, 0, 0, 4)
     gLayout.Parent = MutContainer
 
-    local mutations = { "Shiny", "Giant", "Golden", "Void", "Rainbow", "Ghost", "Cataclysmic", "Abyssal" }
-    for _, mName in ipairs(mutations) do
+    local mutations = {
+        { key = "Bronze", label = "บรอนซ์ (1.37X)" },
+        { key = "Diamond", label = "เพชร (2.12X)" },
+        { key = "Platinum", label = "แพลตตินัม (3.23X)" },
+        { key = "Rainbow", label = "สายรุ้ง (4.72X)" },
+        { key = "Frozen", label = "แช่แข็ง (11.41X)" },
+        { key = "Inferno", label = "นรก (22.56X)" },
+        { key = "Nightmare", label = "ฝันร้าย (40X)" },
+        { key = "Unreal", label = "ไม่จริง (80X)" },
+        { key = "Unleashed", label = "ปลดปล่อย (120X)" },
+        { key = "Paradox", label = "พาราด็อกซ์ (160X)" }
+    }
+
+    for _, mData in ipairs(mutations) do
+        local mKey = mData.key
+        local mLabel = mData.label
         local mBtn = Instance.new("TextButton")
-        mBtn.Size = UDim2.new(0, 85, 0, 24)
         mBtn.Font = Enum.Font.GothamBold
         mBtn.TextSize = 9.5
         mBtn.Parent = MutContainer
@@ -1938,18 +1964,20 @@ local function AddMultiMutationSelector(parentTab, order)
         c.CornerRadius = UDim.new(0, 4)
         c.Parent = mBtn
 
-        local isChecked = Config.Mutations and Config.Mutations[mName]
+        local isChecked = (Config.TargetMutations and Config.TargetMutations[mKey] == true) or (Config.Mutations and Config.Mutations[mKey] == true)
         mBtn.BackgroundColor3 = isChecked and Theme.ChipActive or Theme.ChipInactive
         mBtn.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Theme.SubText
-        mBtn.Text = (isChecked and "✓ " or "") .. mName
+        mBtn.Text = (isChecked and "✓ " or "") .. mLabel
 
         mBtn.MouseButton1Click:Connect(function()
+            if not Config.TargetMutations then Config.TargetMutations = {} end
             if not Config.Mutations then Config.Mutations = {} end
-            Config.Mutations[mName] = not Config.Mutations[mName]
-            local cur = Config.Mutations[mName]
+            local cur = not ((Config.TargetMutations and Config.TargetMutations[mKey] == true) or (Config.Mutations and Config.Mutations[mKey] == true))
+            Config.TargetMutations[mKey] = cur
+            Config.Mutations[mKey] = cur
             mBtn.BackgroundColor3 = cur and Theme.ChipActive or Theme.ChipInactive
             mBtn.TextColor3 = cur and Color3.fromRGB(255, 255, 255) or Theme.SubText
-            mBtn.Text = (cur and "✓ " or "") .. mName
+            mBtn.Text = (cur and "✓ " or "") .. mLabel
             SaveConfig()
         end)
     end
@@ -3518,35 +3546,46 @@ task.spawn(function()
                 local waitingSlots = {}  -- ตัวที่ยังไม่ได้บัพเป้าหมาย แต่เงินยังไม่พอ
                 local lockedCount = 0
                 local totalSelected = 0
+                local processedSlots = {}
 
                 for slotKey, isSelected in pairs(Config.MutationSlots) do
                     if isSelected then
-                        local h = mg.Holders[slotKey]
-                        if h and h.CharName then
-                            totalSelected = totalSelected + 1
-                            local curVariant = h.CharVariant or "Normal"
-                            -- 🔒 ตรวจสอบว่าได้บัพตรงตามที่เลือกไว้หรือไม่
-                            if Config.TargetMutations[curVariant] then
-                                -- ล็อคตัวนี้ทันที ไม่นำไปสุ่มอีกเด็ดขาด
-                                lockedCount = lockedCount + 1
-                            else
-                                -- ยังไม่ได้บัพเป้าหมาย ให้คำนวณค่าสุ่ม
-                                local item = Items.GetItemData(h.CharName)
-                                local mutCost = item and MineConfig.GetMutationRollCost and MineConfig.GetMutationRollCost(item, mg) or 0
-                                local baseDmg = GetCharBaseDamage(h.CharName)
+                        local realKey = tostring(slotKey)
+                        if not string.find(realKey, "^M") then
+                            local num = tonumber(string.match(realKey, "%d+"))
+                            if num then realKey = "M" .. num end
+                        end
 
-                                local slotData = {
-                                    slot = slotKey,
-                                    name = h.CharName,
-                                    variant = curVariant,
-                                    baseDmg = baseDmg,
-                                    cost = mutCost
-                                }
-
-                                if mutCost > 0 and curMoney >= mutCost then
-                                    table.insert(readySlots, slotData)
+                        if not processedSlots[realKey] then
+                            processedSlots[realKey] = true
+                            local h = mg.Holders[realKey]
+                            if h and h.CharName then
+                                totalSelected = totalSelected + 1
+                                local curVariant = h.CharVariant or "Normal"
+                                -- 🔒 ตรวจสอบว่าได้บัพตรงตามที่เลือกไว้หรือไม่
+                                local isTargetMatched = (Config.TargetMutations and Config.TargetMutations[curVariant] == true) or (Config.Mutations and Config.Mutations[curVariant] == true)
+                                if isTargetMatched then
+                                    -- ล็อคตัวนี้ทันที ไม่นำไปสุ่มอีกเด็ดขาด
+                                    lockedCount = lockedCount + 1
                                 else
-                                    table.insert(waitingSlots, slotData)
+                                    -- ยังไม่ได้บัพเป้าหมาย ให้คำนวณค่าสุ่ม
+                                    local item = Items.GetItemData(h.CharName)
+                                    local mutCost = item and MineConfig.GetMutationRollCost and MineConfig.GetMutationRollCost(item, mg) or 0
+                                    local baseDmg = GetCharBaseDamage(h.CharName)
+
+                                    local slotData = {
+                                        slot = realKey,
+                                        name = h.CharName,
+                                        variant = curVariant,
+                                        baseDmg = baseDmg,
+                                        cost = mutCost
+                                    }
+
+                                    if mutCost > 0 and curMoney >= mutCost then
+                                        table.insert(readySlots, slotData)
+                                    else
+                                        table.insert(waitingSlots, slotData)
+                                    end
                                 end
                             end
                         end
@@ -3578,7 +3617,8 @@ task.spawn(function()
                         local newVariant = postH and (postH.CharVariant or "Normal")
 
                         -- 🔒 ล็อคทันทีเมื่อบัพตรงตามที่เลือก
-                        if newVariant and Config.TargetMutations[newVariant] then
+                        local isNewMatched = (Config.TargetMutations and Config.TargetMutations[newVariant] == true) or (Config.Mutations and Config.Mutations[newVariant] == true)
+                        if newVariant and isNewMatched then
                             UpdateStatus(string.format("🔒 ล็อค %s ได้ '%s' แล้ว! (ตรงตามที่เลือก)", currentTarget.slot, newVariant))
                             SaveConfig()
                             if RefreshMutationVisuals then pcall(RefreshMutationVisuals) end
