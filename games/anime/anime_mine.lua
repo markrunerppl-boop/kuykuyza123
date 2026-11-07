@@ -1068,32 +1068,11 @@ local function TriggerOpenPetalfallCrate()
     UpdateStatus(string.format("✅ เปิด Petalfall Crate %d กล่องสำเร็จ!", openAmount))
 end
 
--- Helper สำหรับกดปุ่มสวมใส่ที่ดีที่สุดทั้ง UI และ Server
+-- Helper สำหรับส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดไปยัง Server
 local function TriggerEquipBest()
     UpdateStatus("👥 สวมใส่ตัวที่ดีที่สุด...")
-    local mineGui = PlayerGui:FindFirstChild("MineGui")
-    if not mineGui then
-        warn("⚠️ [Null-Safety] ไม่พบ 'MineGui' ใน PlayerGui ข้ามการกดปุ่ม UI")
-    else
-        local invFrame = mineGui:FindFirstChild("InventoryFrame")
-        if not invFrame then
-            warn("⚠️ [Null-Safety] ไม่พบ 'InventoryFrame' ใน MineGui")
-        else
-            local eqBtn = invFrame:FindFirstChild("EquipBestButton", true)
-            if eqBtn then
-                if getconnections then
-                    local conns = getconnections(eqBtn.MouseButton1Click)
-                    if conns and conns[1] then
-                        conns[1]:Fire()
-                    end
-                end
-            else
-                warn("⚠️ [Null-Safety] ไม่พบ 'EquipBestButton' ใน InventoryFrame")
-            end
-        end
-    end
     SafeSendEvent(Config.Events.EquipBest)
-    HumanWait(0.25, 0.35)
+    HumanWait(0.2, 0.3)
 end
 
 -- ═══════════════════════════════════════════════
@@ -3688,6 +3667,9 @@ task.spawn(function()
                         UpdateStatus(string.format("📜 สุ่มม้วนอัญเชิญ (%d ม้วน)...", rollCount))
                         SafeSendEvent(Config.Events.Summon, rollCount)
                         HumanWait(0.3, 0.45)
+                        if Config.AutoEquipBest then
+                            TriggerEquipBest()
+                        end
                     end
                 end
             end
@@ -3834,6 +3816,9 @@ task.spawn(function()
                     UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
                     SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
                     HumanWait(0.4, 0.6)
+                    if Config.AutoEquipBest then
+                        TriggerEquipBest()
+                    end
                     d2 = SafeGetData2()
                     mg = d2 and d2.MineGame
                 end
@@ -3938,8 +3923,8 @@ task.spawn(function()
                 end
             end
 
-            -- 12.3 สวมใส่ตัวละครที่ดีที่สุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)
-            if Config.AutoEquipBest and os.clock() - lastEquipTime > 20 then
+            -- 12.3 สวมใส่ตัวละครที่ดีที่สุด (ตรวจสอบทุก 8 วินาที)
+            if Config.AutoEquipBest and os.clock() - lastEquipTime > 8 then
                 lastEquipTime = os.clock()
                 TriggerEquipBest()
             end
