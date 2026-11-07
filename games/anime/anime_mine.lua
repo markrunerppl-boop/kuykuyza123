@@ -3377,11 +3377,12 @@ task.spawn(function()
                     local bestUnlockedMult = -1
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
-                        if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly then
+                        if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly and not pick.RobuxCost then
                             local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
                             local mult = tonumber(pick.Multiplier) or 1
                             if isZoneUnlocked then
-                                if mult > bestUnlockedMult then
+                                -- ยึดอันสุดท้ายที่มีตัวคูณสูงสุด (อันสุดท้ายที่ดีที่สุดเสมอ)
+                                if mult >= bestUnlockedMult then
                                     bestUnlockedMult = mult
                                     targetBestPick = pick
                                     targetBestIdx = idx
@@ -3390,25 +3391,30 @@ task.spawn(function()
                         end
                     end
 
-                    -- ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อค "เมื่อพร้อมเท่านั้น" (เงินพอ + มีของในสต็อก)
+                    -- ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อคเท่านั้น ให้ซื้อทุกครั้งเมื่อพร้อม (เงินพอ + มีสต็อก)
                     if targetBestPick and targetBestIdx then
-                        local curMoney = tonumber(SafeGetData().Money) or 0
+                        local maxNeed = (MineConfig and tonumber(MineConfig.TotalMinerSlots)) or 12
                         local cost = tonumber(targetBestPick.Cost) or (1 / 0)
-                        local stock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(d2, targetBestPick.Name) or 0
-                        local ownedCount = tonumber(mg.Pickaxes and mg.Pickaxes[targetBestPick.Name]) or 0
 
-                        -- นับจำนวนแท่นคนงานทั้งหมด
-                        local totalHolders = 0
-                        for _ in pairs(mg.Holders or {}) do
-                            totalHolders = totalHolders + 1
-                        end
-                        if totalHolders == 0 then totalHolders = 8 end
+                        -- ซื้อทุกครั้งเมื่อพร้อม วนซื้อต่อเนื่องจนกว่าเงินจะไม่พอ สต็อกหมด หรือครบตามจำนวนแท่นคนงานทั้งหมด
+                        for buyAttempt = 1, maxNeed do
+                            local curD = SafeGetData()
+                            local curD2 = SafeGetData2()
+                            local curMg = curD2 and curD2.MineGame
+                            local curMoney = tonumber(curD.Money) or 0
+                            local ownedCount = tonumber(curMg and curMg.Pickaxes and curMg.Pickaxes[targetBestPick.Name]) or 0
 
-                        -- ซื้อเมื่อเงินพอ และยังซื้อไม่ครบตามจำนวนแท่นคนงาน (ไม่ซื้อเกินความจำเป็น)
-                        if curMoney >= cost and stock > 0 and ownedCount < totalHolders then
-                            UpdateStatus(string.format("🪓 ซื้อขวานดีสุด: %s (%d/%d ชิ้น)", targetBestPick.Name, ownedCount + 1, totalHolders))
-                            SafeSendEvent(Config.Events.BuyPickaxe, targetBestIdx)
-                            HumanWait(0.25, 0.4)
+                            local remStock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(curD2, targetBestPick.Name)
+                            local hasStock = (remStock == nil) or (remStock > 0)
+
+                            if curMoney >= cost and hasStock and ownedCount < maxNeed then
+                                UpdateStatus(string.format("🪓 ซื้อขวานดีสุดอันสุดท้าย: %s (%d/%d ชิ้น) [ราคา: %s]", 
+                                    targetBestPick.Name, ownedCount + 1, maxNeed, FormatNumber(cost)))
+                                SafeSendEvent(Config.Events.BuyPickaxe, targetBestIdx)
+                                HumanWait(0.25, 0.35)
+                            else
+                                break
+                            end
                         end
                     end
                 end
