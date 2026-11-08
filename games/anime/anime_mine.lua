@@ -1100,6 +1100,118 @@ local function TriggerEquipBest()
     HumanWait(0.2, 0.3)
 end
 
+-- Helper สำหรับอัปเกรดผังสกิลทั้งหมดที่มีในโซนที่ปลดล็อกทันที
+local function TriggerUpgradeAllSkillTrees()
+    local d = SafeGetData()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineConfig and MineConfig.GetSkillNodes) then return end
+
+    local myMoney = tonumber(d.Money) or 0
+    local totalBought = 0
+
+    local zonesToCheck = {}
+    local curZone = mg.CurrentZone or 1
+    table.insert(zonesToCheck, "Z" .. curZone)
+    for z = 14, 1, -1 do
+        local zk = "Z" .. z
+        if zk ~= ("Z" .. curZone) and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+            table.insert(zonesToCheck, zk)
+        end
+    end
+
+    for _, zKey in ipairs(zonesToCheck) do
+        local zSkills = (mg.Skills and mg.Skills[zKey]) or {}
+        local nodes = MineConfig.GetSkillNodes(zKey)
+        if nodes then
+            for _, node in ipairs(nodes) do
+                local isOpen = MineConfig.IsSkillNodeOpen and MineConfig.IsSkillNodeOpen(zSkills, node)
+                local isMaxed = MineConfig.IsSkillNodeMaxed and MineConfig.IsSkillNodeMaxed(zSkills, node)
+                local curLvl = zSkills[node.Family] or 0
+                local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zKey, curLvl, node.Family)
+
+                myMoney = tonumber(SafeGetData().Money) or 0
+                if isOpen and not isMaxed and cost and myMoney >= cost then
+                    SafeSendEvent(Config.Events.SkillTreeSection, zKey)
+                    UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
+                    SafeSendEvent(Config.Events.BuySkill, zKey, node.Family, node.Id)
+                    zSkills[node.Family] = curLvl + 1
+                    totalBought = totalBought + 1
+                    HumanWait(0.08, 0.12)
+                end
+            end
+        end
+    end
+
+    if totalBought > 0 then
+        UpdateStatus(string.format("✅ อัปเกรดผังสกิลสำเร็จรวม %d โหนด!", totalBought))
+    else
+        UpdateStatus("ℹ️ ไม่มีสกิลที่พร้อมอัปเกรด (เงินไม่พอหรืออัปเต็มแล้ว)")
+    end
+end
+
+-- Helper สำหรับอัปเกรดสถิติคนงานทั้งหมดให้ตันทันที
+local function TriggerUpgradeAllMinersMax()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    local holders = mg and mg.Holders
+    if not (holders and Items and MineConfig) then return end
+
+    local count = 0
+    for slotKey, h in pairs(holders) do
+        if h and h.CharName then
+            local item = Items.GetItemData(h.CharName)
+            if item then
+                -- 1. Damage (อัปจนถึง 200)
+                local curLvl = h.CharLevel or 1
+                if curLvl < 200 then
+                    local curMoney = tonumber(SafeGetData().Money) or 0
+                    local cost = MineConfig.GetCharacterUpgradeCost and MineConfig.GetCharacterUpgradeCost(curLvl, item)
+                    if cost and curMoney >= cost then
+                        UpdateStatus(string.format("⚔️ อัป Max DMG %s...", slotKey))
+                        SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Damage", true)
+                        count = count + 1
+                        HumanWait(0.08, 0.12)
+                    end
+                end
+
+                -- 2. Speed (อัปจนถึง 17)
+                local curSpd = h.CharSpeedLevel or 1
+                local maxSpd = MineConfig.CharSpeedMaxLevel or 17
+                if curSpd < maxSpd then
+                    local curMoney = tonumber(SafeGetData().Money) or 0
+                    local cost = MineConfig.GetCharacterSpeedUpgradeCost and MineConfig.GetCharacterSpeedUpgradeCost(curSpd, item)
+                    if cost and curMoney >= cost then
+                        UpdateStatus(string.format("⚡ อัป Max Speed %s...", slotKey))
+                        SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Speed", true)
+                        count = count + 1
+                        HumanWait(0.08, 0.12)
+                    end
+                end
+
+                -- 3. MineSpeed (อัปจนถึง 16)
+                local curMineSpd = h.CharMineSpeedLevel or 1
+                local maxMineSpd = MineConfig.CharMineSpeedMaxLevel or 16
+                if curMineSpd < maxMineSpd then
+                    local curMoney = tonumber(SafeGetData().Money) or 0
+                    local cost = MineConfig.GetCharacterMineSpeedUpgradeCost and MineConfig.GetCharacterMineSpeedUpgradeCost(curMineSpd, item)
+                    if cost and curMoney >= cost then
+                        UpdateStatus(string.format("⛏️ อัป Max MineSpeed %s...", slotKey))
+                        SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "MineSpeed", true)
+                        count = count + 1
+                        HumanWait(0.08, 0.12)
+                    end
+                end
+            end
+        end
+    end
+    if count > 0 then
+        UpdateStatus("✅ สั่งอัปเกรดสถิติคนงานให้ตันเรียบร้อย!")
+    else
+        UpdateStatus("ℹ️ สถิติคนงานตันทั้งหมดแล้ว หรือเงินไม่พอ")
+    end
+end
+
 -- ═══════════════════════════════════════════════
 -- 📋 สร้างเมนูจัดหมวดหมู่ UI ใหม่ (6 หมวดหมู่ ใช้งานง่าย & สะดวก)
 -- ═══════════════════════════════════════════════
@@ -2073,11 +2185,17 @@ end, TabFarming, 9)
 -- [6] POPULATE TAB 2: คนงาน & สกิล (WORKERS & SKILLS)
 -- -------------------------------------------------------------
 AddSectionHeader("🌳 ผังสกิล & อัปเกรด (Skill Tree & Core)", TabWorkers, 1)
-AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (อัปเกรดผังสกิล)", "อัปเกรดผังสกิลของโซนปัจจุบันตามลำดับโหนด (Batch Upgrades)", TabWorkers, 2)
+AddToggle("AutoUpgradeTree", "Auto Zone Skill Tree (อัปเกรดผังสกิล)", "อัปเกรดผังสกิลของทุกโซนที่ปลดล็อกตามลำดับโหนด (Batch Upgrades)", TabWorkers, 2)
 AddToggle("AutoUpgradeCore", "Auto Core Upgrades (แกนหลัก)", "อัปเกรด Tap Level และ Miner Slots ในแกนหลัก", TabWorkers, 3)
+AddActionButton("⚡ อัปเกรดผังสกิลทั้งหมดทันที", "ส่งคำสั่งซื้อผังสกิลทุกโหนดที่เงินพอในทุกโซนที่ปลดล็อกทันที", "อัปผังสกิลทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerUpgradeAllSkillTrees)
+        if not ok then warn(string.format("⚠️ [Action Error: UpgradeAllSkillTrees] %s", tostring(err))) end
+    end)
+end, TabWorkers, 4)
 
-AddSectionHeader("👥 คนงาน & สถิติตัวละคร (Miners & Stats)", TabWorkers, 4)
-AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", TabWorkers, 5)
+AddSectionHeader("👥 คนงาน & สถิติตัวละคร (Miners & Stats)", TabWorkers, 5)
+AddToggle("AutoEquipBest", "Auto Equip Best (ใส่ตัวดีที่สุด)", "ใส่ตัวละครที่ดีที่สุดลงแท่นขุด (เว้นช่วง 20 วิ ไม่ส่งซ้ำ)", TabWorkers, 6)
 AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทันที", "ส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดลงแท่นขุดทันที", "สวมใส่ทันที", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(TriggerEquipBest)
@@ -2087,16 +2205,22 @@ AddActionButton("⚡ ใส่ตัวที่ดีที่สุดทั�
             warn(string.format("⚠️ [Action Error: EquipBest] %s", tostring(err)))
         end
     end)
-end, TabWorkers, 6)
-AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters (อัปสถิติ)", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", TabWorkers, 7)
-AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, TabWorkers, 8)
-AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, TabWorkers, 9)
-AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, TabWorkers, 10)
+end, TabWorkers, 7)
+AddToggle("AutoUpgradeAllChars", "Auto Upgrade Characters (อัปสถิติ)", "อัปเกรดสถิติตัวละคร โดยให้ความสำคัญจากตัวที่เก่งสุดก่อน", TabWorkers, 8)
+AddLevelCapCustomInput("⚔️ เป้าหมาย Damage (1-200 / ตัน):", "TargetLevelDamage", 1, 200, 5, TabWorkers, 9)
+AddLevelCapCustomInput("⚡ เป้าหมาย Speed (1-17 / ตัน):", "TargetLevelSpeed", 1, 17, 1, TabWorkers, 10)
+AddLevelCapCustomInput("⛏️ เป้าหมาย MineSpeed (1-16 / ตัน):", "TargetLevelMineSpeed", 1, 16, 1, TabWorkers, 11)
+AddActionButton("⚡ อัปเกรดคนงานให้ตันทันที", "อัปเกรดสถิติคนงานทุกตัวให้ตันทันที (DMG 200, Speed 17, MineSpeed 16)", "อัปสถิติตันทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerUpgradeAllMinersMax)
+        if not ok then warn(string.format("⚠️ [Action Error: UpgradeAllMinersMax] %s", tostring(err))) end
+    end)
+end, TabWorkers, 12)
 
-AddSectionHeader("🧬 การกลายพันธุ์ (Mutations)", TabWorkers, 11)
-AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ", TabWorkers, 12)
-AddMultiSlotSelector(TabWorkers, 13)
-AddMultiMutationSelector(TabWorkers, 14)
+AddSectionHeader("🧬 การกลายพันธุ์ (Mutations)", TabWorkers, 13)
+AddToggle("AutoMutation", "Auto Mutation Roll (เปิดค้างได้)", "สุ่มบัพตัวละครที่เลือกทีละตัว และสแตนด์บายเมื่อได้ครบ", TabWorkers, 14)
+AddMultiSlotSelector(TabWorkers, 15)
+AddMultiMutationSelector(TabWorkers, 16)
 
 -- -------------------------------------------------------------
 -- [7] POPULATE TAB 3: ดันเจี้ยน & กาชา (DUNGEON & GACHA)
@@ -3341,31 +3465,42 @@ task.spawn(function()
             mg = d2 and d2.MineGame
             myMoney = d and tonumber(d.Money) or 0
 
-            -- 3.1 สกิลต้นไม้ประจำโซน (Batch Upgrade สูงสุด 5 โหนดต่อรอบ)
+            -- 3.1 สกิลต้นไม้ประจำโซน (วนตรวจเช็คทุกโซนที่ปลดล็อกแล้ว)
             if Config.AutoUpgradeTree and mg and MineConfig then
+                local zonesToCheck = {}
                 local curZone = mg.CurrentZone or 1
-                local zoneKey = "Z" .. tostring(curZone)
-                local zSkills = (mg.Skills and mg.Skills[zoneKey]) or {}
+                table.insert(zonesToCheck, "Z" .. curZone)
+                for z = 14, 1, -1 do
+                    local zk = "Z" .. z
+                    if zk ~= ("Z" .. curZone) and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+                        table.insert(zonesToCheck, zk)
+                    end
+                end
 
-                local nodes = MineConfig.GetSkillNodes and MineConfig.GetSkillNodes(zoneKey)
-                if nodes then
-                    local upgradedCount = 0
-                    for _, node in ipairs(nodes) do
-                        local isOpen = MineConfig.IsSkillNodeOpen and MineConfig.IsSkillNodeOpen(zSkills, node)
-                        local isMaxed = MineConfig.IsSkillNodeMaxed and MineConfig.IsSkillNodeMaxed(zSkills, node)
-                        local curLvl = zSkills[node.Family] or 0
-                        local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
+                local upgradedCount = 0
+                for _, zoneKey in ipairs(zonesToCheck) do
+                    local zSkills = (mg.Skills and mg.Skills[zoneKey]) or {}
+                    local nodes = MineConfig.GetSkillNodes and MineConfig.GetSkillNodes(zoneKey)
+                    if nodes then
+                        for _, node in ipairs(nodes) do
+                            local isOpen = MineConfig.IsSkillNodeOpen and MineConfig.IsSkillNodeOpen(zSkills, node)
+                            local isMaxed = MineConfig.IsSkillNodeMaxed and MineConfig.IsSkillNodeMaxed(zSkills, node)
+                            local curLvl = zSkills[node.Family] or 0
+                            local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
 
-                        local curMoney = tonumber(SafeGetData().Money) or 0
-                        if isOpen and not isMaxed and cost and curMoney >= cost then
-                            SafeSendEvent(Config.Events.SkillTreeSection, zoneKey)
-                            UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
-                            SafeSendEvent(Config.Events.BuySkill, zoneKey, node.Family, node.Id)
-                            upgradedCount = upgradedCount + 1
-                            HumanWait(0.12, 0.18)
-                            if upgradedCount >= 5 then break end
+                            local curMoney = tonumber(SafeGetData().Money) or 0
+                            if isOpen and not isMaxed and cost and curMoney >= cost then
+                                SafeSendEvent(Config.Events.SkillTreeSection, zoneKey)
+                                UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
+                                SafeSendEvent(Config.Events.BuySkill, zoneKey, node.Family, node.Id)
+                                zSkills[node.Family] = curLvl + 1
+                                upgradedCount = upgradedCount + 1
+                                HumanWait(0.08, 0.12)
+                                if upgradedCount >= 10 then break end
+                            end
                         end
                     end
+                    if upgradedCount >= 10 then break end
                 end
             end
 
@@ -3544,34 +3679,34 @@ task.spawn(function()
                             local curMoney = tonumber(SafeGetData().Money) or 0
                             if cost and curMoney >= cost then
                                 UpdateStatus(string.format("⚔️ อัป DMG %s [%s]", slotKey, FormatNumber(charInfo.baseDmg)))
-                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Damage")
-                                HumanWait(0.08, 0.15)
+                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Damage", true)
+                                HumanWait(0.08, 0.12)
                             end
                         end
 
                         -- 2. Speed Upgrade Check
                         local curSpd = h.CharSpeedLevel or 1
-                        local targetSpd = math.min(Config.TargetLevelSpeed, MineConfig.CharSpeedMaxLevel or 17)
+                        local targetSpd = math.min(tonumber(Config.TargetLevelSpeed) or 17, MineConfig.CharSpeedMaxLevel or 17)
                         if curSpd < targetSpd then
                             local cost = MineConfig.GetCharacterSpeedUpgradeCost and MineConfig.GetCharacterSpeedUpgradeCost(curSpd, item)
                             local curMoney = tonumber(SafeGetData().Money) or 0
                             if cost and curMoney >= cost then
                                 UpdateStatus("⚡ อัป Speed " .. slotKey)
-                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Speed")
-                                HumanWait(0.08, 0.15)
+                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "Speed", true)
+                                HumanWait(0.08, 0.12)
                             end
                         end
 
                         -- 3. MineSpeed Upgrade Check
                         local curMineSpd = h.CharMineSpeedLevel or 1
-                        local targetMineSpd = math.min(Config.TargetLevelMineSpeed, MineConfig.CharMineSpeedMaxLevel or 16)
+                        local targetMineSpd = math.min(tonumber(Config.TargetLevelMineSpeed) or 16, MineConfig.CharMineSpeedMaxLevel or 16)
                         if curMineSpd < targetMineSpd then
                             local cost = MineConfig.GetCharacterMineSpeedUpgradeCost and MineConfig.GetCharacterMineSpeedUpgradeCost(curMineSpd, item)
                             local curMoney = tonumber(SafeGetData().Money) or 0
                             if cost and curMoney >= cost then
                                 UpdateStatus("⛏️ อัป MineSpeed " .. slotKey)
-                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "MineSpeed")
-                                HumanWait(0.08, 0.15)
+                                SafeSendEvent(Config.Events.UpgradeCharacter, slotKey, "MineSpeed", true)
+                                HumanWait(0.08, 0.12)
                             end
                         end
                     end
