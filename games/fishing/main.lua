@@ -1237,109 +1237,135 @@ SpawnWorker("DeepCurrentWorker", function()
 end)
 
 -- ==============================================================================
+-- ==============================================================================
 -- Auto Mini-Games Engine (Perfect Reel, Fish Frenzy, Bait Memory -> Always Gold 🥇)
 -- ==============================================================================
+
+-- 1. Hook MiniGame InvokeServer to guarantee Gold Medal Score on finish
+if not SharedEnv._MiniGameHooked then
+    SharedEnv._MiniGameHooked = true
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        local mgRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGame)
+        if mgRemote and hookmetamethod then
+            local rawNamecall
+            rawNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                local method = getnamecallmethod()
+                local args = { ... }
+                if method == "InvokeServer" and self == mgRemote and args[1] == "finish" then
+                    local round = args[2]
+                    local currentScore = args[3]
+                    local isCancel = args[4]
+                    if Config.Settings.AutoMiniGames and not isCancel then
+                        -- Compute Gold Medal target score (based on ReplicatedStorage.MiniGames thresholds)
+                        -- Reel: 560 threshold -> 620
+                        -- Jump: 430 threshold -> 480
+                        -- Lures: 8 threshold -> 11
+                        local goldScore = 620
+                        if type(currentScore) == "number" then
+                            if currentScore <= 20 then
+                                goldScore = 11 -- Lures
+                            elseif currentScore <= 500 then
+                                goldScore = 480 -- Jump
+                            else
+                                goldScore = 620 -- Reel
+                            end
+                        end
+                        args[3] = goldScore
+                        UpdateStatus(string.format("STATUS: 🥇 INJECTED GOLD MEDAL SCORE (%d) FOR MINIGAME!", goldScore))
+                        return rawNamecall(self, unpack(args))
+                    end
+                end
+                return rawNamecall(self, ...)
+            end)
+        end
+    end)
+end
+
+-- 2. MiniGame Invitation Listener
 local function InitializeMiniGameListener()
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     local pingRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGamePing)
-    local mgRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGame)
-    if not pingRemote or not mgRemote then return end
+    if not pingRemote then return end
 
     pingRemote.OnClientEvent:Connect(function(msg)
         if not IsSessionValid() then return end
         if type(msg) ~= "table" then return end
         if not Config.Settings.AutoMiniGames then return end
 
-        if msg.kind == "invite" and msg.game and msg.round then
+        if msg.kind == "invite" and msg.game then
             local gameId = msg.game
-            local round = msg.round
-
-            -- Filter according to MiniGameSelectedGames (Multi-Select)
             local selectedGames = Config.Settings.MiniGameSelectedGames or { Reel = true, Jump = true, Lures = true }
             if selectedGames[gameId] ~= true then return end
 
-            UpdateStatus(string.format("STATUS: 🎮 MINIGAME INVITE [%s] DETECTED! PREPARING AUTO-PLAY...", gameId))
-            task.spawn(function()
-                task.wait(1.2 + (math.random(1, 10) / 10))
-                pcall(function() mgRemote:InvokeServer("shown", round) end)
-                task.wait(0.5)
-
-                local enterRes = nil
-                pcall(function()
-                    enterRes = mgRemote:InvokeServer("enter", round)
-                end)
-
-                if enterRes and enterRes.ok then
-                    UpdateStatus(string.format("STATUS: 🎮 PLAYING MINIGAME [%s] IN BACKGROUND...", gameId))
-
-                    -- Safe, humanlike playing delay (6-9s)
-                    task.wait(math.random(6, 9))
-
-                    -- Compute Gold Medal target score (based on ReplicatedStorage.MiniGames thresholds)
-                    local score = 0
-                    if gameId == "Reel" then
-                        score = math.random(580, 660) -- Threshold 560
-                    elseif gameId == "Jump" then
-                        score = math.random(445, 510) -- Threshold 430
-                    elseif gameId == "Lures" then
-                        score = math.random(8, 11)   -- Threshold 8
-                    else
-                        score = 500
-                    end
-
-                    local finishRes = nil
-                    pcall(function()
-                        finishRes = mgRemote:InvokeServer("finish", round, score, false)
-                    end)
-
-                    local wonGold = (finishRes and finishRes.tier and finishRes.tier >= 3) or (finishRes and finishRes.ok ~= false)
-                    if wonGold then
-                        local pearls = (finishRes and finishRes.pearls) or 35
-                        UpdateStatus(string.format("STATUS: 🥇 WON MINIGAME [%s] WITH GOLD MEDAL! (+%d 🦪)", gameId, pearls))
-                        if UIReferences.MiniGameStatusCard then
-                            UIReferences.MiniGameStatusCard.Text = string.format("🎮 มินิเกมล่าสุด: ชนะทอง 🥇 [%s] คะแนน: %d (+%d 🦪)", gameId, score, pearls)
-                        end
-                    else
-                        UpdateStatus(string.format("STATUS: 🎮 MINIGAME [%s] ROUND COMPLETED (SCORE: %d)", gameId, score))
-                    end
-
-                    -- Auto-dismiss result popup after reward is awarded
-                    task.wait(1.5)
-                    pcall(function()
-                        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-                        local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
-                        if mgUI then
-                            for _, desc in ipairs(mgUI:GetDescendants()) do
-                                if desc:IsA("TextButton") and (desc.Name == "Collect" or desc.Text == "COLLECT!") and typeof(firesignal) == "function" then
-                                    firesignal(desc.MouseButton1Click)
-                                end
-                            end
-                            mgUI.Enabled = false
-                        end
-                    end)
-                end
-            end)
+            UpdateStatus(string.format("STATUS: 🎮 ได้รับคำเชิญมินิเกม [%s]! รอเปิดหน้าต่างแล้วกดเล่นอัตโนมัติ...", gameId))
+            if UIReferences.MiniGameStatusCard then
+                UIReferences.MiniGameStatusCard.Text = string.format("🎮 กำลังเล่นมินิเกม: [%s] (เหรียญทอง 🥇)", gameId)
+            end
         end
     end)
 end
 task.spawn(InitializeMiniGameListener)
 
+-- 3. Dedicated MiniGame UI Auto-Player Worker
 SpawnWorker("MiniGameAutoWorker", function()
-    if Config.Settings.AutoMiniGames then
-        -- Auto-dismiss any stale MiniGameUI result dialogs
-        pcall(function()
-            local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-            local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
-            if mgUI and mgUI.Enabled then
-                for _, desc in ipairs(mgUI:GetDescendants()) do
-                    if desc:IsA("TextButton") and (desc.Name == "Collect" or desc.Text == "COLLECT!") and typeof(firesignal) == "function" then
-                        firesignal(desc.MouseButton1Click)
-                    end
+    if not Config.Settings.AutoMiniGames then
+        task.wait(1.5)
+        return
+    end
+
+    pcall(function()
+        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+        local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
+        if not mgUI or not mgUI.Enabled then
+            task.wait(0.3)
+            return
+        end
+
+        local function ClickButton(btn)
+            if firesignal then
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                pcall(function() firesignal(btn.Activated) end)
+            elseif getconnections then
+                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+                    pcall(function() conn:Fire() end)
                 end
             end
-        end)
-    end
-    task.wait(12)
+        end
+
+        -- Stage 1: Auto Accept Invite Screen ("▶ PLAY!")
+        for _, desc in ipairs(mgUI:GetDescendants()) do
+            if desc:IsA("TextButton") and desc.Visible and (desc.Name == "PlayButton" or desc.Text == "▶ PLAY!" or string.find(desc.Text, "PLAY")) then
+                UpdateStatus("STATUS: 🎮 ตรวจพบหน้าต่างเชิญมินิเกม! กำลังกดปุ่ม ▶ PLAY เริ่มเล่นอัตโนมัติ...")
+                ClickButton(desc)
+                task.wait(0.6)
+                return
+            end
+        end
+
+        -- Stage 2: Auto Play Gameplay (Tapping active gameplay buttons)
+        for _, desc in ipairs(mgUI:GetDescendants()) do
+            if desc:IsA("TextButton") and desc.Visible then
+                if desc.Name == "ReelButton" or desc.Text == "REEL!" or desc.Name == "JumpButton" or desc.Text == "JUMP!" then
+                    ClickButton(desc)
+                    break
+                end
+            end
+        end
+
+        -- Stage 3: Auto Collect Reward on Result screen ("COLLECT!")
+        for _, desc in ipairs(mgUI:GetDescendants()) do
+            if desc:IsA("TextButton") and desc.Visible and (desc.Name == "Collect" or desc.Text == "COLLECT!" or string.find(desc.Text, "COLLECT")) then
+                UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัลเหรียญทอง (COLLECT)...")
+                task.wait(1.0)
+                ClickButton(desc)
+                task.wait(0.5)
+                return
+            end
+        end
+    end)
+
+    task.wait(0.35)
 end)
 
 -- Task 8: Potions, Skill Tree & Best Bait Worker
