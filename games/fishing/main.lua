@@ -1,11 +1,13 @@
 -- ==============================================================================
 -- PROJECT: KUYKUY HUB Unified Farm & Utility Framework
 -- GAME: [🐟] จับปลา! (PlaceId: 93898234979111)
--- VERSION: v3.1.0 [KUYKUY ULTIMATE EDITION - MULTI-SELECT & DROPDOWN SUITE]
+-- VERSION: v3.2.0 [KUYKUY ULTIMATE EDITION - UPDATE 10 SUITE]
 -- FEATURES: Auto Net (Perfect Tap & Reel Strategy) / Auto Collect Pads / Auto Equip Best /
---           Auto Rebirth / Auto Claim Gifts & Free Clams / Auto Sell & Auto Shuck Pearls /
---           Auto Deep Current (Full Tiers) / Multi-Select Potions (Cash + Net) /
---           Multi-Select Upgrades / Multi-Select Mini-Games (Gold 🥇) / Boss Target Filters
+--           Auto Rebirth (Up to 50) / Auto Claim Gifts & Free Clams / Auto Sell & Shuck Pearls /
+--           Auto Deep Current (Full 12 Tiers) / Multi-Select Potions (Cash + Net) /
+--           Multi-Select Upgrades (6 Categories) / Multi-Select Mini-Games (Gold 🥇) /
+--           Auto Boss Trio (Megalodon 🦈 + The Bloop 🌊 + Kraken 🐙) /
+--           Update 10: Traits Engine / Leviathan Pass / Black Market / Promo Codes
 -- ==============================================================================
 
 local CoreGui = game:GetService("CoreGui")
@@ -159,7 +161,7 @@ end)
 local Config = {
     Meta = {
         HubName = "KUYKUY HUB",
-        Version = "v3.1.0 [จับปลา! Ultimate]",
+        Version = "v3.2.0 [KUYKUY ULTIMATE EDITION - UPDATE 10 SUITE]",
         SaveFileName = "KUYKUY_Config_" .. tostring(game.PlaceId) .. ".json"
     },
     Colors = {
@@ -261,10 +263,21 @@ local Config = {
         AutoBuyBait = true,             -- ซื้อเหยื่อที่ดีที่สุดอัตโนมัติเมื่อหมด (ครั้งละ 10 อัน)
         BaitBatchAmount = 10,           -- จำนวนเหยื่อที่ซื้อต่อครั้ง (10 ชิ้น)
 
-        -- Boss Automation (Megalodon & Kraken)
-        AutoBossFight = true,           -- ตีบอส Megalodon & Kraken อัตโนมัติ
-        BossTargetMode = "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)", -- ตัวกรองเป้าหมายบอส
+        -- Boss Automation (Megalodon, The Bloop & Kraken - Update 10)
+        AutoBossFight = true,           -- ตีบอส Megalodon, The Bloop & Kraken อัตโนมัติ
+        BossTargetMode = "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)", -- ตัวกรองเป้าหมายบอส
         AutoClaimBossLoot = true,       -- เคลมการ์ดของรางวัลบอสอัตโนมัติ
+
+        -- Update 10: Season Pass & Promo Codes
+        AutoClaimSeasonPass = true,     -- เคลมของรางวัล Leviathan Pass ฟรีทุกเทียร์อัตโนมัติ
+        AutoRedeemCodes = true,         -- แลกโค้ดของขวัญอัตโนมัติ (2MVISITS, 1MVISITS, MONARCH, UPD1)
+
+        -- Update 10: Traits System
+        AutoRollTraits = false,         -- สุ่มหมุน Trait อัตโนมัติเมื่อมีสิทธิ์
+        AutoEquipBestTrait = true,      -- สวมใส่ Trait ระดับสูงสุดที่มีอัตโนมัติ
+
+        -- Update 10: The Black Market (Silas the Smuggler)
+        AutoBuyBlackMarket = false,     -- ซื้อของในตลาดมืดอัตโนมัติเมื่อมีเงินพอ
 
         -- Auto Sell
         AutoSell = false,
@@ -848,6 +861,72 @@ local function RunMegaClaimCycle()
         end
     end
 
+    -- 8. Leviathan Pass (Season Pass - Free Tiers)
+    if Config.Settings.AutoClaimSeasonPass and remotes:FindFirstChild("SeasonPass") then
+        pcall(function()
+            local spState = remotes.SeasonPass:InvokeServer("state")
+            if spState and spState.tier then
+                local maxTier = spState.tier
+                local freeClaimed = spState.free or {}
+                for t = 1, maxTier do
+                    if not freeClaimed[tostring(t)] then
+                        local res = remotes.SeasonPass:InvokeServer("claim", { gold = false, tier = t })
+                        if res and (res.ok or res.reward or res.claimed or not res.err) then
+                            claimedCount = claimedCount + 1
+                            UpdateStatus(string.format("STATUS: CLAIMED LEVIATHAN PASS TIER %d!", t))
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    -- 9. Auto Redeem Active Promo Codes (2MVISITS, 1MVISITS, MONARCH, UPD1)
+    if Config.Settings.AutoRedeemCodes and remotes:FindFirstChild("Rewards") and not SharedEnv._CodesRedeemedThisSession then
+        SharedEnv._CodesRedeemedThisSession = true
+        task.spawn(function()
+            local promoCodes = { "2MVISITS", "1MVISITS", "MONARCH", "UPD1" }
+            for _, code in ipairs(promoCodes) do
+                pcall(function()
+                    local res = remotes.Rewards:InvokeServer("redeem", code)
+                    if res and (res.ok or res.claimed) then
+                        claimedCount = claimedCount + 1
+                        UpdateStatus(string.format("STATUS: REDEEMED PROMO CODE [%s]!", code))
+                    end
+                end)
+                task.wait(0.4)
+            end
+        end)
+    end
+
+    -- 10. Traits Auto Equip Best & Auto Roll
+    if remotes:FindFirstChild("Traits") then
+        pcall(function()
+            local trState = remotes.Traits:InvokeServer("state")
+            if trState then
+                -- Auto roll traits if user enabled and has free rolls
+                if Config.Settings.AutoRollTraits and (trState.rolls or 0) > 0 then
+                    local rollAmt = (trState.rolls >= 10) and 10 or 1
+                    local rollRes = remotes.Traits:InvokeServer("roll", rollAmt)
+                    if rollRes and rollRes.ok then
+                        UpdateStatus(string.format("STATUS: ROLLED %d TRAITS!", rollAmt))
+                        task.wait(0.3)
+                        trState = remotes.Traits:InvokeServer("state")
+                    end
+                end
+
+                -- Auto equip highest trait
+                if Config.Settings.AutoEquipBestTrait and trState and trState.best and trState.trait ~= trState.best then
+                    local equipRes = remotes.Traits:InvokeServer("equip", trState.best)
+                    if equipRes and equipRes.ok then
+                        UpdateStatus(string.format("STATUS: EQUIPPED BEST TRAIT (TIER %d)!", trState.best))
+                    end
+                end
+            end
+        end)
+    end
+
     return claimedCount
 end
 
@@ -1294,21 +1373,105 @@ local function FireTurretSpearAtMegalodon(remotes)
     end
 end
 
--- Task 9: Auto Boss Fighter (Megalodon & Kraken Auto Fight & Loot)
+-- Helper: Accurate The Bloop Aim Position Resolver
+local function GetBloopAimPosition()
+    -- 1. Scan workspace.BloopLocal for the Bloop part/model
+    local bloopFolder = workspace:FindFirstChild("BloopLocal")
+    if bloopFolder then
+        local bloop = bloopFolder:FindFirstChild("Bloop")
+            or bloopFolder:FindFirstChildWhichIsA("BasePart")
+            or bloopFolder:FindFirstChildWhichIsA("Model")
+        if bloop then
+            if bloop:IsA("BasePart") then
+                return bloop.Position
+            elseif bloop:IsA("Model") then
+                return bloop:GetPivot().Position
+            end
+        end
+    end
+
+    -- 2. Compute path position using FishingShared.BloopPos and elapsed time from BloopStart
+    if FishingShared and FishingShared.BloopPos then
+        local bloopStart = workspace:GetAttribute("BloopStart") or 0
+        local elapsed = math.max(0, workspace:GetServerTimeNow() - bloopStart)
+        local ok, pos = pcall(function()
+            return FishingShared.BloopPos(elapsed)
+        end)
+        if ok and typeof(pos) == "Vector3" then
+            return pos
+        end
+    end
+
+    -- 3. Fallback
+    return Vector3.new(0, -22, 0)
+end
+
+-- Helper: Universal Bloop Spear Attack Trigger (UI Click + Space Key + Virtual Mouse + Remote)
+local function FireTurretSpearAtBloop(remotes)
+    local targetPos = GetBloopAimPosition()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local turretUI = pGui and pGui:FindFirstChild("BloopTurretUI")
+
+    -- 1. Direct In-Game Client UI Trigger (If Bloop Turret UI is open)
+    if turretUI then
+        local fireBtn = turretUI:FindFirstChild("Fire", true)
+            or turretUI:FindFirstChild("Shoot", true)
+            or turretUI:FindFirstChild("FireBtn", true)
+        if fireBtn then
+            if typeof(firesignal) == "function" then
+                pcall(function() firesignal(fireBtn.MouseButton1Click) end)
+                pcall(function() firesignal(fireBtn.Activated) end)
+            end
+        end
+    end
+
+    -- 2. Virtual Key Press (Space key directly triggers Bloop fireNow)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+        task.wait(0.02)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+    end)
+
+    -- 3. Virtual Mouse Click with Aim Coordinate
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        local viewSize = camera and camera.ViewportSize or Vector2.new(1280, 720)
+        local screenPos = Vector2.new(viewSize.X / 2, viewSize.Y * 0.45)
+        if camera and targetPos then
+            local w2s, onScreen = camera:WorldToViewportPoint(targetPos)
+            if onScreen then
+                screenPos = Vector2.new(w2s.X, w2s.Y)
+            end
+        end
+        VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 0)
+        task.wait(0.02)
+        VirtualInputManager:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 0)
+    end)
+
+    -- 4. Direct Server Remote Call
+    if remotes and remotes:FindFirstChild("BloopEvent") and targetPos then
+        pcall(function()
+            remotes.BloopEvent:FireServer("fire", targetPos)
+        end)
+    end
+end
+
+-- Task 9: Auto Boss Fighter (Megalodon, The Bloop & Kraken Auto Fight & Loot)
 SpawnWorker("AutoBossWorker", function()
     if not Config.Settings.AutoBossFight then
         task.wait(2.5)
         return
     end
 
-    local bMode = Config.Settings.BossTargetMode or "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)"
+    local bMode = Config.Settings.BossTargetMode or "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)"
     if bMode == "ปิดการล่าบอส (Disabled)" then
         task.wait(2.5)
         return
     end
 
-    local allowMeg = (bMode ~= "เฉพาะปลาหมึกยักษ์ Kraken 🐙")
-    local allowKraken = (bMode ~= "เฉพาะฉลามยักษ์ Megalodon 🦈")
+    local allowMeg = (bMode == "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)" or bMode == "เฉพาะฉลามยักษ์ Megalodon 🦈")
+    local allowBloop = (bMode == "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)" or bMode == "เฉพาะสัตว์ประหลาด The Bloop 🌊")
+    local allowKraken = (bMode == "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)" or bMode == "เฉพาะปลาหมึกยักษ์ Kraken 🐙")
 
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then
@@ -1317,6 +1480,7 @@ SpawnWorker("AutoBossWorker", function()
     end
 
     local megEvent = remotes:FindFirstChild("MegEvent")
+    local bloopEvent = remotes:FindFirstChild("BloopEvent")
     local bossEvent = remotes:FindFirstChild("BossEvent")
 
     -- 1. Check Megalodon Event
@@ -1371,7 +1535,53 @@ SpawnWorker("AutoBossWorker", function()
         UpdateStatus("STATUS: MEGALODON DEFEATED! CLAIMED VICTORY LOOT!")
     end
 
-    -- 2. Kraken Boss / General Sea Boss Event
+    -- 2. Check The Bloop Event (Update 10)
+    if allowBloop and bloopEvent and workspace:GetAttribute("BloopActive") == true then
+        UpdateStatus("STATUS: 🌊 THE BLOOP DETECTED! ENTERING TURRET FIGHT...")
+
+        -- Ensure player is mounted in the Bloop turret
+        pcall(function()
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local turretUI = pGui and pGui:FindFirstChild("BloopTurretUI")
+            if not (turretUI and turretUI.Enabled) then
+                bloopEvent:FireServer("enter")
+                task.wait(0.4)
+            end
+        end)
+
+        -- Combat loop while The Bloop is active
+        local bloopFightStart = os.clock()
+        while workspace:GetAttribute("BloopActive") == true and (os.clock() - bloopFightStart < 250) and IsSessionValid() do
+            if not Config.Settings.AutoBossFight then break end
+
+            local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+            local turretUI = pGui and pGui:FindFirstChild("BloopTurretUI")
+            if not (turretUI and turretUI.Enabled) then
+                pcall(function() bloopEvent:FireServer("enter") end)
+                task.wait(0.3)
+            end
+
+            pcall(function()
+                local targetPos = GetBloopAimPosition()
+                local cam = workspace.CurrentCamera
+                if cam and targetPos then
+                    cam.CFrame = CFrame.lookAt(cam.CFrame.Position, targetPos)
+                end
+            end)
+
+            FireTurretSpearAtBloop(remotes)
+            UpdateStatus("STATUS: 🔥 FIRING SPEARS AT THE BLOOP!")
+            task.wait(0.5)
+        end
+
+        task.wait(1.5)
+        pcall(function()
+            bloopEvent:FireServer("closed")
+        end)
+        UpdateStatus("STATUS: THE BLOOP DEFEATED! CLAIMED VICTORY LOOT!")
+    end
+
+    -- 3. Kraken Boss / General Sea Boss Event
     if allowKraken and workspace:GetAttribute("BossActive") == true then
         UpdateStatus("STATUS: 🐙 KRAKEN ACTIVE! FIGHTING WITH NETS & WEAPONS...")
     end
@@ -1388,6 +1598,36 @@ SpawnWorker("AutoBossWorker", function()
     end
 
     task.wait(1.5)
+end)
+
+-- Task: The Black Market Auto Buyer (Silas the Smuggler)
+SpawnWorker("AutoBlackMarketWorker", function()
+    if not Config.Settings.AutoBuyBlackMarket then
+        task.wait(3.0)
+        return
+    end
+
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local bmRemote = remotes and remotes:FindFirstChild("BlackMarket")
+    if bmRemote then
+        pcall(function()
+            local state = bmRemote:InvokeServer("state")
+            if state and state.items and state.cash then
+                for _, item in ipairs(state.items) do
+                    if not item.bought and item.price and state.cash >= item.price then
+                        local res = bmRemote:InvokeServer("buy", item.id)
+                        if res and (res.ok or res.bought) then
+                            state.cash = state.cash - item.price
+                            UpdateStatus(string.format("STATUS: BOUGHT BLACK MARKET ITEM [%s]!", item.name or item.id))
+                            task.wait(0.3)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    task.wait(15.0 + math.random(2, 5))
 end)
 
 -- Task 6: Auto Sell Worker
@@ -2246,7 +2486,7 @@ local function BuildUI()
         end
     end)
 
-    CreateStatusCard(pRebirth, "⚡ ลำดับสำคัญ 1: เกิดใหม่ทันทีเมื่อครบเกณฑ์ เพื่อรับตัวคูณเงินถาวร\n(เมื่อเกิดใหม่แล้ว ระบบจะซื้อและใส่แหที่ดีที่สุดต่อทันที)")
+    CreateStatusCard(pRebirth, "⚡ ลำดับสำคัญ 1: เกิดใหม่ทันทีเมื่อครบเกณฑ์ เพื่อรับตัวคูณเงินถาวร (Update 10 ขยายเพดานสูงสุด Rebirth 50 และปลดล็อก Trait ทวีคูณ)\n(เมื่อเกิดใหม่แล้ว ระบบจะซื้อและใส่แหที่ดีที่สุดต่อทันที)")
 
     -- ==========================================================================
     -- TAB 2: 🕸️ 2. แห & โยนแหตกปลา (Net & Fishing - Priority 2)
@@ -2537,6 +2777,99 @@ local function BuildUI()
         end)
     end)
 
+    CreateToggle(pRewards, "📜 เคลมของรางวัล Leviathan Pass อัตโนมัติ (Auto Claim Season Pass)", Config.Settings.AutoClaimSeasonPass, function(v)
+        Config.Settings.AutoClaimSeasonPass = v
+        UpdateStatus("STATUS: AUTO CLAIM SEASON PASS " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pRewards, "🎁 แลกโค้ดโปรโมชั่นใหม่อัตโนมัติ (Auto Redeem Promo Codes)", Config.Settings.AutoRedeemCodes, function(v)
+        Config.Settings.AutoRedeemCodes = v
+        UpdateStatus("STATUS: AUTO REDEEM CODES " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local passBtnRow = Instance.new("Frame")
+    passBtnRow.Size = UDim2.new(1, 0, 0, 34)
+    passBtnRow.BackgroundTransparency = 1
+    passBtnRow.Parent = pRewards
+
+    local btnClaimPass = Instance.new("TextButton")
+    btnClaimPass.Size = UDim2.new(0.48, 0, 1, 0)
+    btnClaimPass.BackgroundColor3 = Config.Colors.Accent
+    btnClaimPass.Font = Enum.Font.GothamBold
+    btnClaimPass.TextSize = 11
+    btnClaimPass.TextColor3 = Config.Colors.TextPrimary
+    btnClaimPass.Text = "📜 เคลม Leviathan Pass (All)"
+    btnClaimPass.Parent = passBtnRow
+    local bcpCorner = Instance.new("UICorner")
+    bcpCorner.CornerRadius = UDim.new(0, 6)
+    bcpCorner.Parent = btnClaimPass
+
+    btnClaimPass.MouseButton1Click:Connect(function()
+        UpdateStatus("STATUS: CLAIMING ALL UNCLAIMED SEASON PASS TIERS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local spRemote = remotes and remotes:FindFirstChild("SeasonPass")
+            if spRemote then
+                local spState = spRemote:InvokeServer("state")
+                local count = 0
+                if spState and spState.tier then
+                    local maxTier = spState.tier
+                    local freeClaimed = spState.free or {}
+                    for t = 1, maxTier do
+                        if not freeClaimed[tostring(t)] then
+                            local res = spRemote:InvokeServer("claim", { gold = false, tier = t })
+                            if res and (res.ok or res.reward or res.claimed or not res.err) then
+                                count = count + 1
+                                UpdateStatus(string.format("STATUS: CLAIMED PASS TIER %d!", t))
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+                UpdateStatus(string.format("STATUS: CLAIMED %d PASS TIERS!", count))
+                if QuestStatusCard then
+                    QuestStatusCard.Text = string.format("เคลม Leviathan Pass สำเร็จ: %d เลเวล!", count)
+                end
+            end
+        end)
+    end)
+
+    local btnRedeemCodes = Instance.new("TextButton")
+    btnRedeemCodes.Size = UDim2.new(0.48, 0, 1, 0)
+    btnRedeemCodes.Position = UDim2.new(0.52, 0, 0, 0)
+    btnRedeemCodes.BackgroundColor3 = Config.Colors.Gold
+    btnRedeemCodes.Font = Enum.Font.GothamBold
+    btnRedeemCodes.TextSize = 11
+    btnRedeemCodes.TextColor3 = Config.Colors.TextPrimary
+    btnRedeemCodes.Text = "🎁 แลกโค้ดทั้งหมด (Redeem)"
+    btnRedeemCodes.Parent = passBtnRow
+    local brcCorner = Instance.new("UICorner")
+    brcCorner.CornerRadius = UDim.new(0, 6)
+    brcCorner.Parent = btnRedeemCodes
+
+    btnRedeemCodes.MouseButton1Click:Connect(function()
+        UpdateStatus("STATUS: REDEEMING ALL ACTIVE PROMO CODES...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local rewardsRemote = remotes and remotes:FindFirstChild("Rewards")
+            if rewardsRemote then
+                local promoCodes = { "2MVISITS", "1MVISITS", "MONARCH", "UPD1" }
+                local count = 0
+                for _, code in ipairs(promoCodes) do
+                    local res = rewardsRemote:InvokeServer("redeem", code)
+                    if res and (res.ok or res.claimed) then
+                        count = count + 1
+                    end
+                    task.wait(0.4)
+                end
+                UpdateStatus(string.format("STATUS: PROMO CODES REDEEMED (%d SUCCEEDED)!", count))
+                if QuestStatusCard then
+                    QuestStatusCard.Text = string.format("แลกโค้ดของขวัญสำเร็จ: %d โค้ด (บัฟ/หีบ/ยาทำงานแล้ว)", count)
+                end
+            end
+        end)
+    end)
+
     CreateButton(pRewards, "🎁 กดรับรางวัลและเควสทุกหมวดหมู่ทันที (Claim ALL Now)", Config.Colors.Gold, function()
         UpdateStatus("STATUS: RUNNING MEGA CLAIM CYCLE FOR ALL QUESTS & REWARDS...")
         task.spawn(function()
@@ -2632,6 +2965,71 @@ local function BuildUI()
             local pCount = (res and res.pearls) or 0
             UpdateStatus(string.format("STATUS: SHUCKED PEARLS! +%d PEARLS GAINED", pCount))
         end
+    end)
+
+    -- Update 10: The Black Market (ตลาดมืด Silas the Smuggler)
+    local BlackMarketStatusCard = CreateStatusCard(pSell, "🛒 ตลาดมืด (Black Market Update 10): กำลังตรวจสินค้า...")
+    task.spawn(function()
+        while IsSessionValid() do
+            if BlackMarketStatusCard and BlackMarketStatusCard.Parent then
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                local bmRemote = remotes and remotes:FindFirstChild("BlackMarket")
+                if bmRemote then
+                    pcall(function()
+                        local bmState = bmRemote:InvokeServer("state")
+                        if bmState then
+                            local left = bmState.nextIn or 0
+                            local available = 0
+                            local total = 0
+                            if bmState.items then
+                                total = #bmState.items
+                                for _, it in ipairs(bmState.items) do
+                                    if not it.bought then available = available + 1 end
+                                end
+                            end
+                            local min = math.floor(left / 60)
+                            local sec = left % 60
+                            BlackMarketStatusCard.Text = string.format("🛒 ตลาดมืด: สินค้าพร้อมซื้อ %d/%d ชิ้น | รีเฟรชใน %d:%02d นาที", available, total, min, sec)
+                        end
+                    end)
+                end
+            end
+            task.wait(4.0)
+        end
+    end)
+
+    CreateToggle(pSell, "🛒 ซื้อของตลาดมืดอัตโนมัติ (Auto Buy Black Market Stock)", Config.Settings.AutoBuyBlackMarket, function(v)
+        Config.Settings.AutoBuyBlackMarket = v
+        UpdateStatus("STATUS: AUTO BUY BLACK MARKET " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateButton(pSell, "🛒 ซื้อของตลาดมืดที่มีทั้งหมดทันที (Buy Black Market Now)", Config.Colors.Gold, function()
+        UpdateStatus("STATUS: BUYING BLACK MARKET ITEMS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local bmRemote = remotes and remotes:FindFirstChild("BlackMarket")
+            if bmRemote then
+                local bmState = bmRemote:InvokeServer("state")
+                local count = 0
+                if bmState and bmState.items and bmState.cash then
+                    for _, item in ipairs(bmState.items) do
+                        if not item.bought and item.price and bmState.cash >= item.price then
+                            local res = bmRemote:InvokeServer("buy", item.id)
+                            if res and (res.ok or res.bought) then
+                                count = count + 1
+                                bmState.cash = bmState.cash - item.price
+                                UpdateStatus(string.format("STATUS: BOUGHT [%s] FROM BLACK MARKET!", item.name or item.id))
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+                end
+                UpdateStatus(string.format("STATUS: BOUGHT %d BLACK MARKET ITEMS!", count))
+                if BlackMarketStatusCard then
+                    BlackMarketStatusCard.Text = string.format("ซื้อของตลาดมืดสำเร็จล่าสุด: %d ชิ้น!", count)
+                end
+            end
+        end)
     end)
 
     -- ==========================================================================
@@ -2907,36 +3305,145 @@ local function BuildUI()
         end)
     end)
 
+    -- Update 10: Traits System (คุณสมบัติพิเศษ)
+    local TraitsStatusCard = CreateStatusCard(pPotions, "✨ คุณสมบัติพิเศษ (Traits Update 10): กำลังโหลดข้อมูล...")
+    task.spawn(function()
+        while IsSessionValid() do
+            if TraitsStatusCard and TraitsStatusCard.Parent then
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                local trRemote = remotes and remotes:FindFirstChild("Traits")
+                if trRemote then
+                    pcall(function()
+                        local trState = trRemote:InvokeServer("state")
+                        if trState then
+                            local rolls = trState.rolls or 0
+                            local curTrait = trState.trait or 0
+                            local bestTrait = trState.best or 0
+                            local TraitsModule = nil
+                            pcall(function() TraitsModule = require(ReplicatedStorage:FindFirstChild("Traits")) end)
+                            local mult = (TraitsModule and TraitsModule.Mult and TraitsModule.Mult(curTrait)) or 1
+                            TraitsStatusCard.Text = string.format("✨ Trait ปัจจุบัน: Tier %d (x%.2f) | ดีที่สุด: Tier %d | สิทธิ์สุ่ม: %d ครั้ง", curTrait, mult, bestTrait, rolls)
+                        end
+                    end)
+                end
+            end
+            task.wait(3.5)
+        end
+    end)
+
+    CreateToggle(pPotions, "⭐ สวมใส่ Trait ระดับสูงสุดเสมอ (Auto Equip Best Trait)", Config.Settings.AutoEquipBestTrait, function(v)
+        Config.Settings.AutoEquipBestTrait = v
+        UpdateStatus("STATUS: AUTO EQUIP BEST TRAIT " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pPotions, "🎲 สุ่มหมุน Trait อัตโนมัติเมื่อมีสิทธิ์ (Auto Roll Traits)", Config.Settings.AutoRollTraits, function(v)
+        Config.Settings.AutoRollTraits = v
+        UpdateStatus("STATUS: AUTO ROLL TRAITS " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local traitBtnRow = Instance.new("Frame")
+    traitBtnRow.Size = UDim2.new(1, 0, 0, 34)
+    traitBtnRow.BackgroundTransparency = 1
+    traitBtnRow.Parent = pPotions
+
+    local btnRollTrait = Instance.new("TextButton")
+    btnRollTrait.Size = UDim2.new(0.48, 0, 1, 0)
+    btnRollTrait.BackgroundColor3 = Config.Colors.Accent
+    btnRollTrait.Font = Enum.Font.GothamBold
+    btnRollTrait.TextSize = 11
+    btnRollTrait.TextColor3 = Config.Colors.TextPrimary
+    btnRollTrait.Text = "🎲 สุ่ม Trait ทันที (Roll)"
+    btnRollTrait.Parent = traitBtnRow
+    local brtCorner = Instance.new("UICorner")
+    brtCorner.CornerRadius = UDim.new(0, 6)
+    brtCorner.Parent = btnRollTrait
+
+    btnRollTrait.MouseButton1Click:Connect(function()
+        UpdateStatus("STATUS: ROLLING TRAITS...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local trRemote = remotes and remotes:FindFirstChild("Traits")
+            if trRemote then
+                local trState = trRemote:InvokeServer("state")
+                if trState and (trState.rolls or 0) > 0 then
+                    local rollAmt = (trState.rolls >= 10) and 10 or 1
+                    local res = trRemote:InvokeServer("roll", rollAmt)
+                    if res and res.ok then
+                        UpdateStatus(string.format("STATUS: ROLLED %d TRAITS! NEW BEST: TIER %d", rollAmt, res.state and res.state.best or 0))
+                        if Config.Settings.AutoEquipBestTrait and res.state and res.state.best then
+                            trRemote:InvokeServer("equip", res.state.best)
+                        end
+                    end
+                else
+                    UpdateStatus("STATUS: NO TRAIT ROLLS AVAILABLE (NEED REBIRTH 7+ OR ROLLS)")
+                end
+            end
+        end)
+    end)
+
+    local btnEquipTrait = Instance.new("TextButton")
+    btnEquipTrait.Size = UDim2.new(0.48, 0, 1, 0)
+    btnEquipTrait.Position = UDim2.new(0.52, 0, 0, 0)
+    btnEquipTrait.BackgroundColor3 = Config.Colors.Gold
+    btnEquipTrait.Font = Enum.Font.GothamBold
+    btnEquipTrait.TextSize = 11
+    btnEquipTrait.TextColor3 = Config.Colors.TextPrimary
+    btnEquipTrait.Text = "⭐ ใส่ Trait สูงสุด (Equip)"
+    btnEquipTrait.Parent = traitBtnRow
+    local betCorner = Instance.new("UICorner")
+    betCorner.CornerRadius = UDim.new(0, 6)
+    betCorner.Parent = btnEquipTrait
+
+    btnEquipTrait.MouseButton1Click:Connect(function()
+        UpdateStatus("STATUS: EQUIPPING BEST TRAIT...")
+        task.spawn(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local trRemote = remotes and remotes:FindFirstChild("Traits")
+            if trRemote then
+                local trState = trRemote:InvokeServer("state")
+                if trState and trState.best then
+                    local res = trRemote:InvokeServer("equip", trState.best)
+                    if res and res.ok then
+                        UpdateStatus(string.format("STATUS: EQUIPPED BEST TRAIT TIER %d!", trState.best))
+                    end
+                end
+            end
+        end)
+    end)
+
     -- ==========================================================================
-    -- TAB 5: ระบบล่าบอส (Boss Fights: Megalodon & Kraken)
+    -- TAB 5: ระบบล่าบอส (Boss Fights: Megalodon, The Bloop & Kraken - Update 10)
     -- ==========================================================================
     AddTabButton("BossTab", "🦈 5. ล่าบอส", false, 5)
     local pBoss = CreateTabPage("BossTab")
 
-    local BossStatusCard = CreateStatusCard(pBoss, "ระบบบอส: กำลังสแกนสถานะ Megalodon & Kraken...")
+    local BossStatusCard = CreateStatusCard(pBoss, "ระบบบอส: กำลังสแกนสถานะ Megalodon, The Bloop & Kraken...")
 
     -- Live status update for BossStatusCard
     task.spawn(function()
         while IsSessionValid() do
             if BossStatusCard and BossStatusCard.Parent then
                 local isMeg = workspace:GetAttribute("MegActive") == true
+                local isBloop = workspace:GetAttribute("BloopActive") == true
                 local isKraken = workspace:GetAttribute("BossActive") == true
                 local megText = isMeg and "🔴 MEG ACTIVE!" or "Meg: รอเวลา"
+                local bloopText = isBloop and "🌊 BLOOP ACTIVE!" or "Bloop: รอเวลา"
                 local krakenText = isKraken and "🔴 KRAKEN ACTIVE!" or "Kraken: รอเวลา"
-                BossStatusCard.Text = string.format("สถานะบอส | %s | %s", megText, krakenText)
+                BossStatusCard.Text = string.format("สถานะบอส | %s | %s | %s", megText, bloopText, krakenText)
             end
             task.wait(2.5)
         end
     end)
 
-    CreateToggle(pBoss, "🦈 ตีบอสอัตโนมัติ (Auto Fight Megalodon & Kraken)", Config.Settings.AutoBossFight, function(v)
+    CreateToggle(pBoss, "🦈 ตีบอสอัตโนมัติ (Auto Fight Megalodon, The Bloop & Kraken)", Config.Settings.AutoBossFight, function(v)
         Config.Settings.AutoBossFight = v
         UpdateStatus("STATUS: AUTO BOSS FIGHT " .. (v and "ENABLED" or "DISABLED"))
     end)
 
     local bossModes = {
-        "สู้บอสทุกตัว (Megalodon & Kraken 🦈🐙)",
+        "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)",
         "เฉพาะฉลามยักษ์ Megalodon 🦈",
+        "เฉพาะสัตว์ประหลาด The Bloop 🌊",
         "เฉพาะปลาหมึกยักษ์ Kraken 🐙",
         "ปิดการล่าบอส (Disabled)"
     }
@@ -2950,7 +3457,7 @@ local function BuildUI()
         UpdateStatus("STATUS: AUTO CLAIM BOSS LOOT " .. (v and "ENABLED" or "DISABLED"))
     end)
 
-    CreateButton(pBoss, "🦈 เข้าสู่โหมดป้อมปืนตี Megalodon ทันที (Enter Turret)", Config.Colors.Accent, function()
+    CreateButton(pBoss, "🦈 เข้าสู่โหมดป้อมปืนตี Megalodon ทันที (Enter Meg Turret)", Config.Colors.Accent, function()
         UpdateStatus("STATUS: ENTERING MEGALODON TURRET MODE...")
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         if remotes and remotes:FindFirstChild("MegEvent") then
@@ -2958,10 +3465,9 @@ local function BuildUI()
         end
     end)
 
-    CreateButton(pBoss, "🎯 เล็งยิงฉมวกใส่ Megalodon ทันที (Fire Turret Spear)", Config.Colors.Cyan, function()
+    CreateButton(pBoss, "🎯 เล็งยิงฉมวกใส่ Megalodon ทันที (Fire Meg Turret Spear)", Config.Colors.Cyan, function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         if remotes then
-            -- Make sure in turret
             pcall(function()
                 local pGui = LocalPlayer:FindFirstChild("PlayerGui")
                 local turretUI = pGui and pGui:FindFirstChild("MegTurretUI")
@@ -2972,7 +3478,7 @@ local function BuildUI()
             end)
 
             FireTurretSpearAtMegalodon(remotes)
-            UpdateStatus("STATUS: MANUAL SPEAR SHOT TRIGGERED!")
+            UpdateStatus("STATUS: MANUAL SPEAR SHOT TRIGGERED AT MEGALODON!")
         end
     end)
 
@@ -2981,6 +3487,39 @@ local function BuildUI()
         if remotes and remotes:FindFirstChild("MegEvent") then
             remotes.MegEvent:FireServer("closed")
             UpdateStatus("STATUS: CLAIMED MEGALODON REWARDS!")
+        end
+    end)
+
+    CreateButton(pBoss, "🌊 เข้าสู่โหมดป้อมปืนตี The Bloop ทันที (Enter Bloop Turret)", Config.Colors.Accent, function()
+        UpdateStatus("STATUS: ENTERING THE BLOOP TURRET MODE...")
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("BloopEvent") then
+            remotes.BloopEvent:FireServer("enter")
+        end
+    end)
+
+    CreateButton(pBoss, "🎯 เล็งยิงฉมวกใส่ The Bloop ทันที (Fire Bloop Turret Spear)", Config.Colors.Cyan, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes then
+            pcall(function()
+                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+                local turretUI = pGui and pGui:FindFirstChild("BloopTurretUI")
+                if not (turretUI and turretUI.Enabled) and remotes:FindFirstChild("BloopEvent") then
+                    remotes.BloopEvent:FireServer("enter")
+                    task.wait(0.3)
+                end
+            end)
+
+            FireTurretSpearAtBloop(remotes)
+            UpdateStatus("STATUS: MANUAL SPEAR SHOT TRIGGERED AT THE BLOOP!")
+        end
+    end)
+
+    CreateButton(pBoss, "🎁 รับของรางวัลบอส The Bloop ทันที (Claim Bloop Loot)", Config.Colors.Gold, function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("BloopEvent") then
+            remotes.BloopEvent:FireServer("closed")
+            UpdateStatus("STATUS: CLAIMED THE BLOOP REWARDS!")
         end
     end)
 
