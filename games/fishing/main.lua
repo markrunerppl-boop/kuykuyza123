@@ -2909,13 +2909,21 @@ local function BuildUI()
         Config.Settings.KeepMutatedFish = v
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         if remotes and remotes:FindFirstChild("CoolerAction") then
-            remotes.CoolerAction:InvokeServer("keepMut", v)
+            pcall(function()
+                remotes.CoolerAction:InvokeServer("simpleSet", 0, { keepMut = v, shuck = Config.Settings.AutoShuckPearls })
+            end)
         end
         UpdateStatus("STATUS: KEEP MUTATED FISH " .. (v and "ENABLED" or "DISABLED"))
     end)
 
     CreateToggle(pSell, "🦪 ผ่าหอยมุกอัตโนมัติ (Auto Shuck Fish Into Pearls)", Config.Settings.AutoShuckPearls, function(v)
         Config.Settings.AutoShuckPearls = v
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild("CoolerAction") then
+            pcall(function()
+                remotes.CoolerAction:InvokeServer("simpleSet", 0, { keepMut = Config.Settings.KeepMutatedFish, shuck = v })
+            end)
+        end
         UpdateStatus("STATUS: AUTO SHUCK PEARLS " .. (v and "ENABLED" or "DISABLED"))
     end)
 
