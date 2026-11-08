@@ -1241,15 +1241,15 @@ end)
 -- Auto Mini-Games Engine (Perfect Reel, Fish Frenzy, Bait Memory -> Always Gold 🥇)
 -- ==============================================================================
 
--- 1. Dual Hook MiniGame InvokeServer (both hookfunction and hookmetamethod to ensure Gold Medal)
+-- 1. Dual Hook RemoteFunction.InvokeServer (both hookfunction and hookmetamethod to guarantee Gold Medal)
 if not SharedEnv._MiniGameHooked then
     SharedEnv._MiniGameHooked = true
     pcall(function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         local mgRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGame)
         if mgRemote then
-            local function ModifyFinishArgs(args)
-                if args[1] == "finish" then
+            local function ModifyFinishArgs(self, args)
+                if (self == mgRemote or (self and self.Name == "MiniGame")) and args and args[1] == "finish" then
                     local currentScore = args[3]
                     local isCancel = args[4]
                     if Config.Settings.AutoMiniGames and not isCancel then
@@ -1274,12 +1274,13 @@ if not SharedEnv._MiniGameHooked then
                 return args
             end
 
-            -- Hook 1: Direct function hook (for pcall(MiniGame.InvokeServer, MiniGame, ...))
+            -- Hook 1: Direct method hook on RemoteFunction prototype (for pcall(MiniGame.InvokeServer, MiniGame, ...))
             if typeof(hookfunction) == "function" then
                 local oldInvoke
-                oldInvoke = hookfunction(mgRemote.InvokeServer, function(self, ...)
+                local protoInvoke = Instance.new("RemoteFunction").InvokeServer
+                oldInvoke = hookfunction(protoInvoke, function(self, ...)
                     local args = { ... }
-                    args = ModifyFinishArgs(args)
+                    args = ModifyFinishArgs(self, args)
                     return oldInvoke(self, unpack(args))
                 end)
             end
@@ -1289,9 +1290,9 @@ if not SharedEnv._MiniGameHooked then
                 local rawNamecall
                 rawNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                     local method = getnamecallmethod()
-                    if method == "InvokeServer" and self == mgRemote then
+                    if method == "InvokeServer" and (self == mgRemote or (self and self.Name == "MiniGame")) then
                         local args = { ... }
-                        args = ModifyFinishArgs(args)
+                        args = ModifyFinishArgs(self, args)
                         return rawNamecall(self, unpack(args))
                     end
                     return rawNamecall(self, ...)
@@ -1326,6 +1327,41 @@ local function InitializeMiniGameListener()
 end
 task.spawn(InitializeMiniGameListener)
 
+-- Helper: Check if a GuiObject is genuinely visible (every ancestor up to ScreenGui is Visible)
+local function IsReallyVisible(guiObj)
+    if not guiObj or not guiObj:IsA("GuiObject") then return false end
+    local current = guiObj
+    while current and current:IsA("GuiObject") do
+        if not current.Visible then
+            return false
+        end
+        current = current.Parent
+    end
+    return true
+end
+
+-- Helper: Thoroughly click a button via all signals
+local function ClickButton(btn)
+    if not btn then return end
+    if firesignal then
+        pcall(function() firesignal(btn.MouseButton1Down) end)
+        pcall(function() firesignal(btn.MouseButton1Click) end)
+        pcall(function() firesignal(btn.Activated) end)
+        pcall(function() firesignal(btn.MouseButton1Up) end)
+    end
+    if getconnections then
+        for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
+            pcall(function() conn:Fire() end)
+        end
+        for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
+            pcall(function() conn:Fire() end)
+        end
+        for _, conn in ipairs(getconnections(btn.Activated)) do
+            pcall(function() conn:Fire() end)
+        end
+    end
+end
+
 -- 3. Dedicated MiniGame UI Auto-Player Worker
 SpawnWorker("MiniGameAutoWorker", function()
     if not Config.Settings.AutoMiniGames then
@@ -1341,20 +1377,9 @@ SpawnWorker("MiniGameAutoWorker", function()
             return
         end
 
-        local function ClickButton(btn)
-            if firesignal then
-                pcall(function() firesignal(btn.MouseButton1Click) end)
-                pcall(function() firesignal(btn.Activated) end)
-            elseif getconnections then
-                for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                    pcall(function() conn:Fire() end)
-                end
-            end
-        end
-
         -- Stage 1: Auto Accept Invite Screen ("▶ PLAY!")
         local playBtn = mgUI:FindFirstChild("PlayButton", true)
-        if playBtn and playBtn:IsA("TextButton") and playBtn.Visible then
+        if playBtn and playBtn:IsA("TextButton") and IsReallyVisible(playBtn) then
             UpdateStatus("STATUS: 🎮 ตรวจพบหน้าต่างเชิญมินิเกม! กำลังกดปุ่ม ▶ PLAY เริ่มเล่นอัตโนมัติ...")
             ClickButton(playBtn)
             task.wait(0.5)
@@ -1365,12 +1390,20 @@ SpawnWorker("MiniGameAutoWorker", function()
         -- 2A. Fish Frenzy (Jump) - Catch jumping fish at Spot1..Spot5 (avoid boots 👢)
         for s = 1, 5 do
             local spot = mgUI:FindFirstChild("Spot" .. s, true)
-            if spot and spot:IsA("TextButton") and spot.Visible then
+            if spot and spot:IsA("TextButton") and IsReallyVisible(spot) then
                 for _, ch in ipairs(spot:GetChildren()) do
                     if ch:IsA("TextLabel") and ch.Visible then
                         local txt = ch.Text
                         if txt == "🐟" or txt == "🐠" or txt == "🐡" then
                             ClickButton(spot)
+                            local keyMap = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+                            if keyMap[s] then
+                                pcall(function()
+                                    VirtualInputManager:SendKeyEvent(true, keyMap[s], false, game)
+                                    task.wait(0.01)
+                                    VirtualInputManager:SendKeyEvent(false, keyMap[s], false, game)
+                                end)
+                            end
                             break
                         end
                     end
@@ -1378,35 +1411,53 @@ SpawnWorker("MiniGameAutoWorker", function()
             end
         end
 
-        -- 2B. Perfect Reel (Reel) - Tap ReelButton
+        -- 2B. Perfect Reel (Reel) - Tap ReelButton / Spacebar
         local reelBtn = mgUI:FindFirstChild("ReelButton", true)
-        if reelBtn and reelBtn:IsA("TextButton") and reelBtn.Visible then
+        if reelBtn and reelBtn:IsA("TextButton") and IsReallyVisible(reelBtn) then
             ClickButton(reelBtn)
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.02)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+            end)
+            local area = mgUI:FindFirstChild("Area", true)
+            if area then
+                for _, ch in ipairs(area:GetChildren()) do
+                    if ch:IsA("TextButton") and ch.Visible then
+                        ClickButton(ch)
+                    end
+                end
+            end
         end
 
         -- 2C. Bait Memory (Lures) - Tap Bait buttons
         for b = 1, 4 do
             local baitBtn = mgUI:FindFirstChild("Bait" .. b, true)
-            if baitBtn and baitBtn:IsA("TextButton") and baitBtn.Visible then
+            if baitBtn and baitBtn:IsA("TextButton") and IsReallyVisible(baitBtn) then
                 ClickButton(baitBtn)
+                local keyMap = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
+                if keyMap[b] then
+                    pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, keyMap[b], false, game)
+                        task.wait(0.01)
+                        VirtualInputManager:SendKeyEvent(false, keyMap[b], false, game)
+                    end)
+                end
             end
         end
 
         -- Stage 3: Auto Collect Reward on Result screen ("Collect" / "เก็บ!")
         local collectBtn = mgUI:FindFirstChild("Collect", true)
-        if collectBtn and collectBtn:IsA("TextButton") and collectBtn.Visible then
-            local parent = collectBtn.Parent
-            if parent and parent.Visible then
-                UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัลเหรียญทอง (COLLECT)...")
-                task.wait(0.8)
-                ClickButton(collectBtn)
-                task.wait(0.5)
-                return
-            end
+        if collectBtn and collectBtn:IsA("TextButton") and IsReallyVisible(collectBtn) then
+            UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัลเหรียญทอง (COLLECT)...")
+            task.wait(0.8)
+            ClickButton(collectBtn)
+            task.wait(0.5)
+            return
         end
     end)
 
-    task.wait(0.15)
+    task.wait(0.12)
 end)
 
 -- Task 8: Potions, Skill Tree & Best Bait Worker
