@@ -202,7 +202,7 @@ local Config = {
         -- Auto Net
         AutoNet = true,
         ReelWhenFull = true,
-        ReelStrategy = "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)", -- โหมดการดึงแห
+        ReelStrategy = "รอจนเต็มหลอด 100% เท่านั้น (Wait Until 100% Full Only - แนะนำ)", -- โหมดการดึงแห
         AutoPerfectTap = true,
 
         -- Auto Base Pads
@@ -560,6 +560,7 @@ end
 -- ==============================================================================
 
 -- Task 1: Auto Net Loop (โยนแห ดึงแห พร้อมกด Perfect Tap)
+local lastNetThrowTime = 0
 SpawnWorker("AutoNetWorker", function()
     if not Config.Settings.AutoNet then
         task.wait(1.0)
@@ -578,28 +579,36 @@ SpawnWorker("AutoNetWorker", function()
         local netCap = myBase:GetAttribute("NetCap") or 1
         local netReelAt = myBase:GetAttribute("NetReelAt") or 0
         local serverTime = Workspace:GetServerTimeNow()
+        local pct = math.clamp((netCount / math.max(1, netCap)) * 100, 0, 100)
 
         if UIReferences.NetStateLabel then
-            UIReferences.NetStateLabel.Text = string.format("Net: %s (%d/%d)", netState, netCount, netCap)
+            UIReferences.NetStateLabel.Text = string.format("Net: %s (%d/%d | %.1f%%)", netState, netCount, netCap, pct)
         end
 
         if netState == "Idle" then
             EnsureOnDock()
             ProcessBaitCycle(remotes)
             throwRemote:FireServer()
+            lastNetThrowTime = serverTime
             UpdateStatus("STATUS: NET THROWN! [FISHING STARTED]")
             task.wait(1.0)
         elseif netState == "Fishing" then
             local shouldReel = false
-            local strat = Config.Settings.ReelStrategy or "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)"
+            local strat = Config.Settings.ReelStrategy or "รอจนเต็มหลอด 100% เท่านั้น (Wait Until 100% Full Only - แนะนำ)"
             if strat:find("Instant Fast") then
                 shouldReel = true
-            elseif strat:find("Fixed 3s") then
-                shouldReel = (serverTime >= netThrownAt + 3.0) or (netCount >= netCap)
-            else
-                if Config.Settings.ReelWhenFull and netCount >= netCap then
+            elseif strat:find("Fixed 5s") or strat:find("Fixed 3s") then
+                shouldReel = (serverTime >= lastNetThrowTime + 5.0) or (netCount >= netCap)
+            elseif strat:find("หมดเวลาถอยหลัง") or strat:find("Timeout") then
+                -- เต็มความจุ หรือเมื่อหมดเวลาถอยหลัง
+                if netCount >= netCap then
                     shouldReel = true
                 elseif netReelAt > 0 and serverTime >= netReelAt then
+                    shouldReel = true
+                end
+            else
+                -- รอจนเต็มหลอด 100% เท่านั้น (ค่าเริ่มต้น แนะนำ): ดึงเมื่อ netCount >= netCap เท่านั้น ไม่สนตัวนับเวลาถอยหลัง netReelAt
+                if netCount >= netCap then
                     shouldReel = true
                 end
             end
@@ -611,7 +620,7 @@ SpawnWorker("AutoNetWorker", function()
                 end
 
                 reelRemote:FireServer()
-                UpdateStatus(string.format("STATUS: REELED IN %d FISH! (PERFECT CATCH)", netCount))
+                UpdateStatus(string.format("STATUS: REELED IN %d/%d (%.1f%%) FISH! (PERFECT CATCH)", netCount, netCap, pct))
                 task.wait(2.5)
 
                 if Config.Settings.AutoEquipBest then
@@ -2811,18 +2820,19 @@ local function BuildUI()
         Config.Settings.AutoNet = v
     end)
 
-    CreateToggle(pNetFarm, "ดึงแหทันทีเมื่อเต็มความจุ (Reel When Full)", Config.Settings.ReelWhenFull, function(v)
+    CreateToggle(pNetFarm, "รอจนเต็มความจุ 100% เสมอ (Wait For 100% Full Bar)", Config.Settings.ReelWhenFull, function(v)
         Config.Settings.ReelWhenFull = v
     end)
 
     local reelModes = {
-        "ดึงทันทีเมื่อเต็มความจุ (Reel When Full - แนะนำ)",
-        "ดึงตามเวลาคงที่ 3 วินาที (Fixed 3s Timer)",
+        "รอจนเต็มหลอด 100% เท่านั้น (Wait Until 100% Full Only - แนะนำ)",
+        "เต็มความจุ หรือเมื่อหมดเวลาถอยหลัง (Full or Timeout)",
+        "ดึงตามเวลาคงที่ 5 วินาที (Fixed 5s Timer)",
         "ดึงทันทีแบบเร็วต่อเนื่อง (Instant Fast Cycle)"
     }
     CreateDropdown(pNetFarm, "โหมดการดึงแห (Reel Strategy)", reelModes, Config.Settings.ReelStrategy, function(selected)
         Config.Settings.ReelStrategy = selected
-        Config.Settings.ReelWhenFull = (selected:find("Reel When Full") ~= nil)
+        Config.Settings.ReelWhenFull = (selected:find("100%") ~= nil or selected:find("เต็มความจุ") ~= nil or selected:find("Reel When Full") ~= nil)
         UpdateStatus("STATUS: REEL STRATEGY SET TO: " .. selected)
     end)
 
