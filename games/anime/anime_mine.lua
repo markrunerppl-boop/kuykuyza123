@@ -1120,6 +1120,10 @@ local function TriggerUpgradeAllSkillTrees()
         end
     end
 
+    local unmaxedCount = 0
+    local cheapestCost = math.huge
+    local cheapestZone = nil
+
     for _, zKey in ipairs(zonesToCheck) do
         local zSkills = (mg.Skills and mg.Skills[zKey]) or {}
         local nodes = MineConfig.GetSkillNodes(zKey)
@@ -1130,14 +1134,22 @@ local function TriggerUpgradeAllSkillTrees()
                 local curLvl = zSkills[node.Family] or 0
                 local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zKey, curLvl, node.Family)
 
-                myMoney = tonumber(SafeGetData().Money) or 0
-                if isOpen and not isMaxed and cost and myMoney >= cost then
-                    SafeSendEvent(Config.Events.SkillTreeSection, zKey)
-                    UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
-                    SafeSendEvent(Config.Events.BuySkill, zKey, node.Family, node.Id)
-                    zSkills[node.Family] = curLvl + 1
-                    totalBought = totalBought + 1
-                    HumanWait(0.08, 0.12)
+                if isOpen and not isMaxed then
+                    unmaxedCount = unmaxedCount + 1
+                    if cost and cost < cheapestCost then
+                        cheapestCost = cost
+                        cheapestZone = zKey
+                    end
+
+                    myMoney = tonumber(SafeGetData().Money) or 0
+                    if cost and myMoney >= cost then
+                        SafeSendEvent(Config.Events.SkillTreeSection, zKey)
+                        UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
+                        SafeSendEvent(Config.Events.BuySkill, zKey, node.Family, node.Id)
+                        zSkills[node.Family] = curLvl + 1
+                        totalBought = totalBought + 1
+                        HumanWait(0.08, 0.12)
+                    end
                 end
             end
         end
@@ -1145,9 +1157,50 @@ local function TriggerUpgradeAllSkillTrees()
 
     if totalBought > 0 then
         UpdateStatus(string.format("✅ อัปเกรดผังสกิลสำเร็จรวม %d โหนด!", totalBought))
+    elseif unmaxedCount == 0 then
+        UpdateStatus("🌳 ผังสกิลทุกโซนตันหมดแล้ว 100%!")
     else
-        UpdateStatus("ℹ️ ไม่มีสกิลที่พร้อมอัปเกรด (เงินไม่พอหรืออัปเต็มแล้ว)")
+        local myCurMoney = tonumber(SafeGetData().Money) or 0
+        local needMore = math.max(0, cheapestCost - myCurMoney)
+        UpdateStatus(string.format("🌳 ผังสกิลรอเงิน (%s ต้องการ %s | ขาดอีก %s)", 
+            tostring(cheapestZone or "Z14"), FormatNumber(cheapestCost), FormatNumber(needMore)))
     end
+end
+
+-- Helper สำหรับทอยลูกเต๋าทั้งหมดทันที
+local function TriggerRollAllDice()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not mg then return end
+
+    local hwDice = (mg and mg.HalloweenDice) or 0
+    local normalDice = (MineConfig and MineConfig.GetEnchantDiceCount and MineConfig.GetEnchantDiceCount(mg)) or (mg and mg.EnchantDice) or 0
+
+    if hwDice <= 0 and normalDice <= 0 then
+        UpdateStatus("🎲 ไม่มีลูกเต๋าคงเหลือในคลัง (Enchant: 0, Halloween: 0)")
+        return
+    end
+
+    local rolled = 0
+    while hwDice > 0 do
+        local rollCount = math.clamp(hwDice, 1, 10)
+        UpdateStatus(string.format("🎲 ทอยลูกเต๋า Halloween (%d ลูก)...", rollCount))
+        SafeSendEvent(Config.Events.RollEnchant, rollCount, "Halloween")
+        rolled = rolled + rollCount
+        hwDice = hwDice - rollCount
+        HumanWait(0.35, 0.5)
+    end
+
+    while normalDice > 0 do
+        local rollCount = math.clamp(normalDice, 1, 10)
+        UpdateStatus(string.format("🎲 ทอยลูกเต๋า Enchant (%d ลูก)...", rollCount))
+        SafeSendEvent(Config.Events.RollEnchant, rollCount, nil)
+        rolled = rolled + rollCount
+        normalDice = normalDice - rollCount
+        HumanWait(0.35, 0.5)
+    end
+
+    UpdateStatus(string.format("✅ ทอยลูกเต๋าทั้งหมดสำเร็จ รวม %d ลูก!", rolled))
 end
 
 -- Helper สำหรับอัปเกรดสถิติคนงานทั้งหมดให้ตันทันที
@@ -1220,13 +1273,6 @@ end
 -- ═══════════════════════════════════════════════
 -- 🧹 ทำความสะอาด UI เวอร์ชันเก่าทั้งใน CoreGui และ PlayerGui
 local TargetParent = PlayerGui
-pcall(function()
-    local cg = game:GetService("CoreGui")
-    local test = Instance.new("Folder")
-    test.Parent = cg
-    test:Destroy()
-    TargetParent = cg
-end)
 
 local function CleanOldGuis(parentObj)
     if not parentObj then return end
@@ -1250,7 +1296,7 @@ pcall(function() CleanOldGuis(game:GetService("CoreGui")) end)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AnimeMineHubUnified"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999999
+ScreenGui.DisplayOrder = 2147483647
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = TargetParent
 
@@ -1311,7 +1357,7 @@ MainStroke.Parent = MainFrame
 local FloatingIconBtn = Instance.new("TextButton")
 FloatingIconBtn.Name = "FloatingIconBtn"
 FloatingIconBtn.Size = UDim2.new(0, 42, 0, 42)
-FloatingIconBtn.Position = UDim2.new(0, 18, 0.5, -21)
+FloatingIconBtn.Position = UDim2.new(0, 18, 0.82, 0)
 FloatingIconBtn.BackgroundColor3 = Theme.Accent
 FloatingIconBtn.Text = "⛏️"
 FloatingIconBtn.TextSize = 20
@@ -1319,7 +1365,7 @@ FloatingIconBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 FloatingIconBtn.Font = Enum.Font.GothamBold
 FloatingIconBtn.Active = true
 FloatingIconBtn.Draggable = true
-FloatingIconBtn.ZIndex = 1000
+FloatingIconBtn.ZIndex = 10000
 FloatingIconBtn.Parent = ScreenGui
 
 local FloatCorner = Instance.new("UICorner")
@@ -2249,8 +2295,14 @@ end, TabDungeon, 6)
 
 AddSectionHeader("🎲 กาชา & รับรางวัล (Gacha & Claims)", TabDungeon, 7)
 AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อหมด)", TabDungeon, 8)
-AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", TabDungeon, 9)
-AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", TabDungeon, 10)
+AddActionButton("⚡ ทอยลูกเต๋าทั้งหมดทันที", "สั่งทอยลูกเต๋า Enchant & Halloween ที่มีทั้งหมดในคลังทันที", "ทอยเต๋าทันที", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerRollAllDice)
+        if not ok then warn(string.format("⚠️ [Action Error: RollAllDice] %s", tostring(err))) end
+    end)
+end, TabDungeon, 9)
+AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", TabDungeon, 10)
+AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", TabDungeon, 11)
 AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -3546,49 +3598,47 @@ task.spawn(function()
                     local bestUnlockedMult = -1
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
-                        if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly and not pick.RobuxCost then
-                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ตัด Dragonrise Pickaxe และ Krakenmaw Pickaxe ออกเด็ดขาด 100%)
-                            local pickNameLower = string.lower(pick.Name or "")
-                            local isShopBlacklisted = (pick.Name == "Dragonrise Pickaxe") or (pick.Name == "Krakenmaw Pickaxe")
-                                or (string.find(pickNameLower, "dragonrise") ~= nil)
-                                or (string.find(pickNameLower, "krakenmaw") ~= nil)
-                            local isForSale = not isShopBlacklisted and (type(pick.Stock) == "table")
-                            local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
-                            local mult = tonumber(pick.Multiplier) or 1
-                            if isForSale and isZoneUnlocked then
-                                -- ยึดอันสุดท้ายที่มีตัวคูณสูงสุด (อันสุดท้ายที่ดีที่สุดที่เปิดขายจริงเสมอ)
-                                if mult >= bestUnlockedMult then
-                                    bestUnlockedMult = mult
-                                    targetBestPick = pick
-                                    targetBestIdx = idx
-                                end
+                        local pickNameLower = string.lower(pick.Name or "")
+                        local isBlacklisted = (pick.Name == "Dragonrise Pickaxe") or (pick.Name == "Krakenmaw Pickaxe")
+                            or (string.find(pickNameLower, "dragonrise") ~= nil)
+                            or (string.find(pickNameLower, "krakenmaw") ~= nil)
+                            or (pick.RobuxOnly == true) or (pick.RobuxCost ~= nil)
+                            or (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick))
+                            or (type(pick.Stock) ~= "table")
+
+                        local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
+                        local mult = tonumber(pick.Multiplier) or 1
+                        if not isBlacklisted and isZoneUnlocked then
+                            -- ยึดอันสุดท้ายที่มีตัวคูณสูงสุด (อันสุดท้ายที่ดีที่สุดที่เปิดขายจริงเสมอ)
+                            if mult >= bestUnlockedMult then
+                                bestUnlockedMult = mult
+                                targetBestPick = pick
+                                targetBestIdx = idx
                             end
                         end
                     end
 
-                    -- ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อคเท่านั้น ให้ซื้อทุกครั้งเมื่อพร้อม (เงินพอ + มีสต็อก)
+                    -- ซื้อแค่อันสุดท้ายที่ดีที่สุดที่ปลดล็อคเท่านั้น ให้ซื้อทุกครั้งเมื่อพร้อม (เงินพอ + มีสต็อก > 0 จริง)
                     if targetBestPick and targetBestIdx then
                         local maxNeed = (MineConfig and tonumber(MineConfig.TotalMinerSlots)) or 12
                         local cost = tonumber(targetBestPick.Cost) or (1 / 0)
 
-                        -- ซื้อทุกครั้งเมื่อพร้อม วนซื้อต่อเนื่องจนกว่าเงินจะไม่พอ สต็อกหมด หรือครบตามจำนวนแท่นคนงานทั้งหมด
-                        for buyAttempt = 1, maxNeed do
-                            local curD = SafeGetData()
-                            local curD2 = SafeGetData2()
-                            local curMg = curD2 and curD2.MineGame
-                            local curMoney = tonumber(curD.Money) or 0
-                            local ownedCount = tonumber(curMg and curMg.Pickaxes and curMg.Pickaxes[targetBestPick.Name]) or 0
+                        local curD = SafeGetData()
+                        local curD2 = SafeGetData2()
+                        local curMg = curD2 and curD2.MineGame
+                        local curMoney = tonumber(curD.Money) or 0
+                        local ownedCount = tonumber(curMg and curMg.Pickaxes and curMg.Pickaxes[targetBestPick.Name]) or 0
 
-                            local remStock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(curD2, targetBestPick.Name)
-                            local hasStock = (remStock == nil) or (remStock > 0)
+                        local remStock = MineStock and MineStock.GetRemaining and MineStock.GetRemaining(curD2, targetBestPick.Name)
+                        local hasStock = (type(remStock) == "number" and remStock > 0)
 
-                            if curMoney >= cost and hasStock and ownedCount < maxNeed then
-                                UpdateStatus(string.format("🪓 ซื้อขวานดีสุดอันสุดท้าย: %s (%d/%d ชิ้น) [ราคา: %s]", 
-                                    targetBestPick.Name, ownedCount + 1, maxNeed, FormatNumber(cost)))
+                        if hasStock and curMoney >= cost and ownedCount < maxNeed then
+                            local buyCount = math.min(remStock, maxNeed - ownedCount)
+                            for buyAttempt = 1, buyCount do
+                                UpdateStatus(string.format("🪓 ซื้อขวานดีสุด: %s (%d/%d ชิ้น) [ราคา: %s]", 
+                                    targetBestPick.Name, ownedCount + buyAttempt, maxNeed, FormatNumber(cost)))
                                 SafeSendEvent(Config.Events.BuyPickaxe, targetBestIdx)
                                 HumanWait(0.25, 0.35)
-                            else
-                                break
                             end
                         end
                     end
