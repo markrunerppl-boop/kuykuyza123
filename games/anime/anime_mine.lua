@@ -420,6 +420,7 @@ Config = {
         TrialClaim = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Claim) or "MineTrialClaim",
         TrialCancel = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Cancel) or "MineTrialCancel",
         OpenColossusCrate = "MineOpenColossusCrate",
+        BigNodeToggle = "MineBigNodeToggle",
 
         -- Dynamic / Module-based Event Constants (พร้อม Fallback)
         IndexClaim = (MineIndexRewardsConfig and MineIndexRewardsConfig.Events and MineIndexRewardsConfig.Events.Claim) or "MineIndexRewardsClaim",
@@ -455,6 +456,7 @@ Config = {
     AutoClaimEvents = true,     -- รับรางวัลบอร์ดอีเว้น (Events) อัตโนมัติ
     AutoInfinityTrial = false,  -- ลงทดสอบอินฟินิตี้ & รับรางวัลอัตโนมัติ
     AutoOpenPetalfallCrate = false, -- เปิด Petalfall Crate อัตโนมัติเมื่อมีในคลัง
+    AutoNextColossusTier = true, -- เล่นด่านถัดไปของโกโลซัสอัตโนมัติเมื่อปลดล็อกขั้นใหม่
 
     MutationSlots = {
         ["M1"] = true,
@@ -534,6 +536,7 @@ local function SaveConfig()
                 AutoClaimEvents = Config.AutoClaimEvents,
                 AutoInfinityTrial = Config.AutoInfinityTrial,
                 AutoOpenPetalfallCrate = Config.AutoOpenPetalfallCrate,
+                AutoNextColossusTier = Config.AutoNextColossusTier,
                 MutationSlots = Config.MutationSlots,
                 TargetLevelDamage = Config.TargetLevelDamage,
                 TargetLevelSpeed = Config.TargetLevelSpeed,
@@ -1090,6 +1093,58 @@ local function TriggerOpenPetalfallCrate()
         UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
     elseif Config.AutoEquipBest then
         TriggerEquipBest()
+    end
+end
+
+local RomanNumerals = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV"}
+local function ToRoman(num)
+    local n = tonumber(num) or 1
+    return RomanNumerals[n] or tostring(n)
+end
+
+-- Helper สำหรับตั้งค่าระดับบอสโกโลซัส (Colossus / BigNode Tier)
+local function SetColossusTier(targetLevel)
+    if not targetLevel or targetLevel <= 0 then return false end
+    SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
+
+    -- จำลองการกดปุ่มบน ZoneBoardGui ของผู้เล่นด้วยเพื่อความเสถียรสูงสุด
+    pcall(function()
+        local myPlot = GetMyPlot()
+        local zb = myPlot and myPlot:FindFirstChild("ZoneBoard")
+        local root = zb and zb:FindFirstChild("ZoneBoardGui", true) and zb.ZoneBoardGui:FindFirstChild("ColossusRoot")
+        local tierObj = root and root:FindFirstChild("Tiers") and root.Tiers:FindFirstChild("Tier" .. tostring(targetLevel))
+        local btn = tierObj and tierObj:FindFirstChildWhichIsA("GuiButton", true)
+        if btn and getconnections then
+            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
+            for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
+        end
+    end)
+    return true
+end
+
+-- Helper สำหรับเปลี่ยนเป็นบอสโกโลซัสระดับสูงสุดทันที
+local function TriggerSelectMaxColossus()
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineConfig) then return end
+
+    local curZoneKey = "Z" .. tostring(mg.CurrentZone or 14)
+    local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey)
+    if not isBigNodeUnlocked then
+        UpdateStatus("ℹ️ โซนปัจจุบันยังไม่ปลดล็อกบอสโกโลซัส")
+        return
+    end
+
+    local maxUnlockedLvl = MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey) or 1
+    local curPickLvl = (MineConfig.GetBigNodePick and MineConfig.GetBigNodePick(mg, curZoneKey)) or 1
+
+    if maxUnlockedLvl > curPickLvl then
+        UpdateStatus(string.format("🗿 เปลี่ยนโกโลซัสเป็นระดับสูงสุด: ระดับ %d (Tier %s)!", 
+            maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
+        SetColossusTier(maxUnlockedLvl)
+    else
+        UpdateStatus(string.format("✅ กำลังเล่นโกโลซัสระดับสูงสุดที่ปลดล็อกแล้ว (ระดับ %d - Tier %s)", 
+            maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
     end
 end
 
@@ -2292,17 +2347,24 @@ AddActionButton("⚡ เปิด Colossus Crates ทันที", "สั่�
         if not ok then warn(string.format("⚠️ [Action Error: OpenPetalfallCrate] %s", tostring(err))) end
     end)
 end, TabDungeon, 6)
+AddToggle("AutoNextColossusTier", "Auto Next Colossus Tier (เล่นด่านถัดไปของโกโลซัส)", "เมื่อปลดล็อกโกโลซัสขั้นใหม่ ระบบจะเลือกเล่นระดับสูงสุดให้อัตโนมัติ", TabDungeon, 7)
+AddActionButton("⚡ เลือกโกโลซัสระดับสูงสุดทันที", "ส่งคำสั่งเปลี่ยนบอสโกโลซัสเป็นระดับสูงสุดที่ปลดล็อกแล้วทันที", "เลือกขั้นสูงสุด", Theme.SpecialBtn, function()
+    task.spawn(function()
+        local ok, err = pcall(TriggerSelectMaxColossus)
+        if not ok then warn(string.format("⚠️ [Action Error: SelectMaxColossus] %s", tostring(err))) end
+    end)
+end, TabDungeon, 8)
 
-AddSectionHeader("🎲 กาชา & รับรางวัล (Gacha & Claims)", TabDungeon, 7)
-AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อหมด)", TabDungeon, 8)
+AddSectionHeader("🎲 กาชา & รับรางวัล (Gacha & Claims)", TabDungeon, 9)
+AddToggle("AutoRollDice", "Auto Roll Dice (ทอยลูกเต๋า Enchant)", "ทอยลูกเต๋า Enchant & Halloween อัตโนมัติ (หยุดเมื่อหมด)", TabDungeon, 10)
 AddActionButton("⚡ ทอยลูกเต๋าทั้งหมดทันที", "สั่งทอยลูกเต๋า Enchant & Halloween ที่มีทั้งหมดในคลังทันที", "ทอยเต๋าทันที", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(TriggerRollAllDice)
         if not ok then warn(string.format("⚠️ [Action Error: RollAllDice] %s", tostring(err))) end
     end)
-end, TabDungeon, 9)
-AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", TabDungeon, 10)
-AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", TabDungeon, 11)
+end, TabDungeon, 11)
+AddToggle("AutoSummonScrolls", "Auto Summon Scrolls (สุ่มม้วนอัญเชิญ)", "เปิดม้วนอัญเชิญตัวละครอัตโนมัติ (หยุดเมื่อม้วนหมด)", TabDungeon, 12)
+AddToggle("AutoClaimIndex", "Auto Claim Index (รับรางวัล Index)", "รับรางวัลในดัชนีทั้งหมดที่ปลดล็อกอัตโนมัติ", TabDungeon, 13)
 AddActionButton("⚡ รับรางวัล Index ทันที", "ตรวจสอบและกดรับรางวัล Index ที่ปลดล็อกทั้งหมดทันที", "รับ Index", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(function()
@@ -4071,6 +4133,32 @@ task.spawn(function()
         end)
         if not ok11 then
             warn(string.format("⚠️ [Worker Task 11 Error - ColossusCrate] %s", tostring(err11)))
+        end
+
+        -- -------------------------------------------------------------
+        -- [TASK 11.5] เลื่อนระดับโกโลซัสอัตโนมัติ (Auto Next Colossus Tier)
+        -- -------------------------------------------------------------
+        local okColossus, errColossus = pcall(function()
+            if Config.AutoNextColossusTier and mg and MineConfig then
+                local curZoneKey = "Z" .. tostring(mg.CurrentZone or 14)
+                local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey)
+                if isBigNodeUnlocked then
+                    local maxUnlockedLvl = MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey) or 1
+                    local curPickLvl = (MineConfig.GetBigNodePick and MineConfig.GetBigNodePick(mg, curZoneKey))
+                        or (mg.BigNodes and mg.BigNodes[curZoneKey] and mg.BigNodes[curZoneKey].Drop)
+                        or 1
+
+                    if maxUnlockedLvl > curPickLvl then
+                        UpdateStatus(string.format("🗿 ปลดล็อกด่านใหม่! เลื่อนโกโลซัสเป็นระดับ %d (Tier %s)...", 
+                            maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
+                        SetColossusTier(maxUnlockedLvl)
+                        HumanWait(0.4, 0.6)
+                    end
+                end
+            end
+        end)
+        if not okColossus then
+            warn(string.format("⚠️ [Worker Task Error - AutoNextColossusTier] %s", tostring(errColossus)))
         end
 
         -- -------------------------------------------------------------
