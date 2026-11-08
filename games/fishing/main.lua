@@ -218,6 +218,8 @@ local Config = {
 
         -- Mega Quest & Reward Auto Claims
         AutoClaimRewards = true,        -- ของขวัญเล่นเกม & รางวัลประจำวัน
+        AutoRejoinAfterHourGifts = false, -- รีเซิร์ฟเวอร์อัตโนมัติเมื่อรับของขวัญออนไลน์ครบ 1 ชม. (รีเซ็ตกล่องใหม่)
+        HourGiftsRejoinDelay = 10,       -- หน่วงเวลาก่อนรีเซิร์ฟเวอร์ (วินาที)
         AutoClaimClam = true,           -- หอยมุกฟรี
         AutoClaimContracts = true,      -- เคลมเควสสัญญาจับปลา (Contracts)
         AutoClaimChallenges = true,     -- เคลมเควสท้าทาย (Challenges)
@@ -349,6 +351,51 @@ local function EnsureOnDock()
             root.CFrame = myBase.Dock.CFrame + Vector3.new(0, 3, 0)
             task.wait(0.2)
         end
+    end
+end
+
+-- Server Rejoin & Server Hop Engine (For resetting 1-Hour Playtime Gifts)
+local TeleportService = game:GetService("TeleportService")
+
+local function RejoinOrServerHop()
+    UpdateStatus("STATUS: PREPARING SERVER HOP / REJOIN TO RESET 1-HOUR GIFTS...")
+
+    local queueTeleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+    if queueTeleport then
+        pcall(function()
+            queueTeleport([[
+                task.wait(3.5)
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/fishing/main.lua"))()
+            ]])
+        end)
+    end
+
+    task.wait(1.0)
+
+    local hopped = false
+    pcall(function()
+        local url = string.format("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Desc&limit=100", tostring(game.PlaceId))
+        local raw = game:HttpGet(url)
+        local data = HttpService:JSONDecode(raw)
+        if data and data.data then
+            local candidates = {}
+            for _, s in ipairs(data.data) do
+                if s.id ~= game.JobId and (s.playing or 0) < (s.maxPlayers or 12) and (s.playing or 0) > 0 then
+                    table.insert(candidates, s.id)
+                end
+            end
+            if #candidates > 0 then
+                local targetId = candidates[math.random(1, #candidates)]
+                hopped = true
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, targetId, LocalPlayer)
+            end
+        end
+    end)
+
+    if not hopped then
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end)
     end
 end
 
@@ -736,12 +783,29 @@ local function RunMegaClaimCycle()
             pcall(function()
                 local state = rewardsRemote:InvokeServer("state")
                 if state and state.gifts then
+                    local allGiftsClaimed = true
                     for i, gift in ipairs(state.gifts) do
                         if gift.ready and not gift.claimed then
                             rewardsRemote:InvokeServer("claimGift", i)
                             claimedCount = claimedCount + 1
                             UpdateStatus(string.format("STATUS: CLAIMED GIFT #%d (%s)!", i, gift.text or "Reward"))
                             task.wait(0.3)
+                        end
+                        if not gift.claimed then
+                            allGiftsClaimed = false
+                        end
+                    end
+
+                    -- Auto Rejoin after 1-Hour gifts are all claimed to reset gift boxes
+                    if Config.Settings.AutoRejoinAfterHourGifts and allGiftsClaimed and (state.played or 0) >= 60 then
+                        if not SharedEnv._HourRejoinTriggered then
+                            SharedEnv._HourRejoinTriggered = true
+                            task.spawn(function()
+                                local delayTime = Config.Settings.HourGiftsRejoinDelay or 10
+                                UpdateStatus(string.format("STATUS: ALL 1-HOUR GIFTS CLAIMED! REJOINING TO RESET GIFTS IN %d SECONDS...", delayTime))
+                                task.wait(delayTime)
+                                RejoinOrServerHop()
+                            end)
                         end
                     end
                 end
@@ -2709,6 +2773,11 @@ local function BuildUI()
         Config.Settings.AutoClaimRewards = v
     end)
 
+    CreateToggle(pRewards, "🔄 รีเซิร์ฟเวอร์อัตโนมัติเมื่อรับกล่องครบ 1 ชม. (Auto Rejoin 1-Hr Gifts)", Config.Settings.AutoRejoinAfterHourGifts, function(v)
+        Config.Settings.AutoRejoinAfterHourGifts = v
+        UpdateStatus("STATUS: AUTO REJOIN AFTER 1-HOUR GIFTS " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
     CreateToggle(pRewards, "เควสประจำวัน & หมุนวงล้อฟรี (Daily Quests & Lucky Spins)", Config.Settings.AutoClaimRetention, function(v)
         Config.Settings.AutoClaimRetention = v
     end)
@@ -2876,9 +2945,13 @@ local function BuildUI()
             local count = RunMegaClaimCycle()
             UpdateStatus(string.format("STATUS: CLAIMED %d REWARDS & SPINS SUCCESSFULLY!", count))
             if QuestStatusCard then
-                QuestStatusCard.Text = string.format("เคลมรางวัลและหมุนวงล้อสำเร็จล่าสุด: %d รายการ!", count)
+                QuestStatusCard.Text = string.format("เคลมรางวัลและหมหมุนวงล้อสำเร็จล่าสุด: %d รายการ!", count)
             end
         end)
+    end)
+
+    CreateButton(pRewards, "🔄 รีเซิร์ฟเวอร์ทันทีเพื่อรีเซ็ตกล่องของขวัญ (Server Hop / Rejoin Now)", Config.Colors.Warning, function()
+        RejoinOrServerHop()
     end)
 
     -- ==========================================================================
