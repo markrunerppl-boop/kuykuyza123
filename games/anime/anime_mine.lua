@@ -1064,21 +1064,33 @@ local function TriggerClaimTrial()
     end
 end
 
--- Helper สำหรับเปิด Petalfall Crate
+-- Helper สำหรับเปิด Colossus Crates (Petalfall Crate, Tidewreck Crate ฯลฯ)
 local function TriggerOpenPetalfallCrate()
     local d2 = SafeGetData2()
     local mg = d2 and d2.MineGame
     local cc = mg and mg.ColossusCrates
-    local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
-    if count <= 0 then
-        UpdateStatus("ℹ️ ไม่มี Petalfall Crate ในคลัง")
+    if not cc then
+        UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
         return
     end
-    local openAmount = math.clamp(count, 1, 50)
-    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
-    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
-    HumanWait(0.4, 0.6)
-    UpdateStatus(string.format("✅ เปิด Petalfall Crate %d กล่องสำเร็จ!", openAmount))
+
+    local openedAny = false
+    for crateName, countVal in pairs(cc) do
+        local count = tonumber(countVal) or 0
+        if count > 0 then
+            openedAny = true
+            local openAmount = math.clamp(count, 1, 50)
+            UpdateStatus(string.format("📦 เปิด %s (%d/%d กล่อง)...", tostring(crateName), openAmount, count))
+            SafeSendEvent(Config.Events.OpenColossusCrate, crateName, openAmount)
+            HumanWait(0.4, 0.6)
+            UpdateStatus(string.format("✅ เปิด %s %d กล่องสำเร็จ!", tostring(crateName), openAmount))
+        end
+    end
+    if not openedAny then
+        UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
+    elseif Config.AutoEquipBest then
+        TriggerEquipBest()
+    end
 end
 
 -- Helper สำหรับส่งคำสั่งสวมใส่ตัวละครที่ดีที่สุดไปยัง Server
@@ -2081,8 +2093,8 @@ AddActionButton("⚡ รับรางวัล Trial ทันที", "ตร
         if not ok then warn(string.format("⚠️ [Action Error: ClaimTrial] %s", tostring(err))) end
     end)
 end, TabDungeon, 4)
-AddToggle("AutoOpenPetalfallCrate", "Auto Open Petalfall Crate", "เปิดกล่อง Petalfall Crate ในคลังอัตโนมัติเมื่อมีกล่อง", TabDungeon, 5)
-AddActionButton("⚡ เปิด Petalfall Crate ทันที", "สั่งเปิดกล่อง Petalfall Crate ในคลังที่มีอยู่ทั้งหมดทันที", "เปิดกล่อง", Theme.SpecialBtn, function()
+AddToggle("AutoOpenPetalfallCrate", "Auto Open Colossus Crates", "เปิดกล่องบอส Colossus ทั้งหมด เช่น Petalfall & Tidewreck Crate อัตโนมัติ", TabDungeon, 5)
+AddActionButton("⚡ เปิด Colossus Crates ทันที", "สั่งเปิดกล่องบอส Colossus ในคลังทั้งหมดทันที (Petalfall & Tidewreck)", "เปิดกล่อง", Theme.SpecialBtn, function()
     task.spawn(function()
         local ok, err = pcall(TriggerOpenPetalfallCrate)
         if not ok then warn(string.format("⚠️ [Action Error: OpenPetalfallCrate] %s", tostring(err))) end
@@ -3378,9 +3390,12 @@ task.spawn(function()
 
                     for idx, pick in ipairs(MineConfig.Pickaxes) do
                         if not (MineConfig.IsPickaxeFree and MineConfig.IsPickaxeFree(pick)) and not pick.RobuxOnly and not pick.RobuxCost then
-                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ตัด Dragonrise Pickaxe ออกเด็ดขาด 100%)
-                            local isDragonrise = (pick.Name == "Dragonrise Pickaxe") or (string.find(string.lower(pick.Name or ""), "dragonrise") ~= nil)
-                            local isForSale = not isDragonrise and ((type(pick.Stock) == "table") or (MineConfig.PickaxeObtainable and MineConfig.PickaxeObtainable(pick) == true))
+                            -- ตรวจสอบว่าขวานนี้เปิดวางจำหน่ายจริงในร้านค้า (ตัด Dragonrise Pickaxe และ Krakenmaw Pickaxe ออกเด็ดขาด 100%)
+                            local pickNameLower = string.lower(pick.Name or "")
+                            local isShopBlacklisted = (pick.Name == "Dragonrise Pickaxe") or (pick.Name == "Krakenmaw Pickaxe")
+                                or (string.find(pickNameLower, "dragonrise") ~= nil)
+                                or (string.find(pickNameLower, "krakenmaw") ~= nil)
+                            local isForSale = not isShopBlacklisted and (type(pick.Stock) == "table")
                             local isZoneUnlocked = not pick.ZoneReq or (mg.UnlockedZones and mg.UnlockedZones[pick.ZoneReq])
                             local mult = tonumber(pick.Multiplier) or 1
                             if isForSale and isZoneUnlocked then
@@ -3659,12 +3674,12 @@ task.spawn(function()
                     local normalDice = (MineConfig and MineConfig.GetEnchantDiceCount and MineConfig.GetEnchantDiceCount(mg)) or (mg and mg.EnchantDice) or 0
 
                     if hwDice > 0 then
-                        local rollCount = math.clamp(hwDice, 1, 5)
+                        local rollCount = math.clamp(hwDice, 1, 10)
                         UpdateStatus(string.format("🎲 ทอยลูกเต๋า Halloween (%d ลูก)...", rollCount))
                         SafeSendEvent(Config.Events.RollEnchant, rollCount, "Halloween")
                         HumanWait(0.3, 0.45)
                     elseif normalDice > 0 then
-                        local rollCount = math.clamp(normalDice, 1, 5)
+                        local rollCount = math.clamp(normalDice, 1, 10)
                         UpdateStatus(string.format("🎲 ทอยลูกเต๋า Enchant (%d ลูก)...", rollCount))
                         SafeSendEvent(Config.Events.RollEnchant, rollCount, nil)
                         HumanWait(0.3, 0.45)
@@ -3827,27 +3842,28 @@ task.spawn(function()
         end
 
         -- -------------------------------------------------------------
-        -- [TASK 11] เปิด Petalfall Crate (เปิดกล่องในคลังอัตโนมัติ)
+        -- [TASK 11] เปิด Colossus Crates (Petalfall & Tidewreck Crate ฯลฯ อัตโนมัติ)
         -- -------------------------------------------------------------
         local ok11, err11 = pcall(function()
-            if Config.AutoOpenPetalfallCrate and mg then
-                local cc = mg.ColossusCrates
-                local count = cc and (tonumber(cc["Petalfall Crate"]) or 0) or 0
-                if count > 0 then
-                    local openAmount = math.clamp(count, 1, 50)
-                    UpdateStatus(string.format("🌸 เปิด Petalfall Crate (%d/%d กล่อง)...", openAmount, count))
-                    SafeSendEvent(Config.Events.OpenColossusCrate, "Petalfall Crate", openAmount)
-                    HumanWait(0.4, 0.6)
-                    if Config.AutoEquipBest then
-                        TriggerEquipBest()
+            if Config.AutoOpenPetalfallCrate and mg and mg.ColossusCrates then
+                for crateName, countVal in pairs(mg.ColossusCrates) do
+                    local count = tonumber(countVal) or 0
+                    if count > 0 then
+                        local openAmount = math.clamp(count, 1, 50)
+                        UpdateStatus(string.format("📦 เปิด %s (%d/%d กล่อง)...", tostring(crateName), openAmount, count))
+                        SafeSendEvent(Config.Events.OpenColossusCrate, crateName, openAmount)
+                        HumanWait(0.4, 0.6)
+                        if Config.AutoEquipBest then
+                            TriggerEquipBest()
+                        end
+                        d2 = SafeGetData2()
+                        mg = d2 and d2.MineGame
                     end
-                    d2 = SafeGetData2()
-                    mg = d2 and d2.MineGame
                 end
             end
         end)
         if not ok11 then
-            warn(string.format("⚠️ [Worker Task 11 Error - PetalfallCrate] %s", tostring(err11)))
+            warn(string.format("⚠️ [Worker Task 11 Error - ColossusCrate] %s", tostring(err11)))
         end
 
         -- -------------------------------------------------------------
