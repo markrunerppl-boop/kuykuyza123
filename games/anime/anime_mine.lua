@@ -104,6 +104,57 @@ task.spawn(function()
                     cam.CameraSubject = hum
                 end
             end
+
+            -- 4. ตรวจจับและเคลียร์ข้อความแจ้งเตือนสแปมบน NotificationsGui หรือ PlayerGui อัตโนมัติ
+            if pg then
+                local notifs = pg:FindFirstChild("NotificationsGui") or pg:FindFirstChild("MineGui")
+                if notifs then
+                    for _, label in ipairs(notifs:GetDescendants()) do
+                        if label:IsA("TextLabel") and label.Visible and label.Text ~= "" then
+                            local textLower = string.lower(label.Text)
+                            if string.find(textLower, "someone's hands")
+                                or string.find(textLower, "not for sale yet")
+                                or string.find(textLower, "buy another") then
+                                label.Visible = false
+                                if label.Parent and label.Parent:IsA("GuiObject") then
+                                    label.Parent.Visible = false
+                                    pcall(function() label.Parent:Destroy() end)
+                                else
+                                    pcall(function() label:Destroy() end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- 🛡️ สกัดกั้นข้อความแจ้งเตือนสแปมแบบ Real-time ทันทีที่ถูกสร้าง
+pcall(function()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local notifs = pg and (pg:FindFirstChild("NotificationsGui") or pg:WaitForChild("NotificationsGui", 5))
+    if notifs then
+        notifs.DescendantAdded:Connect(function(d)
+            if d:IsA("TextLabel") then
+                task.defer(function()
+                    if d and d.Parent then
+                        local textLower = string.lower(d.Text)
+                        if string.find(textLower, "someone's hands")
+                            or string.find(textLower, "not for sale yet")
+                            or string.find(textLower, "buy another") then
+                            d.Visible = false
+                            if d.Parent and d.Parent:IsA("GuiObject") then
+                                d.Parent.Visible = false
+                                pcall(function() d.Parent:Destroy() end)
+                            else
+                                pcall(function() d:Destroy() end)
+                            end
+                        end
+                    end
+                end)
+            end
         end)
     end
 end)
@@ -3792,60 +3843,17 @@ task.spawn(function()
 
                         if hasStock and curMoney >= cost and ownedCount < maxNeed then
                             local buyCount = math.min(remStock, maxNeed - ownedCount)
+                            local boughtAny = false
                             for buyAttempt = 1, buyCount do
                                 UpdateStatus(string.format("🪓 ซื้อขวานดีสุด: %s (%d/%d ชิ้น) [ราคา: %s]", 
                                     targetBestPick.Name, ownedCount + buyAttempt, maxNeed, FormatNumber(cost)))
                                 SafeSendEvent(Config.Events.BuyPickaxe, targetBestIdx)
+                                boughtAny = true
                                 HumanWait(0.25, 0.35)
                             end
-                        end
-                    end
-                end
-
-                -- 4.2 จัดสรรและสวมใส่ขวานที่ดีที่สุดให้คนงานทั้งหมดโดยอัตโนมัติ
-                local sortedHolders = {}
-                for slotKey, h in pairs(mg.Holders or {}) do
-                    if h and h.CharName then
-                        table.insert(sortedHolders, {
-                            slot = slotKey,
-                            charName = h.CharName,
-                            baseDmg = GetCharBaseDamage(h.CharName),
-                            currentPick = h.Pickaxe
-                        })
-                    end
-                end
-                table.sort(sortedHolders, function(a, b) return a.baseDmg > b.baseDmg end)
-
-                if #sortedHolders > 0 and MineConfig.Pickaxes then
-                    d2 = SafeGetData2()
-                    mg = d2 and d2.MineGame
-
-                    local availablePicks = {}
-                    for pName, count in pairs(mg and mg.Pickaxes or {}) do
-                        local countNum = tonumber(count) or 0
-                        local pDef = nil
-                        for _, p in ipairs(MineConfig.Pickaxes) do
-                            if p.Name == pName then pDef = p break end
-                        end
-                        if pDef and countNum > 0 then
-                            for i = 1, countNum do
-                                table.insert(availablePicks, {
-                                    name = pName,
-                                    mult = tonumber(pDef.Multiplier) or 1
-                                })
-                            end
-                        end
-                    end
-                    table.sort(availablePicks, function(a, b) return a.mult > b.mult end)
-
-                    -- สวมใส่ให้คนงานตามลำดับความแรงของตัวละคร
-                    for i, h in ipairs(sortedHolders) do
-                        local target = availablePicks[i]
-                        if target then
-                            local cur = mg.Holders[h.slot] and mg.Holders[h.slot].Pickaxe
-                            if cur ~= target.name then
-                                SafeSendEvent(Config.Events.EquipPickaxe, h.slot, target.name)
-                                HumanWait(0.08, 0.12)
+                            -- เมื่อซื้อขวานใหม่สำเร็จ ให้สั่งสวมใส่ชุดที่ดีที่สุดผ่านระบบเซิร์ฟเวอร์ทันที
+                            if boughtAny and Config.AutoEquipBest then
+                                TriggerEquipBest()
                             end
                         end
                     end
@@ -4358,8 +4366,8 @@ task.spawn(function()
                 end
             end
 
-            -- 12.3 สวมใส่ตัวละครที่ดีที่สุด (ตรวจสอบทุก 8 วินาที)
-            if Config.AutoEquipBest and os.clock() - lastEquipTime > 8 then
+            -- 12.3 สวมใส่ตัวละครที่ดีที่สุด (ตรวจสอบทุก 90 วินาที ป้องกันเซิร์ฟเวอร์แจ้งเตือนสแปม)
+            if Config.AutoEquipBest and os.clock() - lastEquipTime > 90 then
                 lastEquipTime = os.clock()
                 TriggerEquipBest()
             end
