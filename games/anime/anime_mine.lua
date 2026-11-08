@@ -1102,23 +1102,115 @@ local function ToRoman(num)
     return RomanNumerals[n] or tostring(n)
 end
 
--- Helper สำหรับตั้งค่าระดับบอสโกโลซัส (Colossus / BigNode Tier)
+-- ตรวจสอบว่าชิปโกโลซัสระดับที่กำหนดกำลังถูกเลือก (กรอบสีเขียว) บน ZoneBoard หรือไม่
+local function IsColossusTierSelected(targetLevel)
+    local ok, res = pcall(function()
+        local myPlot = GetMyPlot()
+        local zb = myPlot and myPlot:FindFirstChild("ZoneBoard", true)
+        local zbGui = zb and zb:FindFirstChild("ZoneBoardGui", true)
+        local tiers = zbGui and zbGui:FindFirstChild("Tiers", true)
+        local tierObj = tiers and tiers:FindFirstChild("Tier" .. tostring(targetLevel))
+        local stroke = tierObj and tierObj:FindFirstChild("framestroke", true)
+        if stroke and stroke.Color.G > 0.6 and stroke.Color.R < 0.5 then
+            return true
+        end
+        return false
+    end)
+    return ok and res == true
+end
+
+-- แคชฟังก์ชัน pickColossus เพื่อเรียกซ้ำได้อย่างรวดเร็วโดยไม่ต้องสแกนใหม่ทุกครั้ง
+local cachedPickColossus = nil
+local function FindPickColossus()
+    if cachedPickColossus and type(cachedPickColossus) == "function" then
+        return cachedPickColossus
+    end
+    if getgc then
+        pcall(function()
+            for _, obj in ipairs(getgc(true)) do
+                if type(obj) == "function" and (not is_synapse_function or not is_synapse_function(obj)) then
+                    local consts = debug.getconstants and debug.getconstants(obj)
+                    if consts then
+                        local hasPending, hasLastSend, hasToggle = false, false, false
+                        for _, c in ipairs(consts) do
+                            if c == "Pending" then hasPending = true end
+                            if c == "LastSend" then hasLastSend = true end
+                            if c == "MineBigNodeToggle" then hasToggle = true end
+                        end
+                        if hasPending and (hasLastSend or hasToggle) then
+                            cachedPickColossus = obj
+                            return
+                        end
+                    end
+                end
+            end
+        end)
+    end
+    return cachedPickColossus
+end
+
+-- Helper สำหรับตั้งค่าระดับบอสโกโลซัส (Colossus / BigNode Tier) แบบ 4 เลเยอร์
 local function SetColossusTier(targetLevel)
     if not targetLevel or targetLevel <= 0 then return false end
-    SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
 
-    -- จำลองการกดปุ่มบน ZoneBoardGui ของผู้เล่นด้วยเพื่อความเสถียรสูงสุด
+    -- [Layer 1] เรียก pickColossus โดยตรงจาก Client GC (เสถียรสูงสุด 100% เปลี่ยนชิปและสั่ง Server ทันที)
     pcall(function()
-        local myPlot = GetMyPlot()
-        local zb = myPlot and myPlot:FindFirstChild("ZoneBoard")
-        local root = zb and zb:FindFirstChild("ZoneBoardGui", true) and zb.ZoneBoardGui:FindFirstChild("ColossusRoot")
-        local tierObj = root and root:FindFirstChild("Tiers") and root.Tiers:FindFirstChild("Tier" .. tostring(targetLevel))
-        local btn = tierObj and tierObj:FindFirstChildWhichIsA("GuiButton", true)
-        if btn and getconnections then
-            for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
-            for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() end
+        local fn = FindPickColossus()
+        if fn then
+            fn(targetLevel)
         end
     end)
+
+    -- [Layer 2] ค้นหาปุ่ม 3D บน ZoneBoardGui และจำลองการกดแบบรอบด้าน
+    pcall(function()
+        local myPlot = GetMyPlot()
+        local zb = myPlot and myPlot:FindFirstChild("ZoneBoard", true)
+        local zbGui = zb and zb:FindFirstChild("ZoneBoardGui", true)
+        local tiers = zbGui and zbGui:FindFirstChild("Tiers", true)
+        local tierObj = tiers and tiers:FindFirstChild("Tier" .. tostring(targetLevel))
+        local btn = tierObj and tierObj:FindFirstChildWhichIsA("GuiButton", true)
+
+        if btn then
+            -- 2.1 ดึง clickHandler จาก Upvalues ของ Button connection
+            if getconnections then
+                local conns = getconnections(btn.MouseButton1Click)
+                if #conns == 0 then conns = getconnections(btn.Activated) end
+                for _, c in ipairs(conns) do
+                    if c.Function and debug.getupvalue then
+                        pcall(function()
+                            local clickHandler = debug.getupvalue(c.Function, 7)
+                            if type(clickHandler) == "function" then
+                                clickHandler(targetLevel)
+                            end
+                            local pickCol = debug.getupvalue(clickHandler, 3)
+                            if type(pickCol) == "function" then
+                                pickCol(targetLevel)
+                            end
+                        end)
+                    end
+                    pcall(function() c:Fire() end)
+                end
+                for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
+                for _, c in ipairs(getconnections(btn.MouseButton1Up)) do pcall(function() c:Fire() end) end
+            end
+
+            -- 2.2 ส่ง firesignal สำหรับ Mobile Executor (Delta Android / UGPhone)
+            if firesignal then
+                pcall(function() firesignal(btn.MouseButton1Down) end)
+                pcall(function() firesignal(btn.MouseButton1Up) end)
+                pcall(function() firesignal(btn.MouseButton1Click) end)
+                pcall(function() firesignal(btn.Activated) end)
+            end
+        end
+    end)
+
+    -- [Layer 3] ส่ง Event ตรงผ่าน GameState.SendEvent (พร้อมดีเลย์ส่งซ้ำยืนยันเซิร์ฟเวอร์)
+    SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
+    task.spawn(function()
+        task.wait(0.55)
+        SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
+    end)
+
     return true
 end
 
@@ -1128,7 +1220,10 @@ local function TriggerSelectMaxColossus()
     local mg = d2 and d2.MineGame
     if not (mg and MineConfig) then return end
 
-    local curZoneKey = "Z" .. tostring(mg.CurrentZone or 14)
+    local rawZone = (mg and mg.CurrentZone) or LocalPlayer:GetAttribute("Zone") or 14
+    local zNum = tostring(rawZone):gsub("%D", "")
+    local curZoneKey = "Z" .. (zNum ~= "" and zNum or "14")
+
     local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey)
     if not isBigNodeUnlocked then
         UpdateStatus("ℹ️ โซนปัจจุบันยังไม่ปลดล็อกบอสโกโลซัส")
@@ -1136,15 +1231,16 @@ local function TriggerSelectMaxColossus()
     end
 
     local maxUnlockedLvl = MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey) or 1
-    local curPickLvl = (MineConfig.GetBigNodePick and MineConfig.GetBigNodePick(mg, curZoneKey)) or 1
+    UpdateStatus(string.format("🗿 กำลังเลือกโกโลซัสระดับสูงสุด: ระดับ %d (Tier %s)...", 
+        maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
 
-    if maxUnlockedLvl > curPickLvl then
-        UpdateStatus(string.format("🗿 เปลี่ยนโกโลซัสเป็นระดับสูงสุด: ระดับ %d (Tier %s)!", 
-            maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
-        SetColossusTier(maxUnlockedLvl)
+    SetColossusTier(maxUnlockedLvl)
+    HumanWait(0.4, 0.6)
+
+    if IsColossusTierSelected(maxUnlockedLvl) then
+        UpdateStatus(string.format("✅ เลือกโกโลซัสระดับสูงสุดสำเร็จ: Tier %s!", ToRoman(maxUnlockedLvl)))
     else
-        UpdateStatus(string.format("✅ กำลังเล่นโกโลซัสระดับสูงสุดที่ปลดล็อกแล้ว (ระดับ %d - Tier %s)", 
-            maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
+        UpdateStatus(string.format("⚡ ส่งคำสั่งเลือก Tier %s เรียบร้อยแล้ว", ToRoman(maxUnlockedLvl)))
     end
 end
 
@@ -4140,19 +4236,25 @@ task.spawn(function()
         -- -------------------------------------------------------------
         local okColossus, errColossus = pcall(function()
             if Config.AutoNextColossusTier and mg and MineConfig then
-                local curZoneKey = "Z" .. tostring(mg.CurrentZone or 14)
+                local rawZone = (mg and mg.CurrentZone) or LocalPlayer:GetAttribute("Zone") or 14
+                local zNum = tostring(rawZone):gsub("%D", "")
+                local curZoneKey = "Z" .. (zNum ~= "" and zNum or "14")
+
                 local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey)
                 if isBigNodeUnlocked then
                     local maxUnlockedLvl = MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey) or 1
-                    local curPickLvl = (MineConfig.GetBigNodePick and MineConfig.GetBigNodePick(mg, curZoneKey))
+                    local curRunningLvl = (MineConfig.GetBigNodeRunLevel and MineConfig.GetBigNodeRunLevel(mg, curZoneKey))
+                        or (mg.BigNodes and mg.BigNodes[curZoneKey] and mg.BigNodes[curZoneKey].Level)
                         or (mg.BigNodes and mg.BigNodes[curZoneKey] and mg.BigNodes[curZoneKey].Drop)
                         or 1
 
-                    if maxUnlockedLvl > curPickLvl then
+                    local isMaxSelected = IsColossusTierSelected(maxUnlockedLvl)
+
+                    if (maxUnlockedLvl > curRunningLvl) or (not isMaxSelected) then
                         UpdateStatus(string.format("🗿 ปลดล็อกด่านใหม่! เลื่อนโกโลซัสเป็นระดับ %d (Tier %s)...", 
                             maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
                         SetColossusTier(maxUnlockedLvl)
-                        HumanWait(0.4, 0.6)
+                        HumanWait(0.5, 0.8)
                     end
                 end
             end
