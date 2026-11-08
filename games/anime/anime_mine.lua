@@ -1106,21 +1106,41 @@ end
 
 -- 🎨 UNIFIED HUB UI (KUYKUY ANIME MINE V17)
 -- ═══════════════════════════════════════════════
-for _, oldName in ipairs({
-    "AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8",
-    "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12",
-    "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14", "AnimeMineAutoFarmV15", "AnimeMineAutoFarmV16",
-    "MineTradeSelectiveUI", "AnimeMineHubUnified"
-}) do
-    local oldGui = PlayerGui:FindFirstChild(oldName)
-    if oldGui then oldGui:Destroy() end
+-- 🧹 ทำความสะอาด UI เวอร์ชันเก่าทั้งใน CoreGui และ PlayerGui
+local TargetParent = PlayerGui
+pcall(function()
+    local cg = game:GetService("CoreGui")
+    local test = Instance.new("Folder")
+    test.Parent = cg
+    test:Destroy()
+    TargetParent = cg
+end)
+
+local function CleanOldGuis(parentObj)
+    if not parentObj then return end
+    pcall(function()
+        for _, oldName in ipairs({
+            "AnimeMineAutoFarmV1", "AnimeMineAutoFarmV2", "AnimeMineAutoFarmV3", "AnimeMineAutoFarmV4",
+            "AnimeMineAutoFarmV5", "AnimeMineAutoFarmV6", "AnimeMineAutoFarmV7", "AnimeMineAutoFarmV8",
+            "AnimeMineAutoFarmV9", "AnimeMineAutoFarmV10", "AnimeMineAutoFarmV11", "AnimeMineAutoFarmV12",
+            "AnimeMineAutoFarmV13", "AnimeMineAutoFarmV14", "AnimeMineAutoFarmV15", "AnimeMineAutoFarmV16",
+            "MineTradeSelectiveUI", "AnimeMineHubUnified"
+        }) do
+            local oldGui = parentObj:FindFirstChild(oldName)
+            if oldGui then oldGui:Destroy() end
+        end
+    end)
 end
+
+CleanOldGuis(PlayerGui)
+pcall(function() CleanOldGuis(game:GetService("CoreGui")) end)
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AnimeMineHubUnified"
 ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999999
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = PlayerGui
+ScreenGui.Parent = TargetParent
 
 local Theme = {
     Background = Color3.fromRGB(18, 18, 26),
@@ -1160,6 +1180,7 @@ MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
 MainFrame.Draggable = true
+MainFrame.ZIndex = 100
 MainFrame.Parent = ScreenGui
 
 -- เชื่อมโยง TradeMainFrame เดิมให้ชี้มาที่ MainFrame เพื่อความเข้ากันได้
@@ -1186,6 +1207,7 @@ FloatingIconBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 FloatingIconBtn.Font = Enum.Font.GothamBold
 FloatingIconBtn.Active = true
 FloatingIconBtn.Draggable = true
+FloatingIconBtn.ZIndex = 1000
 FloatingIconBtn.Parent = ScreenGui
 
 local FloatCorner = Instance.new("UICorner")
