@@ -574,6 +574,12 @@ SpawnWorker("AutoNetWorker", function()
     local perfectRemote = remotes and remotes:FindFirstChild(Config.Events.PerfectTap)
 
     if myBase and throwRemote and reelRemote then
+        -- ยืนยันการตั้งค่า NetWaitFull ของตัวเกมหลักให้รอเต็มหลอดเสมอ
+        local setSettingRemote = remotes and remotes:FindFirstChild("SetSetting")
+        if setSettingRemote and myBase:GetAttribute("NetWaitFull") ~= true then
+            pcall(function() setSettingRemote:FireServer("NetWaitFull", true) end)
+        end
+
         local netState = myBase:GetAttribute("NetState") or "Idle"
         local netCount = myBase:GetAttribute("NetCount") or 0
         local netCap = myBase:GetAttribute("NetCap") or 1
