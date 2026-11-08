@@ -1267,23 +1267,19 @@ if not SharedEnv._MiniGameHooked then
                 if (self == mgRemote or (self and self.Name == "MiniGame")) and args and args[1] == "finish" then
                     local currentScore = args[3]
                     local isCancel = args[4]
-                    if Config.Settings.AutoMiniGames and not isCancel then
-                        -- Compute Gold Medal target score (based on ReplicatedStorage.MiniGames thresholds)
-                        -- Reel: 560 threshold -> 620
-                        -- Jump: 430 threshold -> 480
-                        -- Lures: 8 threshold -> 11
-                        local goldScore = 620
-                        if type(currentScore) == "number" then
-                            if currentScore <= 20 then
-                                goldScore = 11 -- Lures
-                            elseif currentScore <= 500 then
-                                goldScore = 480 -- Jump
-                            else
-                                goldScore = 620 -- Reel
-                            end
+                    if Config.Settings.AutoMiniGames and not isCancel and type(currentScore) == "number" then
+                        -- thresholds: Reel: 560, Jump: 430, Lures: 8
+                        -- Only boost if player was actively playing (prevent impossible 0/early failure injections)
+                        if currentScore >= 400 and currentScore < 560 then
+                            args[3] = 620
+                            UpdateStatus(string.format("STATUS: 🥇 SAFE BOOST REEL SCORE (%d -> 620) TO GOLD MEDAL!", currentScore))
+                        elseif currentScore >= 300 and currentScore < 430 then
+                            args[3] = 480
+                            UpdateStatus(string.format("STATUS: 🥇 SAFE BOOST JUMP SCORE (%d -> 480) TO GOLD MEDAL!", currentScore))
+                        elseif currentScore >= 6 and currentScore < 8 then
+                            args[3] = 8
+                            UpdateStatus(string.format("STATUS: 🥇 SAFE BOOST LURES SCORE (%d -> 8) TO GOLD MEDAL!", currentScore))
                         end
-                        args[3] = goldScore
-                        UpdateStatus(string.format("STATUS: 🥇 INJECTED GOLD MEDAL SCORE (%d) FOR MINIGAME!", goldScore))
                     end
                 end
                 return args
@@ -1333,7 +1329,7 @@ local function InitializeMiniGameListener()
             local selectedGames = Config.Settings.MiniGameSelectedGames or { Reel = true, Jump = true, Lures = true }
             if selectedGames[gameId] ~= true then return end
 
-            UpdateStatus(string.format("STATUS: 🎮 ได้รับคำเชิญมินิเกม [%s]! รอเปิดหน้าต่างแล้วกดเล่นอัตโนมัติ...", gameId))
+            UpdateStatus(string.format("STATUS: 🎮 ได้รับคำเชิญมินิเกม [%s]! รอเปิดหน้าต่างแล้วเริ่มเล่นอัตโนมัติ...", gameId))
             if UIReferences.MiniGameStatusCard then
                 UIReferences.MiniGameStatusCard.Text = string.format("🎮 กำลังเล่นมินิเกม: [%s] (เหรียญทอง 🥇)", gameId)
             end
@@ -1377,7 +1373,15 @@ local function ClickButton(btn)
     end
 end
 
--- 3. Dedicated MiniGame UI Auto-Player Worker
+-- 3. Dedicated MiniGame UI Auto-Player Worker with AI State Trackers
+local MiniGameRunState = {
+    LuresSequence = {},
+    LuresLastRot = nil,
+    LuresIsPlaying = false,
+    ReelLastHit = 0,
+    LastCollectAttempt = 0
+}
+
 SpawnWorker("MiniGameAutoWorker", function()
     if not Config.Settings.AutoMiniGames then
         task.wait(1.5)
@@ -1388,6 +1392,9 @@ SpawnWorker("MiniGameAutoWorker", function()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
         if not mgUI or not mgUI.Enabled then
+            MiniGameRunState.LuresSequence = {}
+            MiniGameRunState.LuresLastRot = nil
+            MiniGameRunState.LuresIsPlaying = false
             task.wait(0.2)
             return
         end
@@ -1401,15 +1408,132 @@ SpawnWorker("MiniGameAutoWorker", function()
             return
         end
 
-        -- Stage 2: Auto Play Active Mini-Games
-        -- 2A. Fish Frenzy (Jump) - Catch jumping fish at Spot1..Spot5 (avoid boots 👢)
+        -- Stage 2: Active Mini-Games AI Automation
+        local area = mgUI:FindFirstChild("Area", true)
+
+        -- =========================================================================
+        -- 2A. BAIT MEMORY (Lures - หน่วยความจำเหยื่อ): Full Simon-Says Solver
+        -- =========================================================================
+        local bait1 = mgUI:FindFirstChild("Bait1", true)
+        if bait1 and IsReallyVisible(bait1) then
+            -- Find big fish and instruction label
+            local bigFish = nil
+            local instrLabel = nil
+            if area then
+                for _, ch in ipairs(area:GetChildren()) do
+                    if ch:IsA("TextLabel") then
+                        if ch.Text == "🐡" or ch.Size.Y.Offset == 64 then
+                            bigFish = ch
+                        elseif ch.Text:find("WATCH") or ch.Text:find("YOUR TURN") or ch.Position.Y.Offset == 68 then
+                            instrLabel = ch
+                        end
+                    end
+                end
+            end
+
+            local instrText = instrLabel and instrLabel.Text or ""
+
+            -- Phase 1: Big Fish showing sequence
+            if instrText:find("WATCH") or (bigFish and bigFish.Rotation ~= 0) then
+                MiniGameRunState.LuresIsPlaying = false
+                if bigFish and bigFish.Rotation ~= 0 then
+                    local rot = bigFish.Rotation
+                    if rot ~= MiniGameRunState.LuresLastRot then
+                        local baitIdx = math.clamp(math.round((rot / 12) + 2.5), 1, 4)
+                        table.insert(MiniGameRunState.LuresSequence, baitIdx)
+                        MiniGameRunState.LuresLastRot = rot
+                    end
+                elseif bigFish and bigFish.Rotation == 0 then
+                    MiniGameRunState.LuresLastRot = nil
+                end
+            -- Phase 2: Player's turn to repeat sequence
+            elseif (instrText:find("YOUR TURN") or instrText:find("BAITS")) and #MiniGameRunState.LuresSequence > 0 and not MiniGameRunState.LuresIsPlaying then
+                MiniGameRunState.LuresIsPlaying = true
+                local seqCopy = MiniGameRunState.LuresSequence
+                MiniGameRunState.LuresSequence = {}
+                task.spawn(function()
+                    task.wait(0.2)
+                    for _, baitNum in ipairs(seqCopy) do
+                        if not mgUI.Enabled then break end
+                        local targetBait = mgUI:FindFirstChild("Bait" .. baitNum, true)
+                        if targetBait then
+                            ClickButton(targetBait)
+                        end
+                        local keyMap = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
+                        if keyMap[baitNum] then
+                            pcall(function()
+                                VirtualInputManager:SendKeyEvent(true, keyMap[baitNum], false, game)
+                                task.wait(0.02)
+                                VirtualInputManager:SendKeyEvent(false, keyMap[baitNum], false, game)
+                            end)
+                        end
+                        task.wait(0.36)
+                    end
+                    MiniGameRunState.LuresIsPlaying = false
+                end)
+            end
+        end
+
+        -- =========================================================================
+        -- 2B. PERFECT REEL (Reel - ม้วนที่สมบูรณ์แบบ): Accurate Needle & Gold Zone Sync
+        -- =========================================================================
+        local reelBtn = mgUI:FindFirstChild("ReelButton", true)
+        if reelBtn and IsReallyVisible(reelBtn) and area then
+            local needle = nil
+            local goldZone = nil
+            local greenZone = nil
+
+            for _, ch in ipairs(area:GetDescendants()) do
+                if ch:IsA("Frame") and ch.Visible then
+                    if ch.Size.X.Offset == 8 or ch.ZIndex == 8 then
+                        needle = ch
+                    elseif ch.BackgroundColor3 == Color3.fromRGB(255, 205, 70) or (ch.Parent and ch.Parent.BackgroundColor3 == Color3.fromRGB(70, 210, 140)) then
+                        goldZone = ch
+                    elseif ch.BackgroundColor3 == Color3.fromRGB(70, 210, 140) then
+                        greenZone = ch
+                    end
+                end
+            end
+
+            local now = os.clock()
+            if needle and (goldZone or greenZone) then
+                local target = goldZone or greenZone
+                local nX = needle.AbsolutePosition.X + (needle.AbsoluteSize.X / 2)
+                local tX = target.AbsolutePosition.X + (target.AbsoluteSize.X / 2)
+                local tol = (target.AbsoluteSize.X / 2) + 3
+
+                if math.abs(nX - tX) <= tol and (now - MiniGameRunState.ReelLastHit > 0.32) then
+                    MiniGameRunState.ReelLastHit = now
+                    ClickButton(reelBtn)
+                    pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                        task.wait(0.01)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                    end)
+                end
+            elseif now - MiniGameRunState.ReelLastHit > 0.75 then
+                -- Fallback periodic tap
+                MiniGameRunState.ReelLastHit = now
+                ClickButton(reelBtn)
+                pcall(function()
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                    task.wait(0.01)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                end)
+            end
+        end
+
+        -- =========================================================================
+        -- 2C. FISH FRENZY (Jump - ความโกลาหลของปลา): Catch Fish/Gold, Avoid Boots
+        -- =========================================================================
         for s = 1, 5 do
             local spot = mgUI:FindFirstChild("Spot" .. s, true)
             if spot and spot:IsA("TextButton") and IsReallyVisible(spot) then
                 for _, ch in ipairs(spot:GetChildren()) do
                     if ch:IsA("TextLabel") and ch.Visible then
                         local txt = ch.Text
-                        if txt == "🐟" or txt == "🐠" or txt == "🐡" then
+                        -- Catch fish and gold items only, ignore boot (👢)
+                        if txt == "🐟" or txt == "🐠" or txt == "🐡" or txt == "✨" or txt == "⭐" then
                             ClickButton(spot)
                             local keyMap = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
                             if keyMap[s] then
@@ -1426,53 +1550,36 @@ SpawnWorker("MiniGameAutoWorker", function()
             end
         end
 
-        -- 2B. Perfect Reel (Reel) - Tap ReelButton / Spacebar
-        local reelBtn = mgUI:FindFirstChild("ReelButton", true)
-        if reelBtn and reelBtn:IsA("TextButton") and IsReallyVisible(reelBtn) then
-            ClickButton(reelBtn)
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                task.wait(0.02)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-            end)
-            local area = mgUI:FindFirstChild("Area", true)
-            if area then
-                for _, ch in ipairs(area:GetChildren()) do
-                    if ch:IsA("TextButton") and ch.Visible then
-                        ClickButton(ch)
-                    end
-                end
-            end
-        end
-
-        -- 2C. Bait Memory (Lures) - Tap Bait buttons
-        for b = 1, 4 do
-            local baitBtn = mgUI:FindFirstChild("Bait" .. b, true)
-            if baitBtn and baitBtn:IsA("TextButton") and IsReallyVisible(baitBtn) then
-                ClickButton(baitBtn)
-                local keyMap = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
-                if keyMap[b] then
-                    pcall(function()
-                        VirtualInputManager:SendKeyEvent(true, keyMap[b], false, game)
-                        task.wait(0.01)
-                        VirtualInputManager:SendKeyEvent(false, keyMap[b], false, game)
-                    end)
-                end
-            end
-        end
-
+        -- =========================================================================
         -- Stage 3: Auto Collect Reward on Result screen ("Collect" / "เก็บ!")
-        local collectBtn = mgUI:FindFirstChild("Collect", true)
-        if collectBtn and collectBtn:IsA("TextButton") and IsReallyVisible(collectBtn) then
-            UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัลเหรียญทอง (COLLECT)...")
-            task.wait(0.8)
+        -- =========================================================================
+        local collectBtn = nil
+        for _, d in ipairs(mgUI:GetDescendants()) do
+            if d:IsA("TextButton") and IsReallyVisible(d) then
+                local label = d:FindFirstChildOfClass("TextLabel")
+                local labelText = label and label.Text or ""
+                if d.Name == "Collect" or d.Text:find("เก็บ") or d.Text:find("COLLECT") or labelText:find("เก็บ") or labelText:find("COLLECT") then
+                    collectBtn = d
+                    break
+                end
+            end
+        end
+
+        if collectBtn then
+            UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัล (COLLECT)...")
             ClickButton(collectBtn)
-            task.wait(0.5)
+            task.wait(0.6)
+
+            -- If result screen stays open after collect, close it via window close button
+            local closeBtn = mgUI:FindFirstChild("CloseBtn", true) or mgUI:FindFirstChild("Close", true)
+            if closeBtn and IsReallyVisible(closeBtn) then
+                ClickButton(closeBtn)
+            end
             return
         end
     end)
 
-    task.wait(0.12)
+    task.wait(0.04)
 end)
 
 -- Task 8: Potions, Skill Tree & Best Bait Worker
