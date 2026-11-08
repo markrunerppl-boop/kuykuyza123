@@ -1241,19 +1241,15 @@ end)
 -- Auto Mini-Games Engine (Perfect Reel, Fish Frenzy, Bait Memory -> Always Gold 🥇)
 -- ==============================================================================
 
--- 1. Hook MiniGame InvokeServer to guarantee Gold Medal Score on finish
+-- 1. Dual Hook MiniGame InvokeServer (both hookfunction and hookmetamethod to ensure Gold Medal)
 if not SharedEnv._MiniGameHooked then
     SharedEnv._MiniGameHooked = true
     pcall(function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes")
         local mgRemote = remotes and remotes:FindFirstChild(Config.Events.MiniGame)
-        if mgRemote and hookmetamethod then
-            local rawNamecall
-            rawNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                local method = getnamecallmethod()
-                local args = { ... }
-                if method == "InvokeServer" and self == mgRemote and args[1] == "finish" then
-                    local round = args[2]
+        if mgRemote then
+            local function ModifyFinishArgs(args)
+                if args[1] == "finish" then
                     local currentScore = args[3]
                     local isCancel = args[4]
                     if Config.Settings.AutoMiniGames and not isCancel then
@@ -1273,11 +1269,34 @@ if not SharedEnv._MiniGameHooked then
                         end
                         args[3] = goldScore
                         UpdateStatus(string.format("STATUS: 🥇 INJECTED GOLD MEDAL SCORE (%d) FOR MINIGAME!", goldScore))
-                        return rawNamecall(self, unpack(args))
                     end
                 end
-                return rawNamecall(self, ...)
-            end)
+                return args
+            end
+
+            -- Hook 1: Direct function hook (for pcall(MiniGame.InvokeServer, MiniGame, ...))
+            if typeof(hookfunction) == "function" then
+                local oldInvoke
+                oldInvoke = hookfunction(mgRemote.InvokeServer, function(self, ...)
+                    local args = { ... }
+                    args = ModifyFinishArgs(args)
+                    return oldInvoke(self, unpack(args))
+                end)
+            end
+
+            -- Hook 2: Metamethod hook (for MiniGame:InvokeServer(...))
+            if typeof(hookmetamethod) == "function" then
+                local rawNamecall
+                rawNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                    local method = getnamecallmethod()
+                    if method == "InvokeServer" and self == mgRemote then
+                        local args = { ... }
+                        args = ModifyFinishArgs(args)
+                        return rawNamecall(self, unpack(args))
+                    end
+                    return rawNamecall(self, ...)
+                end)
+            end
         end
     end)
 end
@@ -1318,7 +1337,7 @@ SpawnWorker("MiniGameAutoWorker", function()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local mgUI = pgui and pgui:FindFirstChild("MiniGameUI")
         if not mgUI or not mgUI.Enabled then
-            task.wait(0.3)
+            task.wait(0.2)
             return
         end
 
@@ -1334,38 +1353,60 @@ SpawnWorker("MiniGameAutoWorker", function()
         end
 
         -- Stage 1: Auto Accept Invite Screen ("▶ PLAY!")
-        for _, desc in ipairs(mgUI:GetDescendants()) do
-            if desc:IsA("TextButton") and desc.Visible and (desc.Name == "PlayButton" or desc.Text == "▶ PLAY!" or string.find(desc.Text, "PLAY")) then
-                UpdateStatus("STATUS: 🎮 ตรวจพบหน้าต่างเชิญมินิเกม! กำลังกดปุ่ม ▶ PLAY เริ่มเล่นอัตโนมัติ...")
-                ClickButton(desc)
-                task.wait(0.6)
-                return
-            end
+        local playBtn = mgUI:FindFirstChild("PlayButton", true)
+        if playBtn and playBtn:IsA("TextButton") and playBtn.Visible then
+            UpdateStatus("STATUS: 🎮 ตรวจพบหน้าต่างเชิญมินิเกม! กำลังกดปุ่ม ▶ PLAY เริ่มเล่นอัตโนมัติ...")
+            ClickButton(playBtn)
+            task.wait(0.5)
+            return
         end
 
-        -- Stage 2: Auto Play Gameplay (Tapping active gameplay buttons)
-        for _, desc in ipairs(mgUI:GetDescendants()) do
-            if desc:IsA("TextButton") and desc.Visible then
-                if desc.Name == "ReelButton" or desc.Text == "REEL!" or desc.Name == "JumpButton" or desc.Text == "JUMP!" then
-                    ClickButton(desc)
-                    break
+        -- Stage 2: Auto Play Active Mini-Games
+        -- 2A. Fish Frenzy (Jump) - Catch jumping fish at Spot1..Spot5 (avoid boots 👢)
+        for s = 1, 5 do
+            local spot = mgUI:FindFirstChild("Spot" .. s, true)
+            if spot and spot:IsA("TextButton") and spot.Visible then
+                for _, ch in ipairs(spot:GetChildren()) do
+                    if ch:IsA("TextLabel") and ch.Visible then
+                        local txt = ch.Text
+                        if txt == "🐟" or txt == "🐠" or txt == "🐡" then
+                            ClickButton(spot)
+                            break
+                        end
+                    end
                 end
             end
         end
 
-        -- Stage 3: Auto Collect Reward on Result screen ("COLLECT!")
-        for _, desc in ipairs(mgUI:GetDescendants()) do
-            if desc:IsA("TextButton") and desc.Visible and (desc.Name == "Collect" or desc.Text == "COLLECT!" or string.find(desc.Text, "COLLECT")) then
+        -- 2B. Perfect Reel (Reel) - Tap ReelButton
+        local reelBtn = mgUI:FindFirstChild("ReelButton", true)
+        if reelBtn and reelBtn:IsA("TextButton") and reelBtn.Visible then
+            ClickButton(reelBtn)
+        end
+
+        -- 2C. Bait Memory (Lures) - Tap Bait buttons
+        for b = 1, 4 do
+            local baitBtn = mgUI:FindFirstChild("Bait" .. b, true)
+            if baitBtn and baitBtn:IsA("TextButton") and baitBtn.Visible then
+                ClickButton(baitBtn)
+            end
+        end
+
+        -- Stage 3: Auto Collect Reward on Result screen ("Collect" / "เก็บ!")
+        local collectBtn = mgUI:FindFirstChild("Collect", true)
+        if collectBtn and collectBtn:IsA("TextButton") and collectBtn.Visible then
+            local parent = collectBtn.Parent
+            if parent and parent.Visible then
                 UpdateStatus("STATUS: 🥇 มินิเกมจบแล้ว! กำลังกดรับรางวัลเหรียญทอง (COLLECT)...")
-                task.wait(1.0)
-                ClickButton(desc)
+                task.wait(0.8)
+                ClickButton(collectBtn)
                 task.wait(0.5)
                 return
             end
         end
     end)
 
-    task.wait(0.35)
+    task.wait(0.15)
 end)
 
 -- Task 8: Potions, Skill Tree & Best Bait Worker
