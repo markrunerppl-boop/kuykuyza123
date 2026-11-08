@@ -312,6 +312,53 @@ local Config = {
     }
 }
 
+-- ==============================================================================
+-- Persistent Configuration Manager (บันทึกและโหลดการตั้งค่าอัตโนมัติ)
+-- ==============================================================================
+local CONFIG_FILE_NAME = "KUYKUY_Fishing_Config_" .. tostring(game.PlaceId) .. ".json"
+
+local function SaveConfiguration()
+    pcall(function()
+        if writefile then
+            local data = HttpService:JSONEncode(Config.Settings)
+            writefile(CONFIG_FILE_NAME, data)
+        end
+    end)
+end
+
+local function LoadConfiguration()
+    pcall(function()
+        if isfile and readfile and isfile(CONFIG_FILE_NAME) then
+            local content = readfile(CONFIG_FILE_NAME)
+            local loaded = HttpService:JSONDecode(content)
+            if loaded and type(loaded) == "table" then
+                for k, v in pairs(loaded) do
+                    if Config.Settings[k] ~= nil then
+                        Config.Settings[k] = v
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function ResetConfiguration()
+    pcall(function()
+        if delfile and isfile and isfile(CONFIG_FILE_NAME) then
+            delfile(CONFIG_FILE_NAME)
+        end
+    end)
+end
+
+-- โหลดการตั้งค่าที่บันทึกไว้ในเครื่องทันทีเมื่อเริ่มทำงาน (หากยังไม่มีไฟล์ จะสร้างและบันทึกค่าเริ่มต้นให้อัตโนมัติ)
+pcall(function()
+    if isfile and isfile(CONFIG_FILE_NAME) then
+        LoadConfiguration()
+    else
+        SaveConfiguration()
+    end
+end)
+
 local UIReferences = {
     StatusBarText = nil,
     RebirthProgressLabel = nil,
@@ -354,11 +401,59 @@ local function EnsureOnDock()
     end
 end
 
--- Server Rejoin & Server Hop Engine (For resetting 1-Hour Playtime Gifts)
+-- Server Rejoin & Server Hop Engine (พร้อมระบบตรวจสอบความปลอดภัยก่อนย้ายเซิร์ฟเวอร์)
 local TeleportService = game:GetService("TeleportService")
 
+local function IsSafeToRejoin()
+    -- ตรวจสอบว่ากำลังดึงแห หรือแหอยู่ในน้ำหรือไม่
+    local myBase = GetMyBase()
+    if myBase then
+        local netState = myBase:GetAttribute("NetState")
+        if netState and (netState == "Fishing" or netState == "Thrown" or netState == "Reeling") then
+            return false, "กำลังดึงแห (" .. tostring(netState) .. ")"
+        end
+    end
+
+    -- ตรวจสอบว่ามีอีเวนต์บอสกำลังดำเนินอยู่หรือไม่
+    if Workspace:GetAttribute("MegActive") == true then
+        return false, "บอส Megalodon กำลังต่อสู้"
+    end
+    if Workspace:GetAttribute("BloopActive") == true then
+        return false, "บอส The Bloop กำลังต่อสู้"
+    end
+    if Workspace:GetAttribute("BossActive") == true then
+        return false, "บอส Kraken กำลังต่อสู้"
+    end
+
+    return true, "ปลอดภัย"
+end
+
 local function RejoinOrServerHop()
-    UpdateStatus("STATUS: PREPARING SERVER HOP / REJOIN TO RESET 1-HOUR GIFTS...")
+    UpdateStatus("STATUS: ตรวจสอบความปลอดภัยก่อนรีเซิร์ฟเวอร์...")
+
+    -- ตรวจสอบความปลอดภัย: หากยังดึงแหไม่เสร็จ หรือมีบอสค้างอยู่ ให้ดึงแหขึ้นและรอให้เสร็จก่อน
+    local safe, reason = IsSafeToRejoin()
+    if not safe then
+        UpdateStatus("STATUS: ป้องกันของหาย! รอดึงแห/จบบอสก่อนย้าย (" .. reason .. ")")
+
+        -- สั่งดึงแหกลับทันทีเพื่อเตรียมความพร้อม
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes and remotes:FindFirstChild(Config.Events.ReelIn) then
+            pcall(function()
+                remotes[Config.Events.ReelIn]:FireServer()
+            end)
+        end
+
+        local waited = 0
+        while not safe and waited < 60 do
+            task.wait(2)
+            waited = waited + 2
+            safe, reason = IsSafeToRejoin()
+            UpdateStatus("STATUS: รอดึงแห/จบบอสให้เรียบร้อยก่อนย้าย... (" .. reason .. ")")
+        end
+    end
+
+    UpdateStatus("STATUS: ทุกอย่างเสร็จสิ้น ปลอดภัย 100% กำลังรีเซิร์ฟเวอร์...")
 
     local queueTeleport = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
     if queueTeleport then
@@ -795,6 +890,24 @@ local function RunMegaClaimCycle()
                             allGiftsClaimed = false
                         end
                     end
+
+                    -- ตรวจสอบและคลิกปุ่มเปิดของขวัญบนหน้าจอ (ปุ่มไอคอนกล่องของขวัญ "เปิด!" ในแถบ Boosts) โดยตรง
+                    pcall(function()
+                        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+                        local freeGift = playerGui and playerGui:FindFirstChild("BoostsUI") and playerGui.BoostsUI:FindFirstChild("Row") and playerGui.BoostsUI.Row:FindFirstChild("FreeGift")
+                        if freeGift and freeGift.Visible then
+                            local hitBtn = freeGift:FindFirstChild("Hit")
+                            if hitBtn then
+                                if firesignal then
+                                    firesignal(hitBtn.MouseButton1Click)
+                                elseif getconnections then
+                                    for _, conn in ipairs(getconnections(hitBtn.MouseButton1Click)) do
+                                        conn:Fire()
+                                    end
+                                end
+                            end
+                        end
+                    end)
 
                     -- Auto Rejoin after 1-Hour gifts are all claimed to reset gift boxes
                     if Config.Settings.AutoRejoinAfterHourGifts and allGiftsClaimed and (state.played or 0) >= 60 then
@@ -2172,6 +2285,7 @@ local function BuildUI()
             TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
             TweenService:Create(toggleTrack, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
             callback(state)
+            SaveConfiguration()
         end)
     end
 
@@ -2315,6 +2429,7 @@ local function BuildUI()
                 if callback then
                     callback(opt)
                 end
+                SaveConfiguration()
             end)
         end
 
@@ -2446,6 +2561,7 @@ local function BuildUI()
                 onClick()
                 RefreshUI()
                 if callback then callback(selectedMap) end
+                SaveConfiguration()
             end)
             return btn
         end
@@ -2503,6 +2619,7 @@ local function BuildUI()
                 if callback then
                     callback(selectedMap)
                 end
+                SaveConfiguration()
             end)
 
             table.insert(optionButtons, { btn = optBtn, value = opt.value, label = opt.label })
@@ -2950,7 +3067,7 @@ local function BuildUI()
         end)
     end)
 
-    CreateButton(pRewards, "🔄 รีเซิร์ฟเวอร์ทันทีเพื่อรีเซ็ตกล่องของขวัญ (Server Hop / Rejoin Now)", Config.Colors.Warning, function()
+    CreateButton(pRewards, "🔄 รีเซิร์ฟเวอร์แบบปลอดภัย (Safe Server Hop: รอดึงแห & จบบอส)", Config.Colors.Warning, function()
         RejoinOrServerHop()
     end)
 
@@ -3646,6 +3763,24 @@ local function BuildUI()
     CreateButton(pSettings, "⚡ บังคับปลด AFK ทันที (Force Exit AFK Now)", Config.Colors.Warning, function()
         DismissGameAFKScreen()
         UpdateStatus("ปลดสถานะ AFK และกู้คืน 3D Render เรียบร้อย!")
+    end)
+
+    -- Persistent Configuration Buttons
+    CreateStatusCard(pSettings, "📁 ระบบบันทึกการตั้งค่า (Persistent Configuration File)")
+
+    CreateButton(pSettings, "💾 บันทึกการตั้งค่าลงเครื่องทันที (Save Settings Now)", Config.Colors.Success, function()
+        SaveConfiguration()
+        UpdateStatus("STATUS: บันทึกการตั้งค่าลงไฟล์เรียบร้อย!")
+    end)
+
+    CreateButton(pSettings, "📂 โหลดการตั้งค่าจากไฟล์ (Reload Settings from File)", Config.Colors.Accent, function()
+        LoadConfiguration()
+        UpdateStatus("STATUS: โหลดการตั้งค่าจากไฟล์เรียบร้อย!")
+    end)
+
+    CreateButton(pSettings, "🔄 คืนค่าเริ่มต้นทั้งหมด (Reset Settings to Default)", Config.Colors.Warning, function()
+        ResetConfiguration()
+        UpdateStatus("STATUS: คืนค่าการตั้งค่าเริ่มต้นเรียบร้อย!")
     end)
 
     CreateButton(pSettings, "EMERGENCY KILL SWITCH (หยุดการทำงานทั้งหมด)", Config.Colors.Danger, function()
