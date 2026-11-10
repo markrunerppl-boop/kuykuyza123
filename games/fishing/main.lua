@@ -158,6 +158,11 @@ pcall(function()
     FishingShared = require(ReplicatedStorage:WaitForChild("FishingShared", 5))
 end)
 
+local ArenaModule = nil
+pcall(function()
+    ArenaModule = require(ReplicatedStorage:WaitForChild("Arena", 5))
+end)
+
 local Config = {
     Meta = {
         HubName = "KUYKUY HUB",
@@ -196,7 +201,8 @@ local Config = {
         Current = "Current",
         CurrentPing = "CurrentPing",
         MiniGame = "MiniGame",
-        MiniGamePing = "MiniGamePing"
+        MiniGamePing = "MiniGamePing",
+        Arena = "Arena"
     },
     Settings = {
         -- Auto Net
@@ -269,6 +275,13 @@ local Config = {
         AutoBossFight = true,           -- ตีบอส Megalodon, The Bloop & Kraken อัตโนมัติ
         BossTargetMode = "สู้บอสทุกตัว (Megalodon, Bloop, Kraken 🦈🌊🐙)", -- ตัวกรองเป้าหมายบอส
         AutoClaimBossLoot = true,       -- เคลมการ์ดของรางวัลบอสอัตโนมัติ
+
+        -- Arena Combat Automation (ต่อสู้อารีน่าจนครบจำนวนสูงสุดต่อวัน 25 ครั้ง)
+        AutoArena = true,               -- ตีอารีน่าอัตโนมัติจนครบโควต้าประจำวัน (สูงสุด 25 ครั้ง)
+        ArenaStrategy = "ชาญฉลาด: เลือกตัวที่ชนะ 100% หรือพลังต่ำสุด (Smart Strategy - แนะนำ)", -- กลยุทธ์การต่อสู้อารีน่า
+        AutoArenaBestTeam = true,       -- จัดทีมปลาที่ดีที่สุด 3 ตัวลงอารีน่าอัตโนมัติ
+        AutoClaimArenaPromo = true,     -- รับรางวัลเลื่อนขั้นอารีน่าอัตโนมัติ
+        ArenaBattleDelay = 2.5,         -- หน่วงเวลาระหว่างรอบการต่อสู้อารีน่า (วินาที)
 
         -- Update 10: Season Pass & Promo Codes
         AutoClaimSeasonPass = true,     -- เคลมของรางวัล Leviathan Pass ฟรีทุกเทียร์อัตโนมัติ
@@ -362,7 +375,8 @@ end)
 local UIReferences = {
     StatusBarText = nil,
     RebirthProgressLabel = nil,
-    NetStateLabel = nil
+    NetStateLabel = nil,
+    ArenaStatusCard = nil
 }
 
 local function UpdateStatus(text)
@@ -2015,6 +2029,237 @@ SpawnWorker("AutoBossWorker", function()
     end
 
     task.wait(1.5)
+end)
+
+-- ==============================================================================
+-- Auto Arena Combat Engine (ระบบต่อสู้อารีน่าอัตโนมัติจนครบโควต้าสูงสุด 25 ครั้งต่อวัน)
+-- ==============================================================================
+local function RunArenaCycle(singleFightOnly)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local arenaRemote = remotes and remotes:FindFirstChild(Config.Events.Arena or "Arena")
+    if not arenaRemote or not FishingShared or not ArenaModule then
+        return false, "ระบบอารีน่ายังไม่พร้อมใช้งาน"
+    end
+
+    local ok, state = pcall(function() return arenaRemote:InvokeServer("state") end)
+    if not ok or type(state) ~= "table" then
+        return false, "ไม่สามารถดึงข้อมูลอารีน่าจากเซิร์ฟเวอร์ได้"
+    end
+
+    -- Update UI Status Card
+    local left = state.left or 0
+    local fights = state.fights or (25 - left)
+    local wins = state.wins or 0
+    local losses = state.losses or 0
+    local elo = state.elo or 1000
+    if UIReferences.ArenaStatusCard then
+        if left <= 0 then
+            UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: ครบโควต้า 25/25 ครั้งแล้ววันนี้! | Elo: %d | ชนะ: %d / แพ้: %d (รอรีเซ็ต 00:00 UTC)", elo, wins, losses)
+        else
+            UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: เหลืออีก %d ครั้ง (สู้ไปแล้ว %d/25) | Elo: %d | ชนะ: %d / แพ้: %d", left, fights, elo, wins, losses)
+        end
+    end
+
+    -- 1. Auto Claim Promotion Rank Rewards if available
+    if Config.Settings.AutoClaimArenaPromo and ((state.promoO or 0) + (state.promoA or 0) > 0) then
+        pcall(function()
+            local pRes = arenaRemote:InvokeServer("promo")
+            if pRes and pRes.ok then
+                UpdateStatus("STATUS: 🏆 รับรางวัลเลื่อนขั้นอารีน่าเรียบร้อยแล้ว!")
+            end
+        end)
+    end
+
+    -- 2. Check if daily quota is already exhausted (25 fights/day)
+    if left <= 0 then
+        UpdateStatus("STATUS: 🏟️ อารีน่า: ต่อสู้ครบโควต้าสูงสุด 25 ครั้งต่อวันแล้ว! (รอรีเซ็ต 00:00 UTC)")
+        return true, "ต่อสู้ครบโควต้าสูงสุดต่อวันแล้ว"
+    end
+
+    -- 3. Auto Equip Best 3 Fish into Arena Team
+    if Config.Settings.AutoArenaBestTeam and state.show and #state.show >= 3 then
+        local sorted = ArenaModule.sortTeam(FishingShared, state.show)
+        if sorted and #sorted >= 3 then
+            local currentTeam = state.team or {}
+            local needsUpdate = (#currentTeam < 3)
+            if not needsUpdate then
+                for i = 1, 3 do
+                    if not currentTeam[i] or currentTeam[i].uid ~= sorted[i].uid then
+                        needsUpdate = true
+                        break
+                    end
+                end
+            end
+
+            if needsUpdate then
+                pcall(function()
+                    local tRes = arenaRemote:InvokeServer("team", { sorted[1].uid, sorted[2].uid, sorted[3].uid })
+                    if tRes and tRes.team then
+                        state.team = tRes.team
+                        UpdateStatus("STATUS: ⚔️ จัดทีมปลาอารีน่า 3 ตัวที่แข็งแกร่งที่สุดเรียบร้อยแล้ว!")
+                    end
+                end)
+            end
+        end
+    end
+
+    if not state.team or #state.team == 0 then
+        return false, "ยังไม่มีทีมปลาสำหรับต่อสู้อารีน่า"
+    end
+
+    -- 4. Select Best Opponent based on selected strategy
+    local opps = state.opps or {}
+    local strat = Config.Settings.ArenaStrategy or "ชาญฉลาด: เลือกตัวที่ชนะ 100% หรือพลังต่ำสุด (Smart Strategy - แนะนำ)"
+    local refreshIn = state.refreshIn or 0
+    local bestOpp = nil
+
+    if strat:find("ชนะชัวร์เท่านั้น") or strat:find("Win Only") then
+        for _, opp in ipairs(opps) do
+            local sim = ArenaModule.battle(FishingShared, state.team, opp.f)
+            if sim and sim.win == true then
+                if not bestOpp or (opp.win or 0) > (bestOpp.win or 0) then
+                    bestOpp = opp
+                end
+            end
+        end
+        if not bestOpp then
+            if refreshIn == 0 then
+                pcall(function()
+                    local rRes = arenaRemote:InvokeServer("refresh")
+                    if rRes and rRes.opps then state.opps = rRes.opps end
+                end)
+                UpdateStatus("STATUS: 🔄 รีเฟรชหาคู่ต่อสู้อารีน่าชุดใหม่ที่ชนะ 100%...")
+            else
+                UpdateStatus(string.format("STATUS: ⏳ ยังไม่มีตัวที่ชนะ 100%% (รอรีเฟรชอีก %d วินาที)...", refreshIn))
+            end
+            return false, "รอรีเฟรชคู่ต่อสู้"
+        end
+    elseif strat:find("ง่ายที่สุด") or strat:find("Easiest") then
+        local lowestPwr = 999999
+        for _, opp in ipairs(opps) do
+            local oppPwr = 0
+            for _, f in ipairs(opp.f or {}) do
+                oppPwr = oppPwr + (ArenaModule.power(FishingShared, f) or 0)
+            end
+            if oppPwr < lowestPwr then
+                lowestPwr = oppPwr
+                bestOpp = opp
+            end
+        end
+    elseif strat:find("แต้มสูงสุด") or strat:find("Highest Elo") then
+        local highestGain = -9999
+        for _, opp in ipairs(opps) do
+            local gain = opp.win or 0
+            if gain > highestGain then
+                highestGain = gain
+                bestOpp = opp
+            end
+        end
+    else
+        -- Smart Strategy (Default):
+        -- Step 1: Look for 100% winnable opponent with highest Elo gain
+        for _, opp in ipairs(opps) do
+            local sim = ArenaModule.battle(FishingShared, state.team, opp.f)
+            if sim and sim.win == true then
+                if not bestOpp or (opp.win or 0) > (bestOpp.win or 0) then
+                    bestOpp = opp
+                end
+            end
+        end
+
+        -- Step 2: If none are 100% winnable, refresh if available
+        if not bestOpp and refreshIn == 0 then
+            pcall(function()
+                local rRes = arenaRemote:InvokeServer("refresh")
+                if rRes and rRes.opps then state.opps = rRes.opps end
+            end)
+            UpdateStatus("STATUS: 🔄 รีเฟรชหาคู่ต่อสู้อารีน่าชุดใหม่...")
+            return false, "กำลังรีเฟรชคู่ต่อสู้"
+        end
+
+        -- Step 3: If still none and refresh is on cooldown, fight opponent with lowest power
+        if not bestOpp then
+            local lowestPwr = 999999
+            for _, opp in ipairs(opps) do
+                local oppPwr = 0
+                for _, f in ipairs(opp.f or {}) do
+                    oppPwr = oppPwr + (ArenaModule.power(FishingShared, f) or 0)
+                end
+                if oppPwr < lowestPwr then
+                    lowestPwr = oppPwr
+                    bestOpp = opp
+                end
+            end
+        end
+    end
+
+    -- 5. Execute Battle
+    if bestOpp then
+        local oppPwr = 0
+        for _, f in ipairs(bestOpp.f or {}) do
+            oppPwr = oppPwr + (ArenaModule.power(FishingShared, f) or 0)
+        end
+        UpdateStatus(string.format("STATUS: ⚔️ กำลังต่อสู้อารีน่ากับ [%s] (Elo: %d, พลัง: %.1f, เหลืออีก %d ครั้ง)...",
+            tostring(bestOpp.name or bestOpp.user or "Opponent"), bestOpp.e or 0, oppPwr, left
+        ))
+
+        local fOk, fRes = pcall(function()
+            return arenaRemote:InvokeServer("fight", bestOpp.i)
+        end)
+
+        if fOk and fRes and fRes.ok then
+            local isWin = (fRes.battle and fRes.battle.win == true)
+            local resultText = isWin and "🏆 ชนะการต่อสู้! (VICTORY)" or "❌ พ่ายแพ้ (DEFEAT)"
+            local newLeft = fRes.left or (left - 1)
+            local fightsCount = fRes.fights or (25 - newLeft)
+
+            UpdateStatus(string.format("STATUS: %s | อารีน่าเหลืออีก %d ครั้ง (%d/25) | Elo ปัจจุบัน: %d",
+                resultText, newLeft, fightsCount, fRes.elo or 0
+            ))
+
+            if UIReferences.ArenaStatusCard then
+                if newLeft <= 0 then
+                    UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: ครบโควต้า 25/25 ครั้งแล้ววันนี้! | Elo: %d | ชนะ: %d / แพ้: %d (รอรีเซ็ต 00:00 UTC)",
+                        fRes.elo or 0, fRes.wins or 0, fRes.losses or 0
+                    )
+                else
+                    UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: เหลืออีก %d ครั้ง (%d/25) | Elo: %d | ชนะ: %d / แพ้: %d",
+                        newLeft, fightsCount, fRes.elo or 0, fRes.wins or 0, fRes.losses or 0
+                    )
+                end
+            end
+
+            -- Claim promo reward if fight triggered rank up
+            if Config.Settings.AutoClaimArenaPromo and ((fRes.promoO or 0) + (fRes.promoA or 0) > 0) then
+                pcall(function() arenaRemote:InvokeServer("promo") end)
+            end
+
+            return true, resultText
+        else
+            local err = (fRes and fRes.err) or "เกิดข้อผิดพลาดในการต่อสู้"
+            UpdateStatus(string.format("STATUS: ⚠️ การต่อสู้อารีน่าล้มเหลว: %s", tostring(err)))
+            return false, tostring(err)
+        end
+    end
+
+    return false, "ไม่พบเป้าหมายคู่ต่อสู้"
+end
+
+SpawnWorker("AutoArenaWorker", function()
+    if not Config.Settings.AutoArena then
+        task.wait(3.0)
+        return
+    end
+
+    local success, msg = pcall(function()
+        return RunArenaCycle(false)
+    end)
+
+    if not success and msg then
+        warn("[AutoArenaWorker Error] " .. tostring(msg))
+    end
+
+    task.wait(Config.Settings.ArenaBattleDelay or 2.5)
 end)
 
 -- Task: The Black Market Auto Buyer (Silas the Smuggler)
@@ -3851,9 +4096,9 @@ local function BuildUI()
     end)
 
     -- ==========================================================================
-    -- TAB 5: ระบบล่าบอส (Boss Fights: Megalodon, The Bloop & Kraken - Update 10)
+    -- TAB 5: ระบบล่าบอส & อารีน่า (Boss Fights & PvP Arena - Update 10)
     -- ==========================================================================
-    AddTabButton("BossTab", "🦈 5. ล่าบอส", false, 5)
+    AddTabButton("BossTab", "🦈 5. บอส & อารีน่า", false, 5)
     local pBoss = CreateTabPage("BossTab")
 
     local BossStatusCard = CreateStatusCard(pBoss, "ระบบบอส: กำลังสแกนสถานะ Megalodon, The Bloop & Kraken...")
@@ -3968,6 +4213,111 @@ local function BuildUI()
             remotes.BossEvent:FireServer("closed")
             UpdateStatus("STATUS: CLAIMED KRAKEN REWARDS!")
         end
+    end)
+
+    -- =========================================================================
+    -- ส่วนที่ 2: ระบบประลองอารีน่า (PvP Arena Battles - สู้จนครบโควตาสูงสุด 25 ครั้ง/วัน)
+    -- =========================================================================
+    local arenaDivider = Instance.new("Frame")
+    arenaDivider.Name = "ArenaDivider"
+    arenaDivider.Size = UDim2.new(1, 0, 0, 2)
+    arenaDivider.BackgroundColor3 = Config.Colors.Accent
+    arenaDivider.BorderSizePixel = 0
+    arenaDivider.Parent = pBoss
+
+    local arenaSectionHeader = Instance.new("TextLabel")
+    arenaSectionHeader.Name = "ArenaSectionHeader"
+    arenaSectionHeader.Size = UDim2.new(1, 0, 0, 26)
+    arenaSectionHeader.BackgroundTransparency = 1
+    arenaSectionHeader.Font = Enum.Font.GothamBold
+    arenaSectionHeader.Text = "⚔️ ระบบประลองอารีน่า (PvP Arena Battles - โควต้า 25 ครั้ง/วัน)"
+    arenaSectionHeader.TextColor3 = Config.Colors.Gold
+    arenaSectionHeader.TextSize = 13
+    arenaSectionHeader.TextXAlignment = Enum.TextXAlignment.Left
+    arenaSectionHeader.Parent = pBoss
+
+    UIReferences.ArenaStatusCard = CreateStatusCard(pBoss, "🏟️ อารีน่า: กำลังสแกนสถานะการต่อสู้...")
+
+    -- Live status updater for ArenaStatusCard
+    task.spawn(function()
+        while IsSessionValid() do
+            if UIReferences.ArenaStatusCard and UIReferences.ArenaStatusCard.Parent then
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                local arenaRemote = remotes and remotes:FindFirstChild(Config.Events.Arena or "Arena")
+                if arenaRemote then
+                    pcall(function()
+                        local st = arenaRemote:InvokeServer("state")
+                        if st and type(st) == "table" then
+                            local left = st.left or 0
+                            local fights = st.fights or (25 - left)
+                            local wins = st.wins or 0
+                            local losses = st.losses or 0
+                            local elo = st.elo or 1000
+                            if left <= 0 then
+                                UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: ครบโควต้า 25/25 ครั้งแล้ววันนี้! | Elo: %d | ชนะ: %d / แพ้: %d (รอรีเซ็ต 00:00 UTC)", elo, wins, losses)
+                            else
+                                UIReferences.ArenaStatusCard.Text = string.format("🏟️ อารีน่า: เหลืออีก %d ครั้ง (สู้ไปแล้ว %d/25) | Elo: %d | ชนะ: %d / แพ้: %d", left, fights, elo, wins, losses)
+                            end
+                        end
+                    end)
+                end
+            end
+            task.wait(4.0)
+        end
+    end)
+
+    CreateToggle(pBoss, "⚔️ สู้ศึกอารีน่าอัตโนมัติจนครบโควตาสูงสุดต่อวัน (Auto Arena 25 Fights/Day)", Config.Settings.AutoArena, function(v)
+        Config.Settings.AutoArena = v
+        UpdateStatus("STATUS: AUTO ARENA FIGHTS " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    local arenaStrategies = {
+        "ชาญฉลาด: เลือกตัวที่ชนะ 100% หรือพลังต่ำสุด (Smart Strategy - แนะนำ)",
+        "ชนะชัวร์เท่านั้น: สู้เฉพาะตัวที่จำลองแล้วชนะ 100% (Win Only - ไม่ชนะรอรีเฟรช)",
+        "ง่ายที่สุด: เลือกคู่ต่อสู้ที่พลังรบต่ำสุด (Easiest Opponent)",
+        "แต้มสูงสุด: เลือกคู่ต่อสู้ที่ได้ Elo ชนะสูงสุด (Highest Elo Gain)"
+    }
+    CreateDropdown(pBoss, "กลยุทธ์เลือกคู่ต่อสู้ (Arena Strategy)", arenaStrategies, Config.Settings.ArenaStrategy, function(selected)
+        Config.Settings.ArenaStrategy = selected
+        UpdateStatus("STATUS: ARENA STRATEGY SET TO: " .. selected)
+    end)
+
+    CreateToggle(pBoss, "🐟 จัดทีมปลาที่ดีที่สุดลงอารีน่าอัตโนมัติ (Auto Equip Best 3-Fish Team)", Config.Settings.AutoArenaBestTeam, function(v)
+        Config.Settings.AutoArenaBestTeam = v
+        UpdateStatus("STATUS: AUTO EQUIP BEST ARENA TEAM " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateToggle(pBoss, "🎖️ รับรางวัลเลื่อนขั้นอารีน่าอัตโนมัติ (Auto Claim Promotion Rewards)", Config.Settings.AutoClaimArenaPromo, function(v)
+        Config.Settings.AutoClaimArenaPromo = v
+        UpdateStatus("STATUS: AUTO CLAIM ARENA PROMO " .. (v and "ENABLED" or "DISABLED"))
+    end)
+
+    CreateButton(pBoss, "⚔️ สู้ศึกอารีน่าทันที 1 แมตช์ (Fight 1 Match Now)", Config.Colors.Accent, function()
+        task.spawn(function()
+            UpdateStatus("STATUS: INITIATING SINGLE ARENA BATTLE...")
+            local ok, msg = RunArenaCycle(true)
+            UpdateStatus("STATUS: ARENA BATTLE: " .. tostring(msg or "COMPLETED"))
+        end)
+    end)
+
+    CreateButton(pBoss, "⚡ ตะลุยสู้ศึกอารีน่าจนหมดโควตาวันนี้ทันที (Fight All Quota Until 25/Day)", Config.Colors.Gold, function()
+        task.spawn(function()
+            UpdateStatus("STATUS: ⚡ STARTING CONTINUOUS ARENA RUN UNTIL DAILY CAP (25 FIGHTS)...")
+            local foughtCount = 0
+            while IsSessionValid() do
+                local ok, res = RunArenaCycle(true)
+                if not ok then
+                    UpdateStatus("STATUS: ARENA MARATHON STOPPED: " .. tostring(res))
+                    break
+                end
+                foughtCount = foughtCount + 1
+                if res == "ต่อสู้ครบโควต้าสูงสุดต่อวันแล้ว" then
+                    break
+                end
+                task.wait(Config.Settings.ArenaBattleDelay or 1.5)
+            end
+            UpdateStatus(string.format("STATUS: 🏁 ARENA RUN FINISHED! TOTAL FOUGHT: %d MATCHES.", foughtCount))
+        end)
     end)
 
     -- ==========================================================================
