@@ -11,6 +11,8 @@ local function main()
 	local ProximityPromptService = game:GetService("ProximityPromptService")
 	local ContextActionService = game:GetService("ContextActionService")
 	local HttpService = game:GetService("HttpService")
+	local TweenService = game:GetService("TweenService")
+	local CoreGui = game:GetService("CoreGui")
 	local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
 	local VirtualInputManager = vimOk and vimSvc or nil
 	local vuOk, vuSvc = pcall(function() return game:GetService("VirtualUser") end)
@@ -2766,202 +2768,838 @@ local function main()
 	end)
 
 	-----------------------------------------------------------------
-	-- 6. UI (หน้าต่าง 4 Tab: ฟาร์ม / แพ็ก/ขาย / อัปเกรด / บันทึก)
+	-- 6. UI CREATION (KUYKUY HUB UI FRAMEWORK - DARK PURPLE BLUEPRINT)
 	-----------------------------------------------------------------
-	local COL_ON, COL_OFF = Color3.fromRGB(46, 160, 67), Color3.fromRGB(58, 58, 70)
-	local COL_TAB = Color3.fromRGB(55, 110, 190)
+	local UIColors = {
+		Background    = Color3.fromRGB(18, 15, 26),
+		Sidebar       = Color3.fromRGB(13, 11, 20),
+		Content       = Color3.fromRGB(24, 20, 36),
+		Card          = Color3.fromRGB(32, 27, 48),
+		CardHover     = Color3.fromRGB(42, 36, 62),
+		Accent        = Color3.fromRGB(155, 89, 230), -- #9B59E6
+		AccentLight   = Color3.fromRGB(180, 120, 255), -- #B478FF
+		TextPrimary   = Color3.fromRGB(245, 240, 255), -- #F5F0FF
+		TextSecondary = Color3.fromRGB(160, 150, 180), -- #A096B4
+		Border        = Color3.fromRGB(48, 40, 70),   -- #302846
+		Success       = Color3.fromRGB(46, 204, 113),  -- #2ECC71
+		Danger        = Color3.fromRGB(231, 76, 60),   -- #E74C3C
+		Warning       = Color3.fromRGB(241, 196, 15),  -- #F1C40F
+		Gold          = Color3.fromRGB(255, 205, 70),  -- #FFCD46
+		Cyan          = Color3.fromRGB(0, 210, 255),   -- #00D2FF
+	}
 
 	local function buildUI()
-		local gui = Instance.new("ScreenGui")
-		gui.Name = "KuykuyHub"
-		gui.ResetOnSpawn = false
-		gui.DisplayOrder = 999
+		-- ล้าง UI เก่าถ้ามีอยู่
+		local oldUI = (CoreGui and CoreGui:FindFirstChild("KUYKUY_ScreenGui"))
+			or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("KUYKUY_ScreenGui"))
+			or (CoreGui and CoreGui:FindFirstChild("KuykuyHub"))
+			or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("KuykuyHub"))
+		if oldUI then pcall(function() oldUI:Destroy() end) end
+
+		local ScreenGui = Instance.new("ScreenGui")
+		ScreenGui.Name = "KUYKUY_ScreenGui"
+		ScreenGui.ResetOnSpawn = false
+		ScreenGui.DisplayOrder = 999
+		ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 		local parented = false
 		if gethui then
-			parented = pcall(function() gui.Parent = gethui() end)
+			parented = pcall(function() ScreenGui.Parent = gethui() end)
 		end
-		if not parented then
-			parented = pcall(function() gui.Parent = game:GetService("CoreGui") end)
+		if not parented and CoreGui then
+			parented = pcall(function() ScreenGui.Parent = CoreGui end)
 		end
-		if not parented or not gui.Parent then
-			gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+		if not parented or not ScreenGui.Parent then
+			ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 		end
-		Core:OnCleanup(function() gui:Destroy() end)
+		Core:OnCleanup(function() pcall(function() ScreenGui:Destroy() end) end)
 
-		local frame = Instance.new("Frame")
-		frame.Size = UDim2.fromOffset(260, 490)
-		frame.Position = UDim2.fromOffset(40, 100)
-		frame.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
-		frame.BorderSizePixel = 0
-		frame.Parent = gui
-		local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 8); fc.Parent = frame
+		-- Floating Action Button (ปุ่มลอยการ์ตูนควาย 52x52 px)
+		local FloatButton = Instance.new("TextButton")
+		FloatButton.Name = "KUYKUY_FloatButton"
+		FloatButton.Size = UDim2.new(0, 52, 0, 52)
+		FloatButton.Position = UDim2.new(0, 25, 0.35, 0)
+		FloatButton.BackgroundColor3 = UIColors.Card
+		FloatButton.Text = "🐃"
+		FloatButton.TextSize = 28
+		FloatButton.AutoButtonColor = false
+		FloatButton.Parent = ScreenGui
 
-		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, 0, 0, 28)
-		title.BackgroundColor3 = Color3.fromRGB(40, 40, 54)
-		title.BorderSizePixel = 0
-		title.Font = Enum.Font.GothamBold
-		title.TextSize = 14
-		title.TextColor3 = Color3.new(1, 1, 1)
-		title.Text = "Kuykuy Hub (ลากเพื่อย้าย)"
-		title.Parent = frame
-		local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 8); tc.Parent = title
+		local FloatCorner = Instance.new("UICorner")
+		FloatCorner.CornerRadius = UDim.new(1, 0)
+		FloatCorner.Parent = FloatButton
 
-		local dragging, dragStart, startPos = false, nil, nil
-		title.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging, dragStart, startPos = true, input.Position, frame.Position
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		local FloatStroke = Instance.new("UIStroke")
+		FloatStroke.Color = UIColors.Gold
+		FloatStroke.Thickness = 2.2
+		FloatStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		FloatStroke.Parent = FloatButton
+
+		local BuffaloIcon = Instance.new("ImageLabel")
+		BuffaloIcon.Name = "BuffaloIcon"
+		BuffaloIcon.Size = UDim2.new(1, -6, 1, -6)
+		BuffaloIcon.Position = UDim2.new(0, 3, 0, 3)
+		BuffaloIcon.BackgroundTransparency = 1
+		BuffaloIcon.Image = "rbxassetid://15264624467"
+		BuffaloIcon.ScaleType = Enum.ScaleType.Fit
+		BuffaloIcon.ZIndex = FloatButton.ZIndex + 1
+		BuffaloIcon.Parent = FloatButton
+
+		task.delay(1.5, function()
+			if BuffaloIcon and BuffaloIcon.IsLoaded then
+				FloatButton.Text = ""
+			end
+		end)
+
+		-- MainFrame (570 x 430 px)
+		local MainFrame = Instance.new("Frame")
+		MainFrame.Name = "MainFrame"
+		MainFrame.Size = UDim2.new(0, 570, 0, 430)
+		MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+		MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+		MainFrame.BackgroundColor3 = UIColors.Background
+		MainFrame.BorderSizePixel = 0
+		MainFrame.ClipsDescendants = true
+		MainFrame.Parent = ScreenGui
+
+		local MainCorner = Instance.new("UICorner")
+		MainCorner.CornerRadius = UDim.new(0, 10)
+		MainCorner.Parent = MainFrame
+
+		local MainStroke = Instance.new("UIStroke")
+		MainStroke.Color = UIColors.Border
+		MainStroke.Thickness = 1.2
+		MainStroke.Parent = MainFrame
+
+		-- Header (42 px)
+		local Header = Instance.new("Frame")
+		Header.Name = "Header"
+		Header.Size = UDim2.new(1, 0, 0, 42)
+		Header.BackgroundColor3 = UIColors.Sidebar
+		Header.BorderSizePixel = 0
+		Header.Parent = MainFrame
+
+		local TitleLabel = Instance.new("TextLabel")
+		TitleLabel.Size = UDim2.new(0, 450, 1, 0)
+		TitleLabel.Position = UDim2.new(0, 16, 0, 0)
+		TitleLabel.BackgroundTransparency = 1
+		TitleLabel.Font = Enum.Font.GothamBold
+		TitleLabel.TextSize = 14
+		TitleLabel.TextColor3 = UIColors.TextPrimary
+		TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+		TitleLabel.RichText = true
+		TitleLabel.Text = "KUYKUY HUB <font color=\"#B478FF\">ขโมยแพ็คอนิเมะ v3.2.0</font>"
+		TitleLabel.Parent = Header
+
+		local CloseBtn = Instance.new("TextButton")
+		CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+		CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
+		CloseBtn.BackgroundColor3 = UIColors.Card
+		CloseBtn.Font = Enum.Font.GothamBold
+		CloseBtn.Text = "—"
+		CloseBtn.TextColor3 = UIColors.TextSecondary
+		CloseBtn.TextSize = 14
+		CloseBtn.Parent = Header
+
+		local CloseCorner = Instance.new("UICorner")
+		CloseCorner.CornerRadius = UDim.new(0, 6)
+		CloseCorner.Parent = CloseBtn
+
+		-- Sidebar (145 px)
+		local Sidebar = Instance.new("ScrollingFrame")
+		Sidebar.Name = "Sidebar"
+		Sidebar.Size = UDim2.new(0, 145, 1, -42)
+		Sidebar.Position = UDim2.new(0, 0, 0, 42)
+		Sidebar.BackgroundColor3 = UIColors.Sidebar
+		Sidebar.BorderSizePixel = 0
+		Sidebar.ScrollBarThickness = 2
+		Sidebar.ScrollBarImageColor3 = UIColors.Border
+		Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+		Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		Sidebar.Parent = MainFrame
+
+		local SidebarList = Instance.new("UIListLayout")
+		SidebarList.Padding = UDim.new(0, 6)
+		SidebarList.SortOrder = Enum.SortOrder.LayoutOrder
+		SidebarList.Parent = Sidebar
+
+		local SidebarPadding = Instance.new("UIPadding")
+		SidebarPadding.PaddingTop = UDim.new(0, 10)
+		SidebarPadding.PaddingLeft = UDim.new(0, 8)
+		SidebarPadding.PaddingRight = UDim.new(0, 8)
+		SidebarPadding.Parent = Sidebar
+
+		-- Content Area
+		local ContentFrame = Instance.new("Frame")
+		ContentFrame.Name = "ContentFrame"
+		ContentFrame.Size = UDim2.new(1, -145, 1, -66)
+		ContentFrame.Position = UDim2.new(0, 145, 0, 42)
+		ContentFrame.BackgroundColor3 = UIColors.Content
+		ContentFrame.BorderSizePixel = 0
+		ContentFrame.Parent = MainFrame
+
+		-- Status Bar (24 px)
+		local StatusBar = Instance.new("Frame")
+		StatusBar.Name = "StatusBar"
+		StatusBar.Size = UDim2.new(1, -145, 0, 24)
+		StatusBar.Position = UDim2.new(0, 145, 1, -24)
+		StatusBar.BackgroundColor3 = UIColors.Sidebar
+		StatusBar.BorderSizePixel = 0
+		StatusBar.Parent = MainFrame
+
+		local StatusText = Instance.new("TextLabel")
+		StatusText.Size = UDim2.new(1, -20, 1, 0)
+		StatusText.Position = UDim2.new(0, 10, 0, 0)
+		StatusText.BackgroundTransparency = 1
+		StatusText.Font = Enum.Font.RobotoMono
+		StatusText.TextSize = 11
+		StatusText.TextColor3 = UIColors.TextSecondary
+		StatusText.TextXAlignment = Enum.TextXAlignment.Left
+		StatusText.Text = "STATUS: ACTIVE | สคริปต์พร้อมทำงาน"
+		StatusText.Parent = StatusBar
+
+		-- Draggable System (Touch & Mouse Compatible)
+		local function MakeDraggable(dragHandle, targetFrame)
+			local dragging = false
+			local dragInput, dragStart, startPos
+
+			dragHandle.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					dragging = true
+					dragStart = input.Position
+					startPos = targetFrame.Position
+
+					input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							dragging = false
+						end
+					end)
+				end
+			end)
+
+			dragHandle.InputChanged:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+					dragInput = input
+				end
+			end)
+
+			UserInputService.InputChanged:Connect(function(input)
+				if input == dragInput and dragging then
+					local delta = input.Position - dragStart
+					targetFrame.Position = UDim2.new(
+						startPos.X.Scale,
+						startPos.X.Offset + delta.X,
+						startPos.Y.Scale,
+						startPos.Y.Offset + delta.Y
+					)
+				end
+			end)
+		end
+
+		MakeDraggable(Header, MainFrame)
+		MakeDraggable(FloatButton, FloatButton)
+
+		-- Window Toggle & Minimize Animation
+		local isWindowOpen = true
+		local function ToggleWindow()
+			isWindowOpen = not isWindowOpen
+			if isWindowOpen then
+				MainFrame.Visible = true
+				TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+					Size = UDim2.new(0, 570, 0, 430)
+				}):Play()
+			else
+				local tw = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
+					Size = UDim2.new(0, 570, 0, 0)
+				})
+				tw:Play()
+				tw.Completed:Connect(function()
+					if not isWindowOpen then MainFrame.Visible = false end
 				end)
 			end
-		end)
-		Core:Connect(UserInputService.InputChanged, function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local d = input.Position - dragStart
-				frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-			end
-		end)
-
-		local function makeButton(text, x, y, w, h, parent)
-			local b = Instance.new("TextButton")
-			b.Size = UDim2.fromOffset(w, h)
-			b.Position = UDim2.fromOffset(x, y)
-			b.BackgroundColor3 = COL_OFF
-			b.BorderSizePixel = 0
-			b.Font = Enum.Font.GothamMedium
-			b.TextSize = 12
-			b.TextColor3 = Color3.new(1, 1, 1)
-			b.Text = text
-			b.Parent = parent or frame
-			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = b
-			return b
 		end
 
-		local function bindClick(btn, callback)
+		FloatButton.MouseButton1Click:Connect(ToggleWindow)
+		CloseBtn.MouseButton1Click:Connect(ToggleWindow)
+
+		-- Tab System
+		local TabPages = {}
+		local TabButtons = {}
+
+		local function CreateTabPage(pageId)
+			local scroll = Instance.new("ScrollingFrame")
+			scroll.Name = "TabContent_" .. pageId
+			scroll.Size = UDim2.new(1, 0, 1, 0)
+			scroll.BackgroundTransparency = 1
+			scroll.BorderSizePixel = 0
+			scroll.ScrollBarThickness = 3
+			scroll.ScrollBarImageColor3 = UIColors.Accent
+			scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+			scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			scroll.Visible = false
+			scroll.Parent = ContentFrame
+
+			local list = Instance.new("UIListLayout")
+			list.Padding = UDim.new(0, 8)
+			list.SortOrder = Enum.SortOrder.LayoutOrder
+			list.Parent = scroll
+
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 12)
+			pad.PaddingLeft = UDim.new(0, 12)
+			pad.PaddingRight = UDim.new(0, 12)
+			pad.PaddingBottom = UDim.new(0, 12)
+			pad.Parent = scroll
+
+			TabPages[pageId] = scroll
+			return scroll
+		end
+
+		local function AddTabButton(tabId, tabName, isDefault, layoutOrder)
+			local btn = Instance.new("TextButton")
+			btn.Name = "TabBtn_" .. tabId
+			btn.Size = UDim2.new(1, 0, 0, 32)
+			btn.BackgroundColor3 = isDefault and UIColors.Accent or UIColors.Card
+			btn.Font = Enum.Font.GothamMedium
+			btn.TextSize = 11
+			btn.TextColor3 = isDefault and UIColors.TextPrimary or UIColors.TextSecondary
+			btn.Text = tabName
+			if layoutOrder then btn.LayoutOrder = layoutOrder end
+			btn.Parent = Sidebar
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = btn
+
+			btn.MouseButton1Click:Connect(function()
+				for id, page in pairs(TabPages) do page.Visible = (id == tabId) end
+				for id, b in pairs(TabButtons) do
+					local active = (id == tabId)
+					b.BackgroundColor3 = active and UIColors.Accent or UIColors.Card
+					b.TextColor3 = active and UIColors.TextPrimary or UIColors.TextSecondary
+				end
+				if tabId == "LogsTab" and Core._updateLogUI then
+					pcall(Core._updateLogUI)
+				end
+			end)
+
+			TabButtons[tabId] = btn
+			return btn
+		end
+
+		-- UI Component Constructors
+		local function CreateToggle(parent, title, initialValue, callback)
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, 40)
+			card.BackgroundColor3 = UIColors.Card
+			card.Parent = parent
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = card
+
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, -70, 1, 0)
+			label.Position = UDim2.new(0, 12, 0, 0)
+			label.BackgroundTransparency = 1
+			label.Font = Enum.Font.GothamMedium
+			label.TextSize = 12
+			label.TextColor3 = UIColors.TextPrimary
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Text = title
+			label.Parent = card
+
+			local toggleTrack = Instance.new("TextButton")
+			toggleTrack.Size = UDim2.new(0, 44, 0, 22)
+			toggleTrack.Position = UDim2.new(1, -54, 0.5, -11)
+			toggleTrack.BackgroundColor3 = initialValue and UIColors.Accent or UIColors.Sidebar
+			toggleTrack.Text = ""
+			toggleTrack.Parent = card
+
+			local trackCorner = Instance.new("UICorner")
+			trackCorner.CornerRadius = UDim.new(1, 0)
+			trackCorner.Parent = toggleTrack
+
+			local knob = Instance.new("Frame")
+			knob.Size = UDim2.new(0, 16, 0, 16)
+			knob.Position = initialValue and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+			knob.BackgroundColor3 = UIColors.TextPrimary
+			knob.Parent = toggleTrack
+
+			local knobCorner = Instance.new("UICorner")
+			knobCorner.CornerRadius = UDim.new(1, 0)
+			knobCorner.Parent = knob
+
+			local state = initialValue
 			local lastClick = 0
-			local function fire()
+			local function onToggle()
 				local now = tick()
 				if now - lastClick < 0.25 then return end
 				lastClick = now
-				callback()
+				state = not state
+				local targetPos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+				local targetColor = state and UIColors.Accent or UIColors.Sidebar
+				TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
+				TweenService:Create(toggleTrack, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
+				logAction("สวิตช์", (state and "เปิด: " or "ปิด: ") .. title, state)
+				if callback then callback(state) end
+				if Config and Config.Save then Config.Save() end
 			end
-			btn.MouseButton1Click:Connect(fire)
+
+			toggleTrack.MouseButton1Click:Connect(onToggle)
 			pcall(function()
-				if btn.Activated then
-					btn.Activated:Connect(fire)
-				end
+				if toggleTrack.Activated then toggleTrack.Activated:Connect(onToggle) end
 			end)
 		end
 
-		local function addToggle(text, flag, x, y, w, h, onChange, onOff, parent)
-			local b = makeButton(text, x, y, w, h, parent)
-			local function paint()
-				b.BackgroundColor3 = Core.Flags[flag] and COL_ON or COL_OFF
+		local function CreateButton(parent, text, bgColor, callback)
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, 0, 0, 34)
+			btn.BackgroundColor3 = bgColor or UIColors.Card
+			btn.Font = Enum.Font.GothamBold
+			btn.TextSize = 12
+			btn.TextColor3 = UIColors.TextPrimary
+			btn.Text = text
+			btn.Parent = parent
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = btn
+
+			local lastClick = 0
+			local function onClick()
+				local now = tick()
+				if now - lastClick < 0.25 then return end
+				lastClick = now
+				if callback then callback() end
 			end
-			local function onTrigger()
-				Core.Flags[flag] = not Core.Flags[flag]
-				paint()
-				logAction("สวิตช์", (Core.Flags[flag] and "เปิด: " or "ปิด: ") .. text, Core.Flags[flag])
-				local okSave, saveSrc = Config.Save()
-				if not okSave then
-					warn("[Kuy] Config.Save failed: " .. tostring(saveSrc))
+
+			btn.MouseButton1Click:Connect(onClick)
+			pcall(function()
+				if btn.Activated then btn.Activated:Connect(onClick) end
+			end)
+			return btn
+		end
+
+		local function CreateStatusCard(parent, titleText)
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, 36)
+			card.BackgroundColor3 = UIColors.Sidebar
+			card.Parent = parent
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = card
+
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, -20, 1, 0)
+			label.Position = UDim2.new(0, 10, 0, 0)
+			label.BackgroundTransparency = 1
+			label.Font = Enum.Font.RobotoMono
+			label.TextSize = 11
+			label.TextColor3 = UIColors.TextPrimary
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Text = titleText
+			label.Parent = card
+
+			return label
+		end
+
+		local function CreateDropdown(parent, title, options, defaultOption, callback)
+			local isExpanded = false
+			local currentSelected = defaultOption or options[1]
+
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, 42)
+			card.BackgroundColor3 = UIColors.Card
+			card.ClipsDescendants = true
+			card.Parent = parent
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = card
+
+			local header = Instance.new("Frame")
+			header.Size = UDim2.new(1, 0, 0, 42)
+			header.BackgroundTransparency = 1
+			header.Parent = card
+
+			local titleLabel = Instance.new("TextLabel")
+			titleLabel.Size = UDim2.new(0.48, -10, 1, 0)
+			titleLabel.Position = UDim2.new(0, 12, 0, 0)
+			titleLabel.BackgroundTransparency = 1
+			titleLabel.Font = Enum.Font.GothamMedium
+			titleLabel.TextSize = 12
+			titleLabel.TextColor3 = UIColors.TextPrimary
+			titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+			titleLabel.Text = title
+			titleLabel.Parent = header
+
+			local selectBtn = Instance.new("TextButton")
+			selectBtn.Size = UDim2.new(0.52, -12, 0, 28)
+			selectBtn.Position = UDim2.new(0.48, 0, 0.5, -14)
+			selectBtn.BackgroundColor3 = UIColors.Sidebar
+			selectBtn.Font = Enum.Font.GothamMedium
+			selectBtn.TextSize = 11
+			selectBtn.TextColor3 = UIColors.AccentLight
+			selectBtn.Text = tostring(currentSelected) .. " ▼"
+			selectBtn.Parent = header
+
+			local selectCorner = Instance.new("UICorner")
+			selectCorner.CornerRadius = UDim.new(0, 4)
+			selectCorner.Parent = selectBtn
+
+			local optionsList = Instance.new("Frame")
+			optionsList.Size = UDim2.new(1, -24, 0, #options * 30 + 4)
+			optionsList.Position = UDim2.new(0, 12, 0, 44)
+			optionsList.BackgroundTransparency = 1
+			optionsList.Visible = false
+			optionsList.Parent = card
+
+			local listLayout = Instance.new("UIListLayout")
+			listLayout.Padding = UDim.new(0, 4)
+			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			listLayout.Parent = optionsList
+
+			local function ToggleExpand(state)
+				isExpanded = (state ~= nil) and state or (not isExpanded)
+				optionsList.Visible = isExpanded
+				selectBtn.Text = tostring(currentSelected) .. (isExpanded and " ▲" or " ▼")
+				if isExpanded then
+					card.Size = UDim2.new(1, 0, 0, 46 + #options * 32)
+				else
+					card.Size = UDim2.new(1, 0, 0, 42)
 				end
-				if onChange and Core.Flags[flag] then onChange() end
-				if onOff and not Core.Flags[flag] then onOff() end
 			end
-			bindClick(b, onTrigger)
-			paint()
-			if Core.Flags[flag] and onChange then
-				task.spawn(onChange)
+
+			selectBtn.MouseButton1Click:Connect(function()
+				ToggleExpand()
+			end)
+
+			for i, opt in ipairs(options) do
+				local optBtn = Instance.new("TextButton")
+				optBtn.Name = "Opt_" .. tostring(i)
+				optBtn.Size = UDim2.new(1, 0, 0, 28)
+				optBtn.BackgroundColor3 = (opt == currentSelected) and UIColors.Accent or UIColors.Sidebar
+				optBtn.Font = Enum.Font.GothamMedium
+				optBtn.TextSize = 11
+				optBtn.TextColor3 = UIColors.TextPrimary
+				optBtn.Text = opt
+				optBtn.Parent = optionsList
+
+				local optCorner = Instance.new("UICorner")
+				optCorner.CornerRadius = UDim.new(0, 4)
+				optCorner.Parent = optBtn
+
+				optBtn.MouseButton1Click:Connect(function()
+					currentSelected = opt
+					selectBtn.Text = tostring(currentSelected) .. " ▼"
+					ToggleExpand(false)
+					for _, child in ipairs(optionsList:GetChildren()) do
+						if child:IsA("TextButton") then
+							child.BackgroundColor3 = (child.Text == currentSelected) and UIColors.Accent or UIColors.Sidebar
+						end
+					end
+					if callback then callback(opt) end
+					if Config and Config.Save then Config.Save() end
+				end)
 			end
-			return b
+
+			return card
 		end
 
-		local function makePage()
-			local p = Instance.new("Frame")
-			p.Position = UDim2.fromOffset(0, 60)
-			p.Size = UDim2.new(1, 0, 0, 314)
-			p.BackgroundTransparency = 1
-			p.Visible = false
-			p.Parent = frame
-			return p
-		end
+		local function CreateMultiSelectDropdown(parent, title, options, selectedMap, callback)
+			local isExpanded = false
+			selectedMap = selectedMap or {}
 
-		local pageFarm = makePage()
-		local pagePack = makePage()
-		local pageUpg = makePage()
-		local pageLog = makePage()
-		local pages = { pageFarm, pagePack, pageUpg, pageLog }
-		local tabBtns = {}
+			local card = Instance.new("Frame")
+			card.Size = UDim2.new(1, 0, 0, 42)
+			card.BackgroundColor3 = UIColors.Card
+			card.ClipsDescendants = true
+			card.Parent = parent
 
-		local renderLogs = nil
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = card
 
-		local function selectTab(idx)
-			for i, p in ipairs(pages) do
-				p.Visible = (i == idx)
-				tabBtns[i].BackgroundColor3 = (i == idx) and COL_TAB or COL_OFF
+			local header = Instance.new("Frame")
+			header.Size = UDim2.new(1, 0, 0, 42)
+			header.BackgroundTransparency = 1
+			header.Parent = card
+
+			local titleLabel = Instance.new("TextLabel")
+			titleLabel.Size = UDim2.new(0.48, -12, 1, 0)
+			titleLabel.Position = UDim2.new(0, 12, 0, 0)
+			titleLabel.BackgroundTransparency = 1
+			titleLabel.Font = Enum.Font.GothamMedium
+			titleLabel.TextSize = 12
+			titleLabel.TextColor3 = UIColors.TextPrimary
+			titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+			titleLabel.Text = title
+			titleLabel.Parent = header
+
+			local selectBtn = Instance.new("TextButton")
+			selectBtn.Size = UDim2.new(0.52, -12, 0, 28)
+			selectBtn.Position = UDim2.new(0.48, 0, 0.5, -14)
+			selectBtn.BackgroundColor3 = UIColors.Sidebar
+			selectBtn.Font = Enum.Font.GothamMedium
+			selectBtn.TextSize = 11
+			selectBtn.TextColor3 = UIColors.AccentLight
+			selectBtn.Parent = header
+
+			local selectCorner = Instance.new("UICorner")
+			selectCorner.CornerRadius = UDim.new(0, 4)
+			selectCorner.Parent = selectBtn
+
+			local optionsContainer = Instance.new("Frame")
+			optionsContainer.Position = UDim2.new(0, 12, 0, 44)
+			optionsContainer.Size = UDim2.new(1, -24, 0, 0)
+			optionsContainer.BackgroundTransparency = 1
+			optionsContainer.Visible = false
+			optionsContainer.Parent = card
+
+			local listLayout = Instance.new("UIListLayout")
+			listLayout.Padding = UDim.new(0, 4)
+			listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			listLayout.Parent = optionsContainer
+
+			local quickBar = Instance.new("Frame")
+			quickBar.Name = "00_QuickBar"
+			quickBar.LayoutOrder = 0
+			quickBar.Size = UDim2.new(1, 0, 0, 26)
+			quickBar.BackgroundTransparency = 1
+			quickBar.Parent = optionsContainer
+
+			local quickBarLayout = Instance.new("UIListLayout")
+			quickBarLayout.FillDirection = Enum.FillDirection.Horizontal
+			quickBarLayout.Padding = UDim.new(0, 6)
+			quickBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			quickBarLayout.Parent = quickBar
+
+			local optionButtons = {}
+
+			local function GetSummaryText()
+				local total = #options
+				local count = 0
+				for _, opt in ipairs(options) do
+					if selectedMap[opt.value] then
+						count = count + 1
+					end
+				end
+				if count == total then
+					return "เลือกทั้งหมด (" .. tostring(total) .. "/" .. tostring(total) .. ")"
+				elseif count == 0 then
+					return "ไม่ได้เลือก (0/" .. tostring(total) .. ")"
+				elseif count <= 3 then
+					local names = {}
+					for _, opt in ipairs(options) do
+						if selectedMap[opt.value] then
+							table.insert(names, opt.short or tostring(opt.value))
+						end
+					end
+					return table.concat(names, ", ") .. " (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+				else
+					return "เลือก " .. tostring(count) .. " รายการ (" .. tostring(count) .. "/" .. tostring(total) .. ")"
+				end
 			end
-			if idx == 4 and renderLogs then
-				renderLogs()
+
+			local function RefreshUI()
+				selectBtn.Text = GetSummaryText() .. (isExpanded and " ▲" or " ▼")
+				for _, item in ipairs(optionButtons) do
+					local isChecked = (selectedMap[item.value] == true)
+					item.btn.BackgroundColor3 = isChecked and Color3.fromRGB(48, 38, 72) or UIColors.Sidebar
+					item.btn.TextColor3 = isChecked and UIColors.TextPrimary or UIColors.TextSecondary
+					item.btn.Text = (isChecked and " [✓]  " or " [  ]  ") .. item.label
+				end
 			end
-		end
 
-		local tabSpecs = {
-			{ text = "ฟาร์ม", x = 8, w = 58 },
-			{ text = "แพ็ก/ขาย", x = 70, w = 62 },
-			{ text = "อัปเกรด", x = 136, w = 56 },
-			{ text = "บันทึก", x = 196, w = 56 },
-		}
-		for i, spec in ipairs(tabSpecs) do
-			local tb = makeButton(spec.text, spec.x, 32, spec.w, 24, frame)
-			bindClick(tb, function() selectTab(i) end)
-			tabBtns[i] = tb
-		end
+			local function CreateQuickBtn(text, color, onClick)
+				local btn = Instance.new("TextButton")
+				btn.Size = UDim2.new(0.31, 0, 1, 0)
+				btn.BackgroundColor3 = color
+				btn.Font = Enum.Font.GothamBold
+				btn.TextSize = 10
+				btn.TextColor3 = UIColors.TextPrimary
+				btn.Text = text
+				btn.Parent = quickBar
 
-		-- Tab 1: ฟาร์ม
-		addToggle("กดคูณอัตโนมัติ (คอมโบ)", "AutoTreadmill", 10, 0, 240, 28, function()
-			task.spawn(function()
-				if tryClickBoostPopup() then
-					Stats.boosts = Stats.boosts + 1
-					logAction("ลู่วิ่ง", "กดคูณสำเร็จ", true)
+				local btnCorner = Instance.new("UICorner")
+				btnCorner.CornerRadius = UDim.new(0, 4)
+				btnCorner.Parent = btn
+
+				btn.MouseButton1Click:Connect(function()
+					onClick()
+					RefreshUI()
+					if callback then callback(selectedMap) end
+					if Config and Config.Save then Config.Save() end
+				end)
+				return btn
+			end
+
+			CreateQuickBtn("✓ ทั้งหมด", UIColors.Accent, function()
+				for _, opt in ipairs(options) do
+					selectedMap[opt.value] = true
 				end
 			end)
-		end, nil, pageFarm)
-		addToggle("เข้าลู่วิ่งอัตโนมัติ", "AutoEnter", 10, 32, 240, 28, startEnterLoop, nil, pageFarm)
-		addToggle("ขโมยแพ็คอัตโนมัติ", "AutoSteal", 10, 64, 240, 28, startStealLoop, nil, pageFarm)
-		addToggle("ความเร็วสูงสุด 340 (เพดานเกม)", "MaxSpeedMode", 10, 96, 240, 26, nil, nil, pageFarm)
-		addToggle("โหมดอ้อมขอบนอก (หลบบอส)", "SideBypassMode", 10, 126, 240, 26, function()
-			syncSideLane(true)
-		end, function()
-			syncSideLane(false)
-		end, pageFarm)
-		addToggle("ลบอนิเมชชั่นตี/ไม่ล้ม", "AntiRagdollMode", 10, 156, 240, 26, function()
-			Helpers.RecoverFromHit(LocalPlayer.Character)
-		end, nil, pageFarm)
 
-		local lbl = Instance.new("TextLabel")
-		lbl.Position = UDim2.fromOffset(10, 188)
-		lbl.Size = UDim2.fromOffset(240, 18)
-		lbl.BackgroundTransparency = 1
-		lbl.Font = Enum.Font.Gotham
-		lbl.TextSize = 12
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.TextColor3 = Color3.fromRGB(200, 200, 210)
-		lbl.Text = "ด่านที่ขโมย (กดเปิด/ปิด):"
-		lbl.Parent = pageFarm
+			CreateQuickBtn("✕ ล้างหมด", UIColors.Danger, function()
+				for _, opt in ipairs(options) do
+					selectedMap[opt.value] = false
+				end
+			end)
 
+			CreateQuickBtn("⇄ สลับค่า", UIColors.Warning, function()
+				for _, opt in ipairs(options) do
+					selectedMap[opt.value] = not (selectedMap[opt.value] == true)
+				end
+			end)
+
+			for i, opt in ipairs(options) do
+				local optBtn = Instance.new("TextButton")
+				optBtn.Name = "Opt_" .. string.format("%02d", i)
+				optBtn.LayoutOrder = i
+				optBtn.Size = UDim2.new(1, 0, 0, 26)
+				optBtn.BackgroundColor3 = (selectedMap[opt.value] == true) and Color3.fromRGB(48, 38, 72) or UIColors.Sidebar
+				optBtn.Font = Enum.Font.GothamMedium
+				optBtn.TextSize = 11
+				optBtn.TextColor3 = (selectedMap[opt.value] == true) and UIColors.TextPrimary or UIColors.TextSecondary
+				optBtn.TextXAlignment = Enum.TextXAlignment.Left
+				optBtn.Text = ((selectedMap[opt.value] == true) and " [✓]  " or " [  ]  ") .. opt.label
+				optBtn.Parent = optionsContainer
+
+				local optCorner = Instance.new("UICorner")
+				optCorner.CornerRadius = UDim.new(0, 4)
+				optCorner.Parent = optBtn
+
+				local optPad = Instance.new("UIPadding")
+				optPad.PaddingLeft = UDim.new(0, 8)
+				optPad.Parent = optBtn
+
+				optBtn.MouseButton1Click:Connect(function()
+					selectedMap[opt.value] = not (selectedMap[opt.value] == true)
+					RefreshUI()
+					if callback then callback(selectedMap) end
+					if Config and Config.Save then Config.Save() end
+				end)
+
+				table.insert(optionButtons, { btn = optBtn, value = opt.value, label = opt.label })
+			end
+
+			local totalContentHeight = 26 + 4 + (#options * 30) + 12
+
+			local function ToggleExpand(state)
+				isExpanded = (state ~= nil) and state or (not isExpanded)
+				optionsContainer.Visible = isExpanded
+				RefreshUI()
+				if isExpanded then
+					card.Size = UDim2.new(1, 0, 0, 48 + totalContentHeight)
+				else
+					card.Size = UDim2.new(1, 0, 0, 42)
+				end
+			end
+
+			selectBtn.MouseButton1Click:Connect(function()
+				ToggleExpand()
+			end)
+
+			RefreshUI()
+			return card
+		end
+
+		-- =====================================================================
+		-- TAB 1: 🏃 1. ฟาร์ม & ขโมย (Farm & Steal)
+		-- =====================================================================
+		AddTabButton("FarmTab", "🏃 1. ฟาร์ม & ขโมย", true, 1)
+		local pFarm = CreateTabPage("FarmTab")
+		pFarm.Visible = true
+
+		local TreadmillStatusCard = CreateStatusCard(pFarm, "ลู่วิ่ง: กำลังโหลดสถานะ...")
+
+		CreateToggle(pFarm, "กดคูณอัตโนมัติ (ทำคอมโบลู่วิ่ง)", Core.Flags.AutoTreadmill, function(v)
+			Core.Flags.AutoTreadmill = v
+			if v then
+				task.spawn(function()
+					if tryClickBoostPopup() then
+						Stats.boosts = Stats.boosts + 1
+						logAction("ลู่วิ่ง", "กดคูณสำเร็จ", true)
+					end
+				end)
+			end
+		end)
+
+		CreateToggle(pFarm, "เดินเข้าลู่วิ่งอัตโนมัติ (Auto Treadmill)", Core.Flags.AutoEnter, function(v)
+			Core.Flags.AutoEnter = v
+			if v then startEnterLoop() end
+		end)
+
+		CreateToggle(pFarm, "ขโมยแพ็คอัตโนมัติ (Auto Steal Packs)", Core.Flags.AutoSteal, function(v)
+			Core.Flags.AutoSteal = v
+			if v then startStealLoop() end
+		end)
+
+		CreateToggle(pFarm, "ความเร็วสูงสุด 340 (เพดานเกม)", Core.Flags.MaxSpeedMode, function(v)
+			Core.Flags.MaxSpeedMode = v
+		end)
+
+		CreateToggle(pFarm, "โหมดอ้อมขอบนอก (หลบบอส / Side Bypass)", Core.Flags.SideBypassMode, function(v)
+			Core.Flags.SideBypassMode = v
+			syncSideLane(v)
+		end)
+
+		CreateToggle(pFarm, "ลบอนิเมชชั่นโดนตี/ไม่ล้ม (Anti-Ragdoll)", Core.Flags.AntiRagdollMode, function(v)
+			Core.Flags.AntiRagdollMode = v
+			if v then Helpers.RecoverFromHit(LocalPlayer.Character) end
+		end)
+
+		-- Stage Multi-Select Dropdown
+		local stageOptions = {}
 		for i = 1, 12 do
-			local col = (i - 1) % 4
-			local row = math.floor((i - 1) / 4)
-			addToggle(tostring(i), "Stage" .. i, 10 + col * 61, 208 + row * 30, 56, 26, nil, nil, pageFarm)
+			table.insert(stageOptions, {
+				value = "Stage" .. i,
+				label = string.format("ด่านที่ %d (Stage %d)", i, i),
+				short = tostring(i),
+			})
 		end
+		CreateMultiSelectDropdown(pFarm, "ด่านที่ต้องการขโมย (Stages)", stageOptions, Core.Flags, function()
+			-- Core.Flags updated in-place by selectedMap
+		end)
 
-		-- Tab 2: แพ็ก/ขาย
-		addToggle("เปิดแพ็กในกระเป๋า (Auto)", "AutoOpenPacks", 10, 0, 240, 28, startAutoOpenPacksLoop, nil, pagePack)
-		addToggle("วางตัวดีสุดลงฐาน (EquipBest)", "AutoEquipBest", 10, 32, 240, 28, startAutoEquipBestLoop, nil, pagePack)
-		addToggle("ขายยูนิตอัตโนมัติ (AutoSell)", "AutoSellUnits", 10, 64, 240, 28, startAutoSellLoop, nil, pagePack)
+		-- =====================================================================
+		-- TAB 2: 📦 2. แพ็ก & ยูนิต (Packs & Units)
+		-- =====================================================================
+		AddTabButton("PackTab", "📦 2. แพ็ก & ยูนิต", false, 2)
+		local pPack = CreateTabPage("PackTab")
+
+		local PackStatusCard = CreateStatusCard(pPack, "แพ็ก & ยูนิต: กำลังสแกนข้อมูล...")
+
+		CreateToggle(pPack, "เปิดแพ็กในกระเป๋าอัตโนมัติ (Auto Open)", Core.Flags.AutoOpenPacks, function(v)
+			Core.Flags.AutoOpenPacks = v
+			if v then startAutoOpenPacksLoop() end
+		end)
+
+		CreateToggle(pPack, "วางตัวดีสุดลงฐานอัตโนมัติ (EquipBest)", Core.Flags.AutoEquipBest, function(v)
+			Core.Flags.AutoEquipBest = v
+			if v then startAutoEquipBestLoop() end
+		end)
+
+		CreateToggle(pPack, "รวมแพ็กซ้ำ 2 ชิ้น (Auto Merge Packs)", Core.Flags.AutoMerge, function(v)
+			Core.Flags.AutoMerge = v
+			if v then startAutoMergeLoop() end
+		end)
+
+		CreateToggle(pPack, "กลายพันธุ์ยูนิต 3 ตัว (Auto Fuse Units)", Core.Flags.AutoFuse, function(v)
+			Core.Flags.AutoFuse = v
+			if v then startAutoFuseLoop() end
+		end)
+
+		CreateToggle(pPack, "ขายยูนิตอัตโนมัติ (Auto Sell Units)", Core.Flags.AutoSellUnits, function(v)
+			Core.Flags.AutoSellUnits = v
+			if v then startAutoSellLoop() end
+		end)
+
+		CreateToggle(pPack, "เก็บตัวกลายพันธุ์ (Keep Mutated - ไม่ขาย)", Core.Flags.KeepMutated, function(v)
+			Core.Flags.KeepMutated = v
+		end)
 
 		local RARITY_NAMES = {
 			[3] = "Rare (3)",
@@ -2971,90 +3609,116 @@ local function main()
 			[7] = "Cosmic (7)",
 			[8] = "Divine (8)",
 		}
-		local rarityCycle = { 3, 4, 5, 6, 7, 8 }
-		local rarityBtn = makeButton("", 10, 96, 240, 26, pagePack)
-		rarityBtn.BackgroundColor3 = Color3.fromRGB(68, 68, 86)
-		local function paintRarityBtn()
-			local cur = Core.Flags.SellBelowRarity or 6
-			rarityBtn.Text = "ขายต่ำกว่า: " .. (RARITY_NAMES[cur] or tostring(cur))
-		end
-		bindClick(rarityBtn, function()
-			local cur = Core.Flags.SellBelowRarity or 6
-			local idx = 1
-			for i, v in ipairs(rarityCycle) do
-				if v == cur then idx = i break end
-			end
-			Core.Flags.SellBelowRarity = rarityCycle[(idx % #rarityCycle) + 1]
-			paintRarityBtn()
-			logAction("ตั้งค่า", "ตั้งเกณฑ์ขายต่ำกว่า " .. tostring(RARITY_NAMES[Core.Flags.SellBelowRarity]))
-			Config.Save()
-		end)
-		paintRarityBtn()
+		local rarityOptions = { "Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)", "Cosmic (7)", "Divine (8)" }
+		local curRarityVal = Core.Flags.SellBelowRarity or 6
+		local curRarityText = RARITY_NAMES[curRarityVal] or "Mythical (6)"
 
-		addToggle("เก็บตัวกลายพันธุ์ (ไม่ขาย)", "KeepMutated", 10, 126, 240, 26, nil, nil, pagePack)
-		addToggle("รวมแพ็กซ้ำ 2 ชิ้น (Merge)", "AutoMerge", 10, 158, 240, 28, startAutoMergeLoop, nil, pagePack)
-		addToggle("กลายพันธุ์ยูนิต 3 ตัว (Fuse)", "AutoFuse", 10, 190, 240, 28, startAutoFuseLoop, nil, pagePack)
-
-		-- Tab 3: อัปเกรด & เคลม
-		addToggle("ซื้อโค้ช (Auto)", "AutoBuyCoach", 10, 0, 116, 28, startAutoBuyCoachLoop, nil, pageUpg)
-		addToggle("ใส่โค้ชดีสุด", "AutoEquipCoach", 134, 0, 116, 28, startAutoEquipCoachLoop, nil, pageUpg)
-		addToggle("ซื้อออร่า (Auto)", "AutoBuyAura", 10, 32, 116, 28, startAutoBuyAuraLoop, nil, pageUpg)
-		addToggle("ใส่ออร่าดีสุด", "AutoEquipAura", 134, 32, 116, 28, startAutoEquipAuraLoop, nil, pageUpg)
-		addToggle("อัปเกรดลู่วิ่ง (Auto)", "AutoUpgradeTreadmill", 10, 66, 240, 28, startAutoUpgradeTreadmillLoop, nil, pageUpg)
-		addToggle("อัปเกรดฐาน (Auto)", "AutoUpgradeBase", 10, 98, 240, 28, startAutoUpgradeBaseLoop, nil, pageUpg)
-		addToggle("เกิดใหม่อัตโนมัติ (Rebirth)", "AutoRebirth", 10, 130, 240, 28, startAutoRebirthLoop, nil, pageUpg)
-		addToggle("เคลม Offline/Daily/Index", "AutoClaim", 10, 162, 240, 28, startAutoClaimLoop, nil, pageUpg)
-		addToggle("กันเตะ AFK (Anti-AFK)", "AntiAfk", 10, 194, 240, 28, nil, nil, pageUpg)
-
-		-- Tab 4: บันทึกการใช้งาน (Action Logs)
-		local logHead = Instance.new("TextLabel")
-		logHead.Position = UDim2.fromOffset(8, 0)
-		logHead.Size = UDim2.fromOffset(86, 24)
-		logHead.BackgroundTransparency = 1
-		logHead.Font = Enum.Font.GothamBold
-		logHead.TextSize = 12
-		logHead.TextXAlignment = Enum.TextXAlignment.Left
-		logHead.TextColor3 = Color3.fromRGB(220, 220, 230)
-		logHead.Text = "ประวัติ (Logs):"
-		logHead.Parent = pageLog
-
-		local saveCfgBtn = makeButton("บันทึกค่า", 98, 0, 72, 24, pageLog)
-		saveCfgBtn.BackgroundColor3 = Color3.fromRGB(45, 95, 140)
-		bindClick(saveCfgBtn, function()
-			local ok, src = Config.Save()
-			if ok then
-				logAction("ตั้งค่า", "บันทึกฟังก์ชันสำเร็จ (" .. (src == "disk" and "ลงไฟล์" or "ลงแคช") .. ")", true)
-			else
-				logAction("ตั้งค่า", "บันทึกไม่สำเร็จ: " .. tostring(src), false)
+		CreateDropdown(pPack, "ขายต่ำกว่าระดับ:", rarityOptions, curRarityText, function(selected)
+			for val, name in pairs(RARITY_NAMES) do
+				if name == selected then
+					Core.Flags.SellBelowRarity = val
+					logAction("ตั้งค่า", "ตั้งเกณฑ์ขายต่ำกว่า " .. tostring(selected))
+					break
+				end
 			end
 		end)
 
-		local clearLogBtn = makeButton("ล้างประวัติ", 174, 0, 78, 24, pageLog)
-		clearLogBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 50)
-		bindClick(clearLogBtn, function()
+		-- =====================================================================
+		-- TAB 3: ⚡ 3. อัปเกรด & เกิดใหม่ (Upgrades & Rebirth)
+		-- =====================================================================
+		AddTabButton("UpgTab", "⚡ 3. อัปเกรด", false, 3)
+		local pUpg = CreateTabPage("UpgTab")
+
+		CreateStatusCard(pUpg, "⚡ ระบบอัปเกรดโค้ช, ออร่า, ลู่วิ่ง, ฐาน และเกิดใหม่อัตโนมัติ")
+
+		CreateToggle(pUpg, "ซื้อโค้ชที่ดีกว่าอัตโนมัติ (Auto Buy Coach)", Core.Flags.AutoBuyCoach, function(v)
+			Core.Flags.AutoBuyCoach = v
+			if v then startAutoBuyCoachLoop() end
+		end)
+
+		CreateToggle(pUpg, "สวมใส่โค้ชตัวคูณสูงสุด (Equip Best Coach)", Core.Flags.AutoEquipCoach, function(v)
+			Core.Flags.AutoEquipCoach = v
+			if v then startAutoEquipCoachLoop() end
+		end)
+
+		CreateToggle(pUpg, "ซื้อออร่าที่ดีกว่าอัตโนมัติ (Auto Buy Aura)", Core.Flags.AutoBuyAura, function(v)
+			Core.Flags.AutoBuyAura = v
+			if v then startAutoBuyAuraLoop() end
+		end)
+
+		CreateToggle(pUpg, "สวมใส่ออร่าตัวคูณสูงสุด (Equip Best Aura)", Core.Flags.AutoEquipAura, function(v)
+			Core.Flags.AutoEquipAura = v
+			if v then startAutoEquipAuraLoop() end
+		end)
+
+		CreateToggle(pUpg, "อัปเกรดลู่วิ่งอัตโนมัติ (Upgrade Treadmill)", Core.Flags.AutoUpgradeTreadmill, function(v)
+			Core.Flags.AutoUpgradeTreadmill = v
+			if v then startAutoUpgradeTreadmillLoop() end
+		end)
+
+		CreateToggle(pUpg, "อัปเกรดฐานอัตโนมัติ (Upgrade Base)", Core.Flags.AutoUpgradeBase, function(v)
+			Core.Flags.AutoUpgradeBase = v
+			if v then startAutoUpgradeBaseLoop() end
+		end)
+
+		CreateToggle(pUpg, "เกิดใหม่อัตโนมัติเมื่อครบเกณฑ์ (Auto Rebirth)", Core.Flags.AutoRebirth, function(v)
+			Core.Flags.AutoRebirth = v
+			if v then startAutoRebirthLoop() end
+		end)
+
+		CreateToggle(pUpg, "เคลม Offline / Daily / Index อัตโนมัติ", Core.Flags.AutoClaim, function(v)
+			Core.Flags.AutoClaim = v
+			if v then startAutoClaimLoop() end
+		end)
+
+		CreateToggle(pUpg, "ระบบกันเตะ AFK (Anti-AFK 20 นาที)", Core.Flags.AntiAfk, function(v)
+			Core.Flags.AntiAfk = v
+		end)
+
+		-- =====================================================================
+		-- TAB 4: 📜 4. ประวัติ & ตั้งค่า (Logs & Config)
+		-- =====================================================================
+		AddTabButton("LogsTab", "📜 4. ประวัติ & ตั้งค่า", false, 4)
+		local pLog = CreateTabPage("LogsTab")
+
+		CreateButton(pLog, "💾 บันทึกค่าการใช้งาน (Save Config Now)", UIColors.Accent, function()
+			if Config and Config.Save then
+				local ok, src = Config.Save()
+				if ok then
+					logAction("ตั้งค่า", "บันทึกฟังก์ชันสำเร็จ (" .. (src == "disk" and "ลงไฟล์" or "ลงแคช") .. ")", true)
+				else
+					logAction("ตั้งค่า", "บันทึกไม่สำเร็จ: " .. tostring(src), false)
+				end
+			end
+		end)
+
+		CreateButton(pLog, "🗑️ ล้างประวัติการทำงาน (Clear Logs)", UIColors.Card, function()
 			table.clear(Stats.logs)
-			if renderLogs then renderLogs() end
+			if Core._updateLogUI then pcall(Core._updateLogUI) end
+		end)
+
+		CreateButton(pLog, "🛑 ปิดสคริปต์ (Kill Switch / Unload)", UIColors.Danger, function()
+			Core:Destroy()
 		end)
 
 		local logScroll = Instance.new("ScrollingFrame")
-		logScroll.Position = UDim2.fromOffset(8, 28)
-		logScroll.Size = UDim2.fromOffset(244, 282)
-		logScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+		logScroll.Name = "LogsScroll"
+		logScroll.Size = UDim2.new(1, 0, 0, 240)
+		logScroll.BackgroundColor3 = UIColors.Sidebar
 		logScroll.BorderSizePixel = 0
-		logScroll.ScrollBarThickness = 4
-		logScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 110)
+		logScroll.ScrollBarThickness = 3
+		logScroll.ScrollBarImageColor3 = UIColors.Border
 		logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-		logScroll.Parent = pageLog
+		logScroll.Parent = pLog
+
 		local lsc = Instance.new("UICorner"); lsc.CornerRadius = UDim.new(0, 6); lsc.Parent = logScroll
-		local lsp = Instance.new("UIPadding"); lsp.PaddingTop = UDim.new(0, 4); lsp.PaddingBottom = UDim.new(0, 4); lsp.PaddingLeft = UDim.new(0, 6); lsp.PaddingRight = UDim.new(0, 6); lsp.Parent = logScroll
+		local lsp = Instance.new("UIPadding"); lsp.PaddingTop = UDim.new(0, 6); lsp.PaddingBottom = UDim.new(0, 6); lsp.PaddingLeft = UDim.new(0, 8); lsp.PaddingRight = UDim.new(0, 8); lsp.Parent = logScroll
 		local lsl = Instance.new("UIListLayout"); lsl.SortOrder = Enum.SortOrder.LayoutOrder; lsl.Padding = UDim.new(0, 3); lsl.Parent = logScroll
 
-		renderLogs = function()
+		local function renderLogs()
 			for _, ch in ipairs(logScroll:GetChildren()) do
-				if ch:IsA("TextLabel") then
-					ch:Destroy()
-				end
+				if ch:IsA("TextLabel") then ch:Destroy() end
 			end
 			if #Stats.logs == 0 then
 				local empty = Instance.new("TextLabel")
@@ -3062,7 +3726,7 @@ local function main()
 				empty.BackgroundTransparency = 1
 				empty.Font = Enum.Font.Gotham
 				empty.TextSize = 11
-				empty.TextColor3 = Color3.fromRGB(130, 130, 145)
+				empty.TextColor3 = UIColors.TextSecondary
 				empty.Text = "(ยังไม่มีบันทึกการทำงาน)"
 				empty.Parent = logScroll
 				return
@@ -3077,11 +3741,11 @@ local function main()
 				row.TextWrapped = true
 				row.TextXAlignment = Enum.TextXAlignment.Left
 				row.LayoutOrder = idx
-				local color = Color3.fromRGB(200, 225, 255)
+				local color = UIColors.TextPrimary
 				if item.ok == true then
-					color = Color3.fromRGB(110, 240, 130)
+					color = UIColors.Success
 				elseif item.ok == false then
-					color = Color3.fromRGB(255, 115, 115)
+					color = UIColors.Danger
 				end
 				row.TextColor3 = color
 				row.Text = string.format("[%s] [%s] %s", item.time, item.cat, item.msg)
@@ -3090,29 +3754,28 @@ local function main()
 		end
 
 		Core._updateLogUI = function()
-			if pageLog.Visible and renderLogs then
+			if pLog.Visible then
 				renderLogs()
 			end
 		end
 
-		selectTab(1)
-
-		local status = Instance.new("TextLabel")
-		status.Position = UDim2.fromOffset(10, 378)
-		status.Size = UDim2.fromOffset(240, 68)
-		status.BackgroundTransparency = 1
-		status.Font = Enum.Font.Gotham
-		status.TextSize = 11
-		status.TextWrapped = true
-		status.TextXAlignment = Enum.TextXAlignment.Left
-		status.TextYAlignment = Enum.TextYAlignment.Top
-		status.TextColor3 = Color3.fromRGB(170, 220, 255)
-		status.Text = ""
-		status.Parent = frame
-
-		local unload = makeButton("ปิดสคริปต์ (Unload)", 10, 456, 240, 24, frame)
-		unload.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-		bindClick(unload, function() Core:Destroy() end)
+		-- Startup Loop Initialization
+		if Core.Flags.AutoEnter then task.spawn(startEnterLoop) end
+		if Core.Flags.AutoSteal then task.spawn(startStealLoop) end
+		if Core.Flags.SideBypassMode then syncSideLane(true) end
+		if Core.Flags.AutoOpenPacks then task.spawn(startAutoOpenPacksLoop) end
+		if Core.Flags.AutoEquipBest then task.spawn(startAutoEquipBestLoop) end
+		if Core.Flags.AutoMerge then task.spawn(startAutoMergeLoop) end
+		if Core.Flags.AutoFuse then task.spawn(startAutoFuseLoop) end
+		if Core.Flags.AutoSellUnits then task.spawn(startAutoSellLoop) end
+		if Core.Flags.AutoBuyCoach then task.spawn(startAutoBuyCoachLoop) end
+		if Core.Flags.AutoEquipCoach then task.spawn(startAutoEquipCoachLoop) end
+		if Core.Flags.AutoBuyAura then task.spawn(startAutoBuyAuraLoop) end
+		if Core.Flags.AutoEquipAura then task.spawn(startAutoEquipAuraLoop) end
+		if Core.Flags.AutoUpgradeTreadmill then task.spawn(startAutoUpgradeTreadmillLoop) end
+		if Core.Flags.AutoUpgradeBase then task.spawn(startAutoUpgradeBaseLoop) end
+		if Core.Flags.AutoRebirth then task.spawn(startAutoRebirthLoop) end
+		if Core.Flags.AutoClaim then task.spawn(startAutoClaimLoop) end
 
 		Core.Flags.UI = true
 		Core:Loop("autoSaveConfig", "UI", 30, function()
@@ -3120,15 +3783,23 @@ local function main()
 				pcall(Config.Save)
 			end
 		end)
+
 		Core:Loop("status", "UI", 0.5, function()
 			local combo = LocalPlayer:GetAttribute(COMBO_ATTR) or 0
 			local training = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 			local spd = math.floor(Helpers.GetMoveSpeed() + 0.5)
-			status.Text = string.format(
-				"ลู่วิ่ง: %s | คูณ %d | คอมโบ %s | วิ่ง %d\nขโมย: สำเร็จ %d / พลาด %d\nล่าสุด: %s",
+			local stText = string.format(
+				"ลู่วิ่ง: %s | คูณ %d | คอมโบ %s | วิ่ง %d | ขโมย: สำเร็จ %d / พลาด %d",
 				training and "กำลังวิ่ง" or "ไม่ได้วิ่ง", Stats.boosts, tostring(combo), spd,
-				Stats.stealOk, Stats.stealFail, tostring(Stats.last or "-")
+				Stats.stealOk, Stats.stealFail
 			)
+			StatusText.Text = "STATUS: " .. stText
+			if TreadmillStatusCard then
+				TreadmillStatusCard.Text = stText
+			end
+			if PackStatusCard then
+				PackStatusCard.Text = string.format("ขโมยแพ็ค: สำเร็จ %d | พลาด %d | ล่าสุด: %s", Stats.stealOk, Stats.stealFail, tostring(Stats.last or "-"))
+			end
 		end)
 	end
 
