@@ -330,12 +330,19 @@ local function main()
 	local Helpers = {}
 	local plotCache = nil
 	local plotSpawnPosCache = nil
-	local PlotUtil, ServerData, PlayerData, SpeedConfig, PacksConfig, MutationConfig, RagdollMod, CoachConfig, CoachUtil, AurasConfig, RebirthUtil, DailyRewardsUtil, MutateConfig = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
+	local PlotUtil, ServerData, PlayerData, SpeedConfig, PacksConfig, MutationConfig, RagdollMod, CoachConfig, CoachUtil, AurasConfig, RebirthUtil, DailyRewardsUtil, MutateConfig, SafeZoneUtil = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
 
 	local function safeRequire(getter)
 		local ok, mod = pcall(function() return require(getter()) end)
 		if ok and type(mod) == "table" then return mod end
 		return nil
+	end
+
+	local function getSafeZoneUtil()
+		if not SafeZoneUtil then
+			SafeZoneUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.SafeZoneUtil end)
+		end
+		return SafeZoneUtil
 	end
 
 	local function getPlotUtil()
@@ -453,6 +460,19 @@ local function main()
 			minX = 948.2,
 			maxX = 1203.3,
 		}
+	end
+
+	function Helpers.IsInSafeZone(char)
+		local c = char or LocalPlayer.Character
+		local szu = getSafeZoneUtil()
+		if szu and szu.ContainsCharacter and c then
+			local ok, inside = pcall(szu.ContainsCharacter, c)
+			if ok and inside ~= nil then return inside end
+		end
+		local hrp = c and c:FindFirstChild("HumanoidRootPart")
+		if not hrp then return false end
+		local bounds = Helpers.GetSafeZoneBounds()
+		return hrp.Position.X <= (bounds.maxX - 6) and hrp.Position.X >= (bounds.minX + 6)
 	end
 
 	-- Plot ของผู้เล่น: ใช้ PlotUtil.GetPlotByUserId ของเกม (ไม่ Hardcode เลข Plot)
@@ -1318,12 +1338,16 @@ local function main()
 	local openReadyPlacedPacks = nil
 	local placePacksInBase = nil
 	local runBaseMaintenance = nil
+	local baseFullUntil = 0
+	local function isBaseFull()
+		return os.clock() < baseFullUntil
+	end
 
 	local lastEnter = 0
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 2 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
-		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 then return end
+		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then return end
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
 		local target = tm:FindFirstChild("PurplePad") or tm:FindFirstChild("PlayerTreadmill")
@@ -1646,31 +1670,162 @@ local function main()
 		end
 	end
 
-	local function isSafelyDelivered(livePos, bounds)
-		if Helpers.IsCarrying() then return false end
+	local function findDroppedPackPrompt(maxRadius)
 		local hrp = Helpers.GetRoot()
-		if not hrp then return false end
-		return hrp.Position.X <= bounds.maxX + 15 or (hrp.Position - livePos).Magnitude <= 45
+		if not hrp then return nil end
+		local radius = maxRadius or 80
+		local bestPrompt = nil
+		local bestDist = radius
+
+		-- 1. ตรวจสอบจาก CollectionService Tag 'SpawnedPack'
+		local okTagged, taggedPacks = pcall(function()
+			return CollectionService:GetTagged("SpawnedPack")
+		end)
+		if okTagged and type(taggedPacks) == "table" then
+			for _, packModel in ipairs(taggedPacks) do
+				if packModel and packModel.Parent then
+					local prompt = packModel:FindFirstChild("StealPrompt", true)
+					if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
+						local pPos = promptPos(prompt) or packAnchorPos(prompt)
+						if pPos then
+							local d = (hrp.Position - pPos).Magnitude
+							if d <= bestDist then
+								bestDist = d
+								bestPrompt = prompt
+							end
+						end
+					end
+				end
+			end
+		end
+		if bestPrompt then return bestPrompt end
+
+		-- 2. ค้นหาใน Workspace.Game.Packs
+		local game_ = Workspace:FindFirstChild("Game")
+		local packsFolder = game_ and game_:FindFirstChild("Packs")
+		if packsFolder then
+			for _, stage in ipairs(packsFolder:GetChildren()) do
+				local sp = stage:FindFirstChild("SpawnedPacks")
+				local container = sp or stage
+				for _, model in ipairs(container:GetChildren()) do
+					local prompt = model:FindFirstChild("StealPrompt", true)
+					if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
+						local pPos = promptPos(prompt) or packAnchorPos(prompt)
+						if pPos then
+							local d = (hrp.Position - pPos).Magnitude
+							if d <= bestDist then
+								bestDist = d
+								bestPrompt = prompt
+							end
+						end
+					end
+				end
+			end
+		end
+		return bestPrompt
 	end
 
-	local function deliver()
+	local function recoverDroppedPack(stageFolder)
+		local char = LocalPlayer.Character
+		if char and Core.Flags.AntiRagdollMode then
+			Helpers.RecoverFromHit(char)
+		end
+		task.wait(0.15)
+
+		-- ค้นหาแพ็คที่เพิ่งหลุดตกพื้นในระยะใกล้
+		local prompt = findDroppedPackPrompt(75)
+		if not prompt then
+			task.wait(0.25)
+			prompt = findDroppedPackPrompt(90)
+		end
+
+		if not prompt then
+			return false, "แพ็คหลุดกลางทางและหาไม่พบ"
+		end
+
+		logAction("ขโมย", "แพ็คหลุด! กำลังเดินกลับไปเก็บ...", true)
+
+		local pPos = promptPos(prompt) or packAnchorPos(prompt)
+		if pPos then
+			Helpers.MoveTo(pPos, function()
+				return not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying()
+			end, { precise = true, arriveDist = 2.5, evadeEnemies = true })
+		end
+
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+			return false, "ยกเลิก/ตัวละครตายขณะเก็บแพ็คที่ตก"
+		end
+
+		if not prompt.Parent or not prompt.Enabled then
+			return false, "แพ็คที่ตกถูกเก็บไปแล้วหรือหายไป"
+		end
+
+		local hrp = Helpers.GetRoot()
+		local pNow = promptPos(prompt) or packAnchorPos(prompt)
+		if hrp and pNow and (hrp.Position - pNow).Magnitude > 4.5 then
+			Helpers.Teleport(CFrame.new(pNow + Vector3.new(0, 1.5, 0)))
+			task.wait(0.05)
+		end
+
+		local holdDiag = usePrompt(prompt, "hold", stageFolder)
+		local got = waitUntil(Helpers.IsCarrying, 0.8)
+		if not got and fireproximityprompt and prompt.Parent then
+			usePrompt(prompt, "fire", stageFolder)
+			got = waitUntil(Helpers.IsCarrying, 1.0)
+		end
+
+		if got or Helpers.IsCarrying() then
+			logAction("ขโมย", "เก็บแพ็คที่ตกคืนสำเร็จ! กำลังนำส่งต่อ...", true)
+			return true
+		end
+
+		return false, "เก็บแพ็คที่ตกไม่สำเร็จ"
+	end
+
+	local function isSafelyDelivered(livePos, bounds)
+		if Helpers.IsCarrying() then return false end
+		local char = LocalPlayer.Character
+		if Helpers.IsInSafeZone(char) then return true end
+		local hrp = Helpers.GetRoot()
+		if not hrp then return false end
+		if livePos and (hrp.Position - livePos).Magnitude <= 25 then return true end
+		return hrp.Position.X <= (bounds.maxX - 8)
+	end
+
+	local function deliver(stageFolder)
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return false, "ไม่พบจุดเกิดของฐาน" end
 		local bounds = Helpers.GetSafeZoneBounds()
 		local stopWhenDelivered = function()
 			return not Core.Flags.AutoSteal or not Helpers.IsCarrying()
 		end
-		for _ = 1, 2 do
+
+		local function checkDeliveryOrRecover(livePos)
+			if isSafelyDelivered(livePos, bounds) then
+				return true, "DELIVERED"
+			end
+			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+				return false, "ยกเลิก/ตัวละครตายขณะเดินกลับ"
+			end
+			local recovered, err = recoverDroppedPack(stageFolder)
+			if recovered and Helpers.IsCarrying() then
+				return false, "RECOVERED"
+			end
+			return false, err or "โดนตี/แพ็คหลุดกลางทาง"
+		end
+
+		for pass = 1, 3 do
 			local livePos = Helpers.GetPlotSpawnPos() or pos
 			local hrp = Helpers.GetRoot()
 			if hrp and hrp.Position.X > bounds.maxX - 15 then
 				if Core.Flags.SideBypassMode and hrp.Position.X > bounds.maxX + 10 then
-					local exitSideZ = pickSideZ(hrp.Position)
+					local exitSideZ = pickSideZ(hrp.Position, stageFolder)
 					if math.abs(hrp.Position.Z - exitSideZ) > 12 then
 						Helpers.MoveTo(Vector3.new(hrp.Position.X, SIDE_TOP_Y + 3, exitSideZ), stopWhenDelivered, { precise = false })
 						if not Helpers.IsCarrying() then
-							if isSafelyDelivered(livePos, bounds) then return true end
-							return false, "โดนตี/แพ็คหลุดกลางทาง"
+							local okDeliv, state = checkDeliveryOrRecover(livePos)
+							if okDeliv then return true end
+							if state ~= "RECOVERED" then return false, state end
 						end
 						if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
 					end
@@ -1680,22 +1835,30 @@ local function main()
 					Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, evadeEnemies = true })
 				end
 				if not Helpers.IsCarrying() then
-					if isSafelyDelivered(livePos, bounds) then return true end
-					return false, "โดนตี/แพ็คหลุดกลางทาง"
+					local okDeliv, state = checkDeliveryOrRecover(livePos)
+					if okDeliv then return true end
+					if state ~= "RECOVERED" then return false, state end
 				end
 				if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
 			end
+
 			Helpers.MoveTo(livePos + Vector3.new(0, 3, 0), stopWhenDelivered, { evadeEnemies = true })
 			if not Helpers.IsCarrying() then
-				if isSafelyDelivered(livePos, bounds) then return true end
-				return false, "โดนตี/แพ็คหลุดกลางทาง"
+				local okDeliv, state = checkDeliveryOrRecover(livePos)
+				if okDeliv then return true end
+				if state ~= "RECOVERED" then return false, state end
 			end
+
 			Helpers.StreamAround(livePos, 3)
-			if waitUntil(function() return not Helpers.IsCarrying() end, 2) then
+			if waitUntil(function() return not Helpers.IsCarrying() end, 2.5) then
 				if isSafelyDelivered(livePos, bounds) then return true end
-				return false, "โดนตี/แพ็คหลุดกลางทาง"
+				local okDeliv, state = checkDeliveryOrRecover(livePos)
+				if okDeliv then return true end
+				if state ~= "RECOVERED" then return false, state end
 			end
 		end
+
+		if isSafelyDelivered(pos, bounds) then return true end
 		return false, "ส่งแพ็คที่ฐานไม่สำเร็จ"
 	end
 
@@ -1867,7 +2030,7 @@ local function main()
 			return false, string.format("หยิบไม่สำเร็จ(b=%s,t=%s,d=%.0f)", b, t, lastDist)
 		end
 
-		return deliver()
+		return deliver(stageFolder)
 	end
 
 	local function returnToSafeRest(allowTreadmill)
@@ -1883,7 +2046,8 @@ local function main()
 				return not Core._alive or not Core.Flags.AutoSteal
 			end, { precise = true, arriveDist = 6 })
 		end
-		if allowTreadmill and (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) then
+		local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
+		if allowTreadmill and (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
 			enterTreadmill()
 		end
 	end
@@ -1892,28 +2056,45 @@ local function main()
 		if not Core._alive then return end
 		-- Priority 1: ฟัก/เก็บแพ็คที่พร้อมเปิด เพื่อเคลียร์แท่นและเปิดพื้นที่ว่างบนฐาน
 		if Core.Flags.AutoOpenPacks and openReadyPlacedPacks then
-			pcall(openReadyPlacedPacks)
+			local okOpen = pcall(openReadyPlacedPacks)
+			if okOpen then baseFullUntil = 0 end
 		end
 
-		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานเมื่อมีพื้นที่ว่าง
+		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน
 		if Core.Flags.AutoPlacePacks and placePacksInBase then
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
-			if count > 0 then
+			if count > 0 and not isBaseFull() then
 				leaveTreadmill()
-				placePacksInBase()
+				local okPlace, resWhy = placePacksInBase()
+				if resWhy == "NO_SPACE" or resWhy == "PLOT_FULL" or resWhy == "LIMIT_REACHED" then
+					baseFullUntil = os.clock() + 6
+				end
 			end
 		end
 	end
 
 	local function stealCycle()
-		-- 1. ทำ Base Maintenance ก่อนเสมอ (Priority 1 เก็บแพ็คที่พร้อม -> Priority 2 วางแพ็คเมื่อมีที่ว่าง)
+		-- 1. ทำ Base Maintenance ก่อนเสมอ (Priority 1 เก็บแพ็คที่พร้อม -> Priority 2 วางแพ็คในตัวให้หมด)
 		if runBaseMaintenance then
 			runBaseMaintenance()
+		end
+
+		-- Gatekeeper: ตรวจสอบว่ายังมีแพ็คในตัวที่ยังวางไม่หมดหรือไม่
+		-- หากยังมีแพ็คและฐานยังวางได้ ห้ามออกไปขโมยด่านเด็ดขาด ให้เคลียร์แพ็คในตัวให้หมดก่อน
+		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
+			return
 		end
 
 		local anyFound = false
 		for i = 1, 12 do
 			if not Core._alive or not Core.Flags.AutoSteal then break end
+
+			-- ก่อนเริ่มขโมยด่านถัดไป หากมีแพ็คในตัวและฐานยังวางได้ ให้กลับไปวางให้หมดก่อน
+			if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
+				if runBaseMaintenance then runBaseMaintenance() end
+				return
+			end
+
 			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
 				local prompt = checkStageHasPacks(i)
 				if prompt then
@@ -1926,7 +2107,7 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
-						-- เมื่อขโมยเสร็จและนำส่งถึงฐาน ให้ทำ Priority 1 และ 2 ทันที
+						-- เมื่อขโมยเสร็จและนำส่งถึงฐาน ให้ทำ Priority 1 และ 2 ทันที (วางแพ็คที่เพิ่งได้มาให้หมด)
 						if runBaseMaintenance then
 							runBaseMaintenance()
 						end
@@ -1947,7 +2128,8 @@ local function main()
 			if runBaseMaintenance then
 				runBaseMaintenance()
 			end
-			if Core.Flags.AutoEnter or Core.Flags.AutoTreadmill then
+			local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
+			if (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
 				returnToSafeRest(true)
 			else
 				returnToSafeRest(false)
@@ -2714,120 +2896,145 @@ local function main()
 			local noSpace = false
 			local char = LocalPlayer.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local loopPass = 0
 
-			for _, pack in ipairs(packs) do
-				if not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) then break end
-				local packId = pack.Id
-				local packName = pack.Name or "Pack"
-				local placedThis = false
-				local lastReason = nil
+			while Core._alive and (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) and not noSpace do
+				loopPass = loopPass + 1
+				if loopPass > 30 then break end
 
-				-- ค้นหา Tool ของแพ็กชิ้นนี้
-				char = LocalPlayer.Character
-				hum = char and char:FindFirstChildOfClass("Humanoid")
-				local bp = LocalPlayer:FindFirstChild("Backpack")
-				local packTool = pack.Tool
-				if not (packTool and packTool.Parent) then
-					packTool = (char and char:FindFirstChild(packName)) or (bp and bp:FindFirstChild(packName))
+				local currentPacks = getPacksToPlace()
+				if #currentPacks == 0 then
+					break
 				end
-				if not (packTool and packTool:GetAttribute("PackId") == packId) then
-					if bp then
-						for _, t in ipairs(bp:GetChildren()) do
-							if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
-								packTool = t
-								break
+
+				-- ถ้าเปิด AutoOpenPacks ให้ฟักแพ็กที่โตเต็มวัยระหว่างลูปเพื่อเคลียร์พื้นที่ว่าง
+				if Core.Flags.AutoOpenPacks and openReadyPlacedPacks then
+					pcall(openReadyPlacedPacks)
+				end
+
+				local placedAnyInPass = false
+
+				for _, pack in ipairs(currentPacks) do
+					if not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) or noSpace then break end
+					local packId = pack.Id
+					local packName = pack.Name or "Pack"
+					local placedThis = false
+					local lastReason = nil
+
+					-- ค้นหา Tool ของแพ็กชิ้นนี้
+					char = LocalPlayer.Character
+					hum = char and char:FindFirstChildOfClass("Humanoid")
+					local bp = LocalPlayer:FindFirstChild("Backpack")
+					local packTool = pack.Tool
+					if not (packTool and packTool.Parent) then
+						packTool = (char and char:FindFirstChild(packName)) or (bp and bp:FindFirstChild(packName))
+					end
+					if not (packTool and packTool:GetAttribute("PackId") == packId) then
+						if bp then
+							for _, t in ipairs(bp:GetChildren()) do
+								if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
+									packTool = t
+									break
+								end
+							end
+						end
+						if not packTool and char then
+							for _, t in ipairs(char:GetChildren()) do
+								if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
+									packTool = t
+									break
+								end
 							end
 						end
 					end
-					if not packTool and char then
-						for _, t in ipairs(char:GetChildren()) do
-							if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
-								packTool = t
-								break
+
+					-- สวมใส่ Tool เข้าร่างกายตัวละคร (เซิร์ฟเวอร์บังคับว่าต้องถือ Tool ก่อนวาง)
+					if hum and packTool and packTool.Parent ~= char then
+						pcall(function() hum:EquipTool(packTool) end)
+						task.wait(0.2)
+						pcall(function()
+							Net.Fire(Net.Paths.ToolsRequestEquip, nil, {
+								Equipped = true,
+								Tool = packTool
+							})
+						end)
+						task.wait(0.1)
+					end
+
+					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
+					local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
+
+					-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่
+					for attempt = 1, 6 do
+						local placePos = nil
+						if placementUtil and placementUtil.RandomPointInArea and area then
+							local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
+							if okPt and typeof(pt) == "Vector3" then
+								placePos = Vector3.new(pt.X, surfaceY, pt.Z)
 							end
 						end
-					end
-				end
+						if not placePos then
+							local rx = (math.random() - 0.5) * 2 * halfX
+							local rz = (math.random() - 0.5) * 2 * halfZ
+							if area and area:IsA("BasePart") then
+								local worldPt = area.CFrame:PointToWorldSpace(Vector3.new(rx, 0, rz))
+								placePos = Vector3.new(worldPt.X, surfaceY, worldPt.Z)
+							else
+								placePos = Vector3.new(basePos.X + rx, surfaceY, basePos.Z + rz)
+							end
+						end
 
-				-- สวมใส่ Tool เข้าร่างกายตัวละคร (เซิร์ฟเวอร์บังคับว่าต้องถือ Tool ก่อนวาง)
-				if hum and packTool and packTool.Parent ~= char then
-					pcall(function() hum:EquipTool(packTool) end)
-					task.wait(0.2)
-					pcall(function()
-						Net.Fire(Net.Paths.ToolsRequestEquip, nil, {
-							Equipped = true,
-							Tool = packTool
+						local ok, res = Net.Invoke(Net.Paths.PlaceOwned, {
+							PackId = packId,
+							Position = placePos,
 						})
-					end)
-					task.wait(0.1)
-				end
-
-				-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
-				local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
-
-				-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่
-				for attempt = 1, 6 do
-					local placePos = nil
-					if placementUtil and placementUtil.RandomPointInArea and area then
-						local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
-						if okPt and typeof(pt) == "Vector3" then
-							placePos = Vector3.new(pt.X, surfaceY, pt.Z)
-						end
-					end
-					if not placePos then
-						local rx = (math.random() - 0.5) * 2 * halfX
-						local rz = (math.random() - 0.5) * 2 * halfZ
-						if area and area:IsA("BasePart") then
-							local worldPt = area.CFrame:PointToWorldSpace(Vector3.new(rx, 0, rz))
-							placePos = Vector3.new(worldPt.X, surfaceY, worldPt.Z)
-						else
-							placePos = Vector3.new(basePos.X + rx, surfaceY, basePos.Z + rz)
-						end
-					end
-
-					local ok, res = Net.Invoke(Net.Paths.PlaceOwned, {
-						PackId = packId,
-						Position = placePos,
-					})
-					local success, reason = isRemoteOk(res)
-					if ok and success then
-						placedThis = true
-						logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
-						itemSkipUntil["place:" .. packId] = nil
-						if hum then pcall(function() hum:UnequipTools() end) end
-						task.wait(0.25)
-						break
-					else
-						lastReason = reason or "FAILED"
-						if reason == "NOT_OWNED" or reason == "ALREADY_PLACED" then
+						local success, reason = isRemoteOk(res)
+						if ok and success then
 							placedThis = true
+							placedAnyInPass = true
+							logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
+							itemSkipUntil["place:" .. packId] = nil
 							if hum then pcall(function() hum:UnequipTools() end) end
+							task.wait(0.25)
 							break
-						elseif reason == "NOT_EQUIPPED" then
-							-- เซิร์ฟเวอร์แจ้งว่ายังไม่ได้ถือ Tool ให้ลอง Equip ซ้ำ
-							if hum and packTool then
-								pcall(function() hum:EquipTool(packTool) end)
-								task.wait(0.2)
+						else
+							lastReason = reason or "FAILED"
+							if reason == "NOT_OWNED" or reason == "ALREADY_PLACED" then
+								placedThis = true
+								placedAnyInPass = true
+								if hum then pcall(function() hum:UnequipTools() end) end
+								break
+							elseif reason == "NOT_EQUIPPED" then
+								-- เซิร์ฟเวอร์แจ้งว่ายังไม่ได้ถือ Tool ให้ลอง Equip ซ้ำ
+								if hum and packTool then
+									pcall(function() hum:EquipTool(packTool) end)
+									task.wait(0.2)
+								end
+							elseif reason == "LIMIT_REACHED" or reason == "MAX_PLACED" or reason == "NO_SPACE" or reason == "PLOT_FULL" then
+								noSpace = true
+								break
 							end
-						elseif reason == "LIMIT_REACHED" or reason == "MAX_PLACED" or reason == "NO_SPACE" or reason == "PLOT_FULL" then
-							noSpace = true
-							break
+							task.wait(0.05)
 						end
-						task.wait(0.05)
+					end
+
+					if not placedThis then
+						if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" or lastReason == "OVERLAPS_PACK" then
+							noSpace = true
+							itemSkipUntil["place:" .. packId] = os.clock() + 10
+							logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
+							break
+						else
+							itemSkipUntil["place:" .. packId] = os.clock() + 4
+							logAction("วางแพ็ก", "วางไม่สำเร็จ: " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
+						end
 					end
 				end
 
-				if not placedThis then
-					if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" or lastReason == "OVERLAPS_PACK" then
-						noSpace = true
-						itemSkipUntil["place:" .. packId] = os.clock() + 10
-						logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
-						break
-					else
-						itemSkipUntil["place:" .. packId] = os.clock() + 4
-						logAction("วางแพ็ก", "วางไม่สำเร็จ: " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
-					end
+				if noSpace or not placedAnyInPass then
+					break
 				end
+				task.wait(0.15)
 			end
 
 			-- ปลดการถือ Tool เมื่อวางเสร็จสิ้นทั้งหมด
@@ -2835,6 +3042,7 @@ local function main()
 
 			if noSpace then
 				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> ขโมยต่อทันที", false)
+				return false, "NO_SPACE"
 			end
 
 			return true
