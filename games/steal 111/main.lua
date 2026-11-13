@@ -10,6 +10,7 @@ local function main()
 	local UserInputService = game:GetService("UserInputService")
 	local ProximityPromptService = game:GetService("ProximityPromptService")
 	local ContextActionService = game:GetService("ContextActionService")
+	local HttpService = game:GetService("HttpService")
 	local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
 	local VirtualInputManager = vimOk and vimSvc or nil
 	local vuOk, vuSvc = pcall(function() return game:GetService("VirtualUser") end)
@@ -68,6 +69,9 @@ local function main()
 	end
 
 	function Core:Destroy()
+		if Config and Config.Save then
+			pcall(Config.Save)
+		end
 		self._alive = false
 		for name in pairs(self._loops) do
 			self:StopLoop(name)
@@ -127,6 +131,59 @@ local function main()
 		if Core and Core._updateLogUI then
 			pcall(Core._updateLogUI)
 		end
+	end
+
+	-----------------------------------------------------------------
+	-- 1.1. CONFIG MANAGER (ระบบจดจำฟังก์ชันและการตั้งค่าอัตโนมัติ)
+	-----------------------------------------------------------------
+	local CONFIG_FILE = "kuykuy_steal111_config.json"
+	local Config = {}
+
+	function Config.Save()
+		if not writefile then return false end
+		local dataToSave = {}
+		for k, v in pairs(Core.Flags) do
+			if type(v) == "boolean" or type(v) == "number" or type(v) == "string" then
+				dataToSave[k] = v
+			end
+		end
+		local ok, json = pcall(function()
+			return HttpService:JSONEncode(dataToSave)
+		end)
+		if ok and json then
+			pcall(writefile, CONFIG_FILE, json)
+			return true
+		end
+		return false
+	end
+
+	function Config.Load()
+		if not (readfile and isfile) then return false end
+		local exists = false
+		pcall(function() exists = isfile(CONFIG_FILE) end)
+		if not exists then return false end
+
+		local okContent, content = pcall(readfile, CONFIG_FILE)
+		if not (okContent and type(content) == "string" and #content > 2) then return false end
+
+		local okDecode, parsed = pcall(function()
+			return HttpService:JSONDecode(content)
+		end)
+		if okDecode and type(parsed) == "table" then
+			for k, v in pairs(parsed) do
+				if Core.Flags[k] ~= nil and type(Core.Flags[k]) == type(v) then
+					Core.Flags[k] = v
+				elseif string.sub(k, 1, 5) == "Stage" and type(v) == "boolean" then
+					Core.Flags[k] = v
+				end
+			end
+			return true
+		end
+		return false
+	end
+
+	if Config.Load() then
+		logAction("ตั้งค่า", "โหลดฟังก์ชันที่บันทึกไว้สำเร็จ", true)
 	end
 
 	-----------------------------------------------------------------
@@ -2565,10 +2622,14 @@ local function main()
 				Core.Flags[flag] = not Core.Flags[flag]
 				paint()
 				logAction("สวิตช์", (Core.Flags[flag] and "เปิด: " or "ปิด: ") .. text, Core.Flags[flag])
+				Config.Save()
 				if onChange and Core.Flags[flag] then onChange() end
 				if onOff and not Core.Flags[flag] then onOff() end
 			end)
 			paint()
+			if Core.Flags[flag] and onChange then
+				task.spawn(onChange)
+			end
 			return b
 		end
 
@@ -2680,6 +2741,7 @@ local function main()
 			Core.Flags.SellBelowRarity = rarityCycle[(idx % #rarityCycle) + 1]
 			paintRarityBtn()
 			logAction("ตั้งค่า", "ตั้งเกณฑ์ขายต่ำกว่า " .. tostring(RARITY_NAMES[Core.Flags.SellBelowRarity]))
+			Config.Save()
 		end)
 		paintRarityBtn()
 
@@ -2700,17 +2762,27 @@ local function main()
 
 		-- Tab 4: บันทึกการใช้งาน (Action Logs)
 		local logHead = Instance.new("TextLabel")
-		logHead.Position = UDim2.fromOffset(10, 0)
-		logHead.Size = UDim2.fromOffset(150, 24)
+		logHead.Position = UDim2.fromOffset(8, 0)
+		logHead.Size = UDim2.fromOffset(86, 24)
 		logHead.BackgroundTransparency = 1
 		logHead.Font = Enum.Font.GothamBold
 		logHead.TextSize = 12
 		logHead.TextXAlignment = Enum.TextXAlignment.Left
 		logHead.TextColor3 = Color3.fromRGB(220, 220, 230)
-		logHead.Text = "ประวัติการทำงาน (Logs):"
+		logHead.Text = "ประวัติ (Logs):"
 		logHead.Parent = pageLog
 
-		local clearLogBtn = makeButton("ล้างประวัติ", 168, 0, 82, 24, pageLog)
+		local saveCfgBtn = makeButton("บันทึกค่า", 98, 0, 72, 24, pageLog)
+		saveCfgBtn.BackgroundColor3 = Color3.fromRGB(45, 95, 140)
+		saveCfgBtn.MouseButton1Click:Connect(function()
+			if Config.Save() then
+				logAction("ตั้งค่า", "บันทึกฟังก์ชันการตั้งค่าสำเร็จ", true)
+			else
+				logAction("ตั้งค่า", "บันทึกการตั้งค่าไม่สำเร็จ", false)
+			end
+		end)
+
+		local clearLogBtn = makeButton("ล้างประวัติ", 174, 0, 78, 24, pageLog)
 		clearLogBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 50)
 		clearLogBtn.MouseButton1Click:Connect(function()
 			table.clear(Stats.logs)
