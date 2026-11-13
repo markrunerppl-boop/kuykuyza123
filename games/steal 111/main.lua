@@ -775,7 +775,7 @@ local function main()
 	function Helpers.MoveTo(targetPos, shouldAbort, opts)
 		local precise = not (opts and opts.precise == false)
 		local evadeEnemies = opts and opts.evadeEnemies == true
-		local safeBounds = evadeEnemies and Helpers.GetSafeZoneBounds() or nil
+		local safeBounds = Helpers.GetSafeZoneBounds()
 		local arriveDist = (opts and opts.arriveDist) or (precise and 4 or 10)
 		local floorRefreshAt = 0
 
@@ -825,6 +825,7 @@ local function main()
 		local lastPos = hrp.Position
 		local lastIssue = 0
 		local lastDodgeJump = 0
+		local borderStallStart = nil
 		local timeout = os.clock() + math.max(90, initFlat / 12 + 30)
 
 		while Core._alive and Helpers.IsAlive() and os.clock() < timeout do
@@ -931,11 +932,43 @@ local function main()
 				end
 			end
 
+			-- หากกำลังพยายามเดินออกจาก SafeZone เข้าสู่ด่าน แต่ติดสิ่งกีดขวาง/ประตูปิดหน้าด่านเกิน 2.5 วินาที ให้ยกเลิกทันที
+			if safeBounds and targetPos.X > (safeBounds.maxX + 10) and cur.X <= (safeBounds.maxX + 4) then
+				if not borderStallStart then
+					borderStallStart = now
+				elseif now - borderStallStart >= 2.5 then
+					stopMotion(hum, hrp, true)
+					return false
+				end
+			else
+				borderStallStart = nil
+			end
+
 			RunService.Heartbeat:Wait()
 		end
 		stopMotion(hum, hrp, false)
 		return false
 	end
+
+	-- ปลดล็อคฟิสิกส์กระดานอันดับ (Leaderboard) ให้ตัวละครเดินทะลุได้ 100% ไม่ชน/ไม่ติดค้าง
+	local function disableLeaderboardCollisions()
+		pcall(function()
+			local lb = Workspace:FindFirstChild("Leaderboards")
+			if not lb then return end
+			for _, desc in ipairs(lb:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.CanCollide then
+					desc.CanCollide = false
+				end
+			end
+		end)
+	end
+	disableLeaderboardCollisions()
+	Core:Connect(Workspace.ChildAdded, function(ch)
+		if ch.Name == "Leaderboards" then
+			task.wait(0.5)
+			disableLeaderboardCollisions()
+		end
+	end)
 
 	-- กำลังแบกแพ็คอยู่หรือไม่ (ยืนยันจาก ServerData.Get("Stealing")[UserId])
 	function Helpers.IsCarrying()
@@ -1085,8 +1118,8 @@ local function main()
 
 	local lastEnter = 0
 	local function enterTreadmill()
-		if Core.Busy or Core.Flags.AutoSteal or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
-		if os.clock() - lastEnter < 3 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
+		if os.clock() - lastEnter < 2 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
 		local target = tm:FindFirstChild("PurplePad") or tm:FindFirstChild("PlayerTreadmill")
@@ -1097,7 +1130,11 @@ local function main()
 	end
 
 	local function startEnterLoop()
-		Core:Loop("enter", "AutoEnter", 1, enterTreadmill)
+		Core:Loop("enter", "AutoEnter", 1, function()
+			if not Core.Busy and not Helpers.IsCarrying() then
+				enterTreadmill()
+			end
+		end)
 	end
 
 	-----------------------------------------------------------------
@@ -1482,52 +1519,26 @@ local function main()
 		return packs and packs:FindFirstChild("Stage" .. i)
 	end
 
-	local function streamAndFindPrompt(i)
+	local function checkStageHasPacks(i)
 		local folder = getStageFolder(i)
 		local prompt = findStealPrompt(folder)
 		if prompt then return prompt end
 
-		local area = folder and (folder:FindFirstChild("Area") or folder:FindFirstChild("Hitbox"))
-		local basePos = (area and Helpers.GetPosition(area)) or STAGE_CENTERS[i]
-		if not basePos then return nil end
+		local basePos = STAGE_CENTERS[i]
+		if basePos then
+			Helpers.StreamAround(basePos, 1.2)
+		end
+		folder = getStageFolder(i)
+		prompt = findStealPrompt(folder)
+		if prompt then return prompt end
 
-		local scanPoints = i >= 6
-			and { basePos + Vector3.new(-160, 0, 0), basePos, basePos + Vector3.new(150, 0, 0) }
-			or { basePos }
-
-		local foundPrompt = nil
-		local stopWhenFound = function()
-			if not Core.Flags.AutoSteal then return true end
-			foundPrompt = findStealPrompt(getStageFolder(i))
-			return foundPrompt ~= nil
+		local sp = folder and folder:FindFirstChild("SpawnedPacks")
+		if sp and #sp:GetChildren() > 0 then
+			task.wait(0.2)
+			prompt = findStealPrompt(folder)
+			if prompt then return prompt end
 		end
 
-		for _, pt in ipairs(scanPoints) do
-			if not Core._alive or not Core.Flags.AutoSteal then return nil end
-			local targetPt
-			if Core.Flags.SideBypassMode then
-				local bounds = Helpers.GetSafeZoneBounds()
-				local hrp0 = Helpers.GetRoot()
-				local sideZ = (hrp0 and hrp0.Position.Z <= bounds.center.Z)
-					and (bounds.center.Z - SIDE_OFFSET_Z)
-					or (bounds.center.Z + SIDE_OFFSET_Z)
-				targetPt = Vector3.new(pt.X, SIDE_TOP_Y + 3, sideZ)
-			else
-				targetPt = Vector3.new(pt.X, pt.Y + 4, pt.Z)
-			end
-			Helpers.MoveTo(targetPt, stopWhenFound, { precise = false })
-			if foundPrompt then
-				task.wait(0.15)
-				return findStealPrompt(getStageFolder(i)) or foundPrompt
-			end
-			Helpers.StreamAround(targetPt, 3)
-			local deadline = os.clock() + 1.5
-			while os.clock() < deadline and Core._alive and Core.Flags.AutoSteal do
-				prompt = findStealPrompt(getStageFolder(i))
-				if prompt then return prompt end
-				task.wait(0.2)
-			end
-		end
 		return nil
 	end
 
@@ -1543,17 +1554,21 @@ local function main()
 		return p0 + dir * (radius or 4)
 	end
 
-	local function stealFromStage(i)
+	local function stealFromStage(i, knownPrompt)
+		local prompt = knownPrompt or checkStageHasPacks(i)
+		if not prompt then return false, "ไม่มีแพ็คให้ขโมย/ด่านปิด" end
+
 		syncSideLane(Core.Flags.SideBypassMode)
 		Helpers.GetPlotSpawnPos() -- แคชพิกัดฐานก่อนออกจากฐาน (กัน Plot stream out)
 		moveToCenterLane(function()
-			return not Core.Flags.AutoSteal
+			return not Core.Flags.AutoSteal or not prompt.Parent
 		end)
 		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then return false, "ยกเลิก/ตัวละครตาย" end
 
-		local prompt = streamAndFindPrompt(i)
-		if not prompt then return false, "ไม่มีแพ็คให้ขโมย" end
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then return false, "ยกเลิก/ตัวละครตาย" end
+		if not prompt.Parent then
+			prompt = findStealPrompt(getStageFolder(i))
+			if not prompt then return false, "แพ็คถูกหยิบไปแล้ว/ด่านปิด" end
+		end
 
 		local pos = promptPos(prompt)
 		if not pos then return false, "ไม่มีพิกัดแพ็ค" end
@@ -1651,26 +1666,55 @@ local function main()
 		return deliver()
 	end
 
+	local function returnToSafeRest()
+		if not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+		local pos = Helpers.GetPlotSpawnPos()
+		if not pos then return end
+		local hrp = Helpers.GetRoot()
+		if not hrp then return end
+		local bounds = Helpers.GetSafeZoneBounds()
+		local flatDistToBase = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+		if flatDistToBase > 20 or hrp.Position.X > (bounds.maxX - 15) then
+			Helpers.MoveTo(pos + Vector3.new(0, 3, 0), function()
+				return not Core._alive or not Core.Flags.AutoSteal
+			end, { precise = true, arriveDist = 6 })
+		end
+		if Core.Flags.AutoEnter or Core.Flags.AutoTreadmill then
+			enterTreadmill()
+		end
+	end
+
 	local function stealCycle()
+		local anyFound = false
 		for i = 1, 12 do
 			if not Core._alive or not Core.Flags.AutoSteal then break end
 			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
-				Core.Busy = true
-				leaveTreadmill()
-				local ok, res, why = pcall(stealFromStage, i)
-				stopPin()
-				Core.Busy = false
-				if ok and res then
-					Stats.stealOk = Stats.stealOk + 1
-					logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
-				else
-					Stats.stealFail = Stats.stealFail + 1
-					local reason = res
-					if ok then reason = why or "ไม่ทราบสาเหตุ" end
-					logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
+				local prompt = checkStageHasPacks(i)
+				if prompt then
+					anyFound = true
+					Core.Busy = true
+					leaveTreadmill()
+					local ok, res, why = pcall(stealFromStage, i, prompt)
+					stopPin()
+					Core.Busy = false
+					if ok and res then
+						Stats.stealOk = Stats.stealOk + 1
+						logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
+					else
+						Stats.stealFail = Stats.stealFail + 1
+						local reason = res
+						if ok then reason = why or "ไม่ทราบสาเหตุ" end
+						logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
+						returnToSafeRest()
+					end
+					task.wait(Core.Flags.StealDelay)
 				end
-				task.wait(Core.Flags.StealDelay)
 			end
+		end
+
+		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
+			returnToSafeRest()
+			task.wait(1.5)
 		end
 	end
 
