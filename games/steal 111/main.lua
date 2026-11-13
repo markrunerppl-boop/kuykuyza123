@@ -122,7 +122,11 @@ local function main()
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
 	end
-	local STEAL_RARITY_KEYS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical", "Cosmic", "Divine", "Secret" }
+	local STEAL_RARITY_KEYS = {
+		"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
+		"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
+		"Exclusive", "Godlike", "Secret"
+	}
 	for _, r in ipairs(STEAL_RARITY_KEYS) do
 		Core.Flags["Rarity_" .. r] = true
 	end
@@ -382,6 +386,14 @@ local function main()
 			PacksConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.PacksConfig end)
 		end
 		return PacksConfig
+	end
+
+	local CharacterConfig = nil
+	local function getCharacterConfig()
+		if not CharacterConfig then
+			CharacterConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.CharacterConfig end)
+		end
+		return CharacterConfig
 	end
 
 	local function getMutationConfig()
@@ -1444,11 +1456,18 @@ local function main()
 
 		if not r or r == "" then
 			local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model.Name
-			local pc = getPacksConfig()
-			local cfg = pc and pc.Get and pc.Get(packName)
-			if cfg then
-				r = cfg.Rarity or cfg.ItemRarity or cfg.Tier
-				sr = sr or tonumber(cfg.SortRarity)
+			local cc = getCharacterConfig()
+			local charCfg = cc and cc.Get and cc.Get(packName)
+			if charCfg then
+				r = charCfg.Rarity or charCfg.ItemRarity or charCfg.Tier
+			end
+			if not r or r == "" then
+				local pc = getPacksConfig()
+				local cfg = pc and pc.Get and pc.Get(packName)
+				if cfg then
+					r = cfg.Rarity or cfg.ItemRarity or cfg.Tier
+					sr = sr or tonumber(cfg.SortRarity)
+				end
 			end
 		end
 
@@ -1462,7 +1481,12 @@ local function main()
 			Mythical = 6,
 			Cosmic = 7,
 			Divine = 8,
-			Secret = 9,
+			Omniversal = 9,
+			Eternal = 10,
+			Primordial = 11,
+			Exclusive = 12,
+			Godlike = 13,
+			Secret = 14,
 		}
 
 		local rank = sr or (r and ranks[r]) or 1
@@ -1495,7 +1519,12 @@ local function main()
 			[6] = "Mythical",
 			[7] = "Cosmic",
 			[8] = "Divine",
-			[9] = "Secret",
+			[9] = "Omniversal",
+			[10] = "Eternal",
+			[11] = "Primordial",
+			[12] = "Exclusive",
+			[13] = "Godlike",
+			[14] = "Secret",
 		}
 		local fallbackName = rankNames[rank]
 		if fallbackName and Core.Flags["Rarity_" .. fallbackName] == true then
@@ -4128,17 +4157,22 @@ local function main()
 
 		-- Pack Rarities Multi-Select Dropdown
 		local rarityOptions = {
-			{ value = "Rarity_Common",    label = "Common (ระดับ 1)",    short = "Com" },
-			{ value = "Rarity_Uncommon",  label = "Uncommon (ระดับ 2)",  short = "Unc" },
-			{ value = "Rarity_Rare",      label = "Rare (ระดับ 3)",      short = "Rare" },
-			{ value = "Rarity_Epic",      label = "Epic (ระดับ 4)",      short = "Epic" },
-			{ value = "Rarity_Legendary", label = "Legendary (ระดับ 5)", short = "Leg" },
-			{ value = "Rarity_Mythical",  label = "Mythical (ระดับ 6)",  short = "Myth" },
-			{ value = "Rarity_Cosmic",    label = "Cosmic (ระดับ 7)",    short = "Cos" },
-			{ value = "Rarity_Divine",    label = "Divine (ระดับ 8)",    short = "Div" },
-			{ value = "Rarity_Secret",    label = "Secret (ระดับ 9+)",   short = "Sec" },
+			{ value = "Rarity_Common",     label = "Common (ระดับ 1)",       short = "Com" },
+			{ value = "Rarity_Uncommon",   label = "Uncommon (ระดับ 2)",     short = "Unc" },
+			{ value = "Rarity_Rare",       label = "Rare (ระดับ 3)",         short = "Rare" },
+			{ value = "Rarity_Epic",       label = "Epic (ระดับ 4)",         short = "Epic" },
+			{ value = "Rarity_Legendary",  label = "Legendary (ระดับ 5)",    short = "Leg" },
+			{ value = "Rarity_Mythical",   label = "Mythical (ระดับ 6)",     short = "Myth" },
+			{ value = "Rarity_Cosmic",     label = "Cosmic (ระดับ 7)",       short = "Cos" },
+			{ value = "Rarity_Divine",     label = "Divine (ระดับ 8)",       short = "Div" },
+			{ value = "Rarity_Omniversal", label = "Omniversal (ระดับ 9)",   short = "Omni" },
+			{ value = "Rarity_Eternal",    label = "Eternal (ระดับ 10)",     short = "Eter" },
+			{ value = "Rarity_Primordial", label = "Primordial (ระดับ 11)",  short = "Prim" },
+			{ value = "Rarity_Exclusive",  label = "Exclusive (ระดับ 12)",   short = "Excl" },
+			{ value = "Rarity_Godlike",    label = "Godlike (ระดับ 13)",     short = "God" },
+			{ value = "Rarity_Secret",     label = "Secret (ระดับพิเศษ)",    short = "Sec" },
 		}
-		CreateMultiSelectDropdown(pFarm, "ระดับแพ็กที่ต้องการขโมย (Rarities)", rarityOptions, Core.Flags, function()
+		CreateMultiSelectDropdown(pFarm, "เกรดของแพ็คที่ต้องการขโมย (All Grades)", rarityOptions, Core.Flags, function()
 			-- Core.Flags updated in-place by selectedMap
 		end)
 
@@ -4191,8 +4225,17 @@ local function main()
 			[6] = "Mythical (6)",
 			[7] = "Cosmic (7)",
 			[8] = "Divine (8)",
+			[9] = "Omniversal (9)",
+			[10] = "Eternal (10)",
+			[11] = "Primordial (11)",
+			[12] = "Exclusive (12)",
+			[13] = "Godlike (13)",
 		}
-		local rarityOptions = { "Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)", "Cosmic (7)", "Divine (8)" }
+		local rarityOptions = {
+			"Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)",
+			"Cosmic (7)", "Divine (8)", "Omniversal (9)", "Eternal (10)",
+			"Primordial (11)", "Exclusive (12)", "Godlike (13)"
+		}
 		local curRarityVal = Core.Flags.SellBelowRarity or 6
 		local curRarityText = RARITY_NAMES[curRarityVal] or "Mythical (6)"
 
