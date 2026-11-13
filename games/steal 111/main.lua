@@ -122,6 +122,10 @@ local function main()
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
 	end
+	local STEAL_RARITY_KEYS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical", "Cosmic", "Divine", "Secret" }
+	for _, r in ipairs(STEAL_RARITY_KEYS) do
+		Core.Flags["Rarity_" .. r] = true
+	end
 
 	local Stats = { boosts = 0, stealOk = 0, stealFail = 0, last = "-", evt = "-", logs = {} }
 
@@ -1431,6 +1435,76 @@ local function main()
 		return list
 	end
 
+	local function getModelRarity(model)
+		if not model then return "Common", 1 end
+		local r = model:GetAttribute("Rarity")
+			or model:GetAttribute("ItemRarity")
+			or model:GetAttribute("PackRarity")
+		local sr = tonumber(model:GetAttribute("SortRarity"))
+
+		if not r or r == "" then
+			local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model.Name
+			local pc = getPacksConfig()
+			local cfg = pc and pc.Get and pc.Get(packName)
+			if cfg then
+				r = cfg.Rarity or cfg.ItemRarity or cfg.Tier
+				sr = sr or tonumber(cfg.SortRarity)
+			end
+		end
+
+		local pc = getPacksConfig()
+		local ranks = (pc and pc.RarityRank) or {
+			Common = 1,
+			Uncommon = 2,
+			Rare = 3,
+			Epic = 4,
+			Legendary = 5,
+			Mythical = 6,
+			Cosmic = 7,
+			Divine = 8,
+			Secret = 9,
+		}
+
+		local rank = sr or (r and ranks[r]) or 1
+		local rName = r or "Common"
+
+		if type(rName) == "string" then
+			rName = rName:sub(1,1):upper() .. rName:sub(2):lower()
+		end
+
+		return rName, rank
+	end
+
+	local function isPackRarityAllowed(model)
+		if not model then return false end
+		local rName, rank = getModelRarity(model)
+
+		-- 1. ตรวจสอบจากชื่อ Rarity โดยตรง
+		local flagKey = "Rarity_" .. tostring(rName)
+		if Core.Flags[flagKey] == true then
+			return true
+		end
+
+		-- 2. Fallback ตรวจสอบจากลำดับ Rank
+		local rankNames = {
+			[1] = "Common",
+			[2] = "Uncommon",
+			[3] = "Rare",
+			[4] = "Epic",
+			[5] = "Legendary",
+			[6] = "Mythical",
+			[7] = "Cosmic",
+			[8] = "Divine",
+			[9] = "Secret",
+		}
+		local fallbackName = rankNames[rank]
+		if fallbackName and Core.Flags["Rarity_" .. fallbackName] == true then
+			return true
+		end
+
+		return false
+	end
+
 	local function getPackScore(model)
 		local pc = getPacksConfig()
 		local mc = getMutationConfig()
@@ -1453,6 +1527,7 @@ local function main()
 
 	local function isBetterCandidate(a, b)
 		if not b then return true end
+		if a.rank ~= b.rank then return (a.rank or 0) > (b.rank or 0) end
 		if a.mult ~= b.mult then return a.mult > b.mult end
 		if a.odd ~= b.odd then return a.odd > b.odd end
 		if a.weight ~= b.weight then return a.weight > b.weight end
@@ -1468,28 +1543,32 @@ local function main()
 		local enemies = getStageEnemyPositions(stageFolder)
 		local bestSafe, bestAny = nil, nil
 		for _, model in ipairs(root:GetChildren()) do
-			local p = model:FindFirstChild("StealPrompt", true)
-			if p and p:IsA("ProximityPrompt") and p.Enabled then
-				local pos = promptPos(p)
-				if pos then
-					local minEnemyDist = math.huge
-					for _, ePos in ipairs(enemies) do
-						local ed = (pos - ePos).Magnitude
-						if ed < minEnemyDist then minEnemyDist = ed end
-					end
-					local mult, odd, weight = getPackScore(model)
-					local cand = {
-						prompt = p,
-						mult = mult,
-						odd = odd,
-						weight = weight,
-						enemyDist = minEnemyDist,
-						dist = hrp and (pos - hrp.Position).Magnitude or 0,
-					}
-					if minEnemyDist >= 25 then
-						if isBetterCandidate(cand, bestSafe) then bestSafe = cand end
-					else
-						if isBetterCandidate(cand, bestAny) then bestAny = cand end
+			if isPackRarityAllowed(model) then
+				local p = model:FindFirstChild("StealPrompt", true)
+				if p and p:IsA("ProximityPrompt") and p.Enabled then
+					local pos = promptPos(p)
+					if pos then
+						local minEnemyDist = math.huge
+						for _, ePos in ipairs(enemies) do
+							local ed = (pos - ePos).Magnitude
+							if ed < minEnemyDist then minEnemyDist = ed end
+						end
+						local mult, odd, weight = getPackScore(model)
+						local _, rank = getModelRarity(model)
+						local cand = {
+							prompt = p,
+							rank = rank or 1,
+							mult = mult,
+							odd = odd,
+							weight = weight,
+							enemyDist = minEnemyDist,
+							dist = hrp and (pos - hrp.Position).Magnitude or 0,
+						}
+						if minEnemyDist >= 25 then
+							if isBetterCandidate(cand, bestSafe) then bestSafe = cand end
+						else
+							if isBetterCandidate(cand, bestAny) then bestAny = cand end
+						end
 					end
 				end
 			end
@@ -2101,12 +2180,17 @@ local function main()
 					anyFound = true
 					Core.Busy = true
 					leaveTreadmill()
+					local packModel = prompt.Parent
+					while packModel and packModel ~= Workspace and not packModel:IsA("Model") do
+						packModel = packModel.Parent
+					end
+					local rName = packModel and getModelRarity(packModel) or "Pack"
 					local ok, res, why = pcall(stealFromStage, i, prompt)
 					stopPin()
 					Core.Busy = false
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
-						logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
+						logAction("ขโมย", string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName)), true)
 						-- เมื่อขโมยเสร็จและนำส่งถึงฐาน ให้ทำ Priority 1 และ 2 ทันที (วางแพ็คที่เพิ่งได้มาให้หมด)
 						if runBaseMaintenance then
 							runBaseMaintenance()
@@ -4032,6 +4116,22 @@ local function main()
 			})
 		end
 		CreateMultiSelectDropdown(pFarm, "ด่านที่ต้องการขโมย (Stages)", stageOptions, Core.Flags, function()
+			-- Core.Flags updated in-place by selectedMap
+		end)
+
+		-- Pack Rarities Multi-Select Dropdown
+		local rarityOptions = {
+			{ value = "Rarity_Common",    label = "Common (ระดับ 1)",    short = "Com" },
+			{ value = "Rarity_Uncommon",  label = "Uncommon (ระดับ 2)",  short = "Unc" },
+			{ value = "Rarity_Rare",      label = "Rare (ระดับ 3)",      short = "Rare" },
+			{ value = "Rarity_Epic",      label = "Epic (ระดับ 4)",      short = "Epic" },
+			{ value = "Rarity_Legendary", label = "Legendary (ระดับ 5)", short = "Leg" },
+			{ value = "Rarity_Mythical",  label = "Mythical (ระดับ 6)",  short = "Myth" },
+			{ value = "Rarity_Cosmic",    label = "Cosmic (ระดับ 7)",    short = "Cos" },
+			{ value = "Rarity_Divine",    label = "Divine (ระดับ 8)",    short = "Div" },
+			{ value = "Rarity_Secret",    label = "Secret (ระดับ 9+)",   short = "Sec" },
+		}
+		CreateMultiSelectDropdown(pFarm, "ระดับแพ็กที่ต้องการขโมย (Rarities)", rarityOptions, Core.Flags, function()
 			-- Core.Flags updated in-place by selectedMap
 		end)
 
