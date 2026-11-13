@@ -99,8 +99,6 @@ local function main()
 	Core.Flags.AutoEnter = false     -- เดินเข้าลู่วิ่งอัตโนมัติ
 	Core.Flags.AutoSteal = false     -- ขโมยแพ็คตามด่านที่เลือก
 	Core.Flags.AutoPlacePacks = true -- วางแพ็คในฐานอัตโนมัติเมื่อพร้อม (รันควบคู่กับขโมยแพ็ค)
-	Core.Flags.MaxSpeedMode = false   -- false = ความเร็วตัวละครจริง, true = ความเร็วสูงสุด 340 (เพดานเกม)
-	Core.Flags.SideBypassMode = true  -- วิ่งบนทางลัดด้านข้างนอกกำแพงด่าน 1-12 เพื่อหลบบอส
 	Core.Flags.AntiRagdollMode = true -- ลบอนิเมชชั่นโดนตี/ไม่ล้ม เพื่อวิ่งกลับฐานต่อเนื่อง
 	Core.Flags.AutoBuyCoach = false   -- ซื้อโค้ชที่แรงกว่าใน Stock อัตโนมัติ
 	Core.Flags.AutoEquipCoach = false -- สวมใส่โค้ชที่ตัวคูณสูงสุดอัตโนมัติ
@@ -650,13 +648,10 @@ local function main()
 		return true, res, extra
 	end
 
-	-- คำนวณความเร็วเคลื่อนที่ปลอดภัยจาก SpeedConfig.ToWalkSpeed ของตัวละคร (หรือเพดานสูงสุด 340)
+	-- คำนวณความเร็วเคลื่อนที่ปลอดภัยจาก SpeedConfig.ToWalkSpeed ของตัวละคร (ไม่เกินเพดานเกม)
 	function Helpers.GetMoveSpeed()
 		local sc = getSpeedConfig()
 		local maxCap = (sc and sc.MaximumWalkSpeed) or 340
-		if Core.Flags.MaxSpeedMode then
-			return maxCap
-		end
 		local spdStat = nil
 		local pd = getPlayerData()
 		if pd and pd.Get then
@@ -832,155 +827,12 @@ local function main()
 		end)
 	end
 
-	-- พื้นทางเลี่ยงด้านข้าง (SideBypass): วิ่งระดับพื้นผิว (Y=67.6) นอกกำแพง AllRocks/Shell ของด่าน 1-12
-	local SIDE_TOP_Y = 67.6
-	local SIDE_THICKNESS = 16
-	local SIDE_OFFSET_Z = 126
-	local SIDE_WIDTH = 64
-	local SIDE_TILES = { { 1190, 2750 }, { 2700, 4300 }, { 4250, 5850 }, { 5800, 6750 } }
-	local sideFolder = nil
-	local sideTiles = { north = {}, south = {} }
-	local sideDisabledWalls = {}
-
-	local function makeSideTile(name)
-		local p = Instance.new("Part")
-		p.Name = name
-		p.Anchored = true
-		p.CanCollide = true
-		p.CanQuery = true
-		p.CanTouch = false
-		p.Transparency = 0.78
-		p.Material = Enum.Material.SmoothPlastic
-		p.Color = Color3.fromRGB(40, 140, 220)
-		p.Parent = sideFolder
-		return p
-	end
-
-	local function disableSideWallPart(part, safeMaxX, centerZ)
-		if not part or not part:IsA("BasePart") or sideDisabledWalls[part] ~= nil then return end
-		local ancModel = part:FindFirstAncestorOfClass("Model")
-		if ancModel and ancModel:FindFirstChildOfClass("Humanoid") then return end
-
-		local cf = part.CFrame
-		local sx, sy, sz = part.Size.X * 0.5, part.Size.Y * 0.5, part.Size.Z * 0.5
-		local rx, ry, rz = cf.RightVector, cf.UpVector, cf.LookVector
-		local wx = math.abs(rx.X) * sx + math.abs(ry.X) * sy + math.abs(rz.X) * sz
-		local wy = math.abs(rx.Y) * sx + math.abs(ry.Y) * sy + math.abs(rz.Y) * sz
-		local wz = math.abs(rx.Z) * sx + math.abs(ry.Z) * sy + math.abs(rz.Z) * sz
-		local pos = cf.Position
-		if (pos.X - wx) < (safeMaxX - 4) or (pos.X + wx) <= (safeMaxX + 8) then return end
-		if (pos.Y + wy) < 68.2 then return end
-
-		local minZ, maxZ = pos.Z - wz, pos.Z + wz
-		local inNorthWall = maxZ <= (centerZ - 55) and minZ >= (centerZ - 260)
-		local inSouthWall = minZ >= (centerZ + 55) and maxZ <= (centerZ + 260)
-		if not (inNorthWall or inSouthWall) then return end
-
-		sideDisabledWalls[part] = { cc = part.CanCollide, tr = part.Transparency }
-		if part.CanCollide then
-			part.CanCollide = false
-		end
-		if part.Transparency < 0.55 then
-			part.Transparency = 0.55
-		end
-	end
-
-	local function refreshSideWalls(enable, focusX)
-		if not enable then
-			for part, orig in pairs(sideDisabledWalls) do
-				if part and part.Parent then
-					pcall(function()
-						part.CanCollide = orig.cc
-						part.Transparency = orig.tr
-					end)
-				end
-			end
-			sideDisabledWalls = {}
-			return
-		end
-
-		local bounds = Helpers.GetSafeZoneBounds()
-		local gameFolder = Workspace:FindFirstChild("Game")
-		local excludes = {}
-		if sideFolder then table.insert(excludes, sideFolder) end
-		if LocalPlayer.Character then table.insert(excludes, LocalPlayer.Character) end
-		local gamePlots = gameFolder and gameFolder:FindFirstChild("Plots")
-		if gamePlots then table.insert(excludes, gamePlots) end
-		local rootPlots = Workspace:FindFirstChild("Plots")
-		if rootPlots then table.insert(excludes, rootPlots) end
-
-		local ov = OverlapParams.new()
-		ov.FilterType = Enum.RaycastFilterType.Exclude
-		ov.FilterDescendantsInstances = excludes
-
-		local fx = math.max(bounds.maxX + 550, (focusX or bounds.maxX) + 450)
-		local boxes = {
-			{ Vector3.new(bounds.maxX + 40, 88, bounds.center.Z), Vector3.new(140, 80, 520) },
-			{ Vector3.new(fx, 88, bounds.center.Z - SIDE_OFFSET_Z), Vector3.new(1400, 80, 160) },
-			{ Vector3.new(fx, 88, bounds.center.Z + SIDE_OFFSET_Z), Vector3.new(1400, 80, 160) },
-		}
-		for _, b in ipairs(boxes) do
-			local ok, hits = pcall(Workspace.GetPartBoundsInBox, Workspace, CFrame.new(b[1]), b[2], ov)
-			if ok and hits then
-				for _, hit in ipairs(hits) do
-					disableSideWallPart(hit, bounds.maxX, bounds.center.Z)
-				end
-			end
-		end
-	end
-
-	local function syncSideLane(enable)
-		if not enable then
-			for _, list in pairs(sideTiles) do
-				for _, t in ipairs(list) do
-					if t and t.Parent then t.CanCollide = false end
-				end
-			end
-			refreshSideWalls(false)
-			return
-		end
-
-		if not sideFolder or not sideFolder.Parent then
-			sideFolder = Instance.new("Folder")
-			sideFolder.Name = "KuySideLane"
-			sideFolder.Parent = Workspace
-			sideTiles = { north = {}, south = {} }
-			for idx = 1, #SIDE_TILES do
-				sideTiles.north[idx] = makeSideTile("SideNorth" .. idx)
-				sideTiles.south[idx] = makeSideTile("SideSouth" .. idx)
-			end
-		end
-
-		local bounds = Helpers.GetSafeZoneBounds()
-		local northZ = bounds.center.Z - SIDE_OFFSET_Z
-		local southZ = bounds.center.Z + SIDE_OFFSET_Z
-		local centerY = SIDE_TOP_Y - SIDE_THICKNESS * 0.5
-		for idx, seg in ipairs(SIDE_TILES) do
-			local len = seg[2] - seg[1]
-			local cx = (seg[1] + seg[2]) * 0.5
-			local nt = sideTiles.north[idx]
-			if nt then
-				nt.Size = Vector3.new(len, SIDE_THICKNESS, SIDE_WIDTH)
-				nt.CFrame = CFrame.new(cx, centerY, northZ)
-				nt.CanCollide = true
-			end
-			local st = sideTiles.south[idx]
-			if st then
-				st.Size = Vector3.new(len, SIDE_THICKNESS, SIDE_WIDTH)
-				st.CFrame = CFrame.new(cx, centerY, southZ)
-				st.CanCollide = true
-			end
-		end
-		refreshSideWalls(true, bounds.maxX + 200)
-	end
-
+	-- ทำความสะอาด KuySideLane เก่าที่อาจหลงเหลือจากการรันเวอร์ชันก่อนหน้า
 	Core:OnCleanup(function()
-		refreshSideWalls(false)
-		if sideFolder then
-			pcall(function() sideFolder:Destroy() end)
-			sideFolder = nil
+		local oldFolder = Workspace:FindFirstChild("KuySideLane")
+		if oldFolder then
+			pcall(function() oldFolder:Destroy() end)
 		end
-		sideTiles = { north = {}, south = {} }
 	end)
 
 	local function findNearestEnemyPos(pos, maxDist, scopeFolder)
@@ -1042,9 +894,6 @@ local function main()
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local hrp = Helpers.GetRoot()
 		if not (char and hum and hrp) then return false end
-		if Core.Flags.SideBypassMode then
-			refreshSideWalls(true, hrp.Position.X)
-		end
 		local initYOk = precise and 10 or 22
 		local initFlat = Vector3.new(targetPos.X - hrp.Position.X, 0, targetPos.Z - hrp.Position.Z).Magnitude
 		if initFlat <= arriveDist and math.abs(targetPos.Y - hrp.Position.Y) <= initYOk then
@@ -1072,12 +921,6 @@ local function main()
 			hum = char and char:FindFirstChildOfClass("Humanoid")
 			hrp = Helpers.GetRoot()
 			if not (char and hum and hrp) then return false end
-
-			local now = os.clock()
-			if Core.Flags.SideBypassMode and now - floorRefreshAt >= 0.12 then
-				floorRefreshAt = now
-				refreshSideWalls(true, hrp.Position.X)
-			end
 
 			local cur = hrp.Position
 			local flatDelta = Vector3.new(targetPos.X - cur.X, 0, targetPos.Z - cur.Z)
@@ -1120,7 +963,7 @@ local function main()
 					end
 				end
 
-				-- หลีกเลี่ยงบอสบนทางหลักระหว่างวิ่งกลับฐาน (เมื่อไม่ได้เปิดโหมดอ้อมขอบนอก)
+				-- หลีกเลี่ยงบอสบนทางหลักระหว่างวิ่งในด่าน
 				if evadeEnemies and safeBounds and cur.X > safeBounds.maxX and cur.Y > 64 and flatDist > 40 then
 					local ePos, eDist = findNearestEnemyPos(cur, 65)
 					if ePos then
@@ -1374,21 +1217,45 @@ local function main()
 	local lastEnter = 0
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
-		if os.clock() - lastEnter < 2 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+		if os.clock() - lastEnter < 1.5 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then return end
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
-		local target = tm:FindFirstChild("PurplePad") or tm:FindFirstChild("PlayerTreadmill")
-		local pos = target and Helpers.GetPosition(target)
+
+		local pt = tm:FindFirstChild("PlayerTreadmill")
+		local prim = pt and pt:FindFirstChild("Primary")
+		local targetPart = prim or tm:FindFirstChild("PurplePad") or pt
+		local pos = targetPart and Helpers.GetPosition(targetPart)
 		if not pos then return end
+
 		lastEnter = os.clock()
-		Helpers.Teleport(CFrame.new(pos + Vector3.new(0, 4, 0)))
+		-- วาร์ปตรงลงบนชิ้นส่วนสายพานหลักของลู่วิ่ง โดยปรับความสูงให้อยู่ในระดับสัมผัสพอดี
+		local targetCf = (prim and prim:IsA("BasePart"))
+			and (prim.CFrame * CFrame.new(0, 1.2, 0))
+			or CFrame.new(pos + Vector3.new(0, 1.0, 0))
+
+		Helpers.Teleport(targetCf)
+
+		-- ก้าวเท้าเล็กน้อยเพื่อให้เซิร์ฟเวอร์ตรวจจับ Touched บนสายพาน
+		local hum = Helpers.GetHumanoid()
+		if hum and pos then
+			pcall(function()
+				hum:MoveTo(pos)
+			end)
+		end
+
+		-- รอการยืนยันสถานะ TrainingOnTreadmill จากเซิร์ฟเวอร์
+		waitUntil(function()
+			return LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil or not Core._alive
+		end, 1.2)
 	end
 
 	local function startEnterLoop()
 		Core:Loop("enter", "AutoEnter", 1, function()
-			if not Core.Busy and not Helpers.IsCarrying() and not Core.Flags.AutoSteal then
-				enterTreadmill()
+			if not Core.Busy and not Helpers.IsCarrying() then
+				if not Core.Flags.AutoSteal or LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+					enterTreadmill()
+				end
 			end
 		end)
 	end
@@ -1755,32 +1622,11 @@ local function main()
 		waitUntil(function() return LocalPlayer:GetAttribute(TRAINING_ATTR) == nil end, 2.5)
 	end
 
-	local function pickSideZ(refPos, stageFolder)
-		local bounds = Helpers.GetSafeZoneBounds()
-		local northZ = bounds.center.Z - SIDE_OFFSET_Z
-		local southZ = bounds.center.Z + SIDE_OFFSET_Z
-		local rz = refPos and refPos.Z or bounds.center.Z
-		if refPos then
-			local ePos = findNearestEnemyPos(refPos, math.huge, stageFolder)
-			if ePos then
-				return (ePos.Z >= rz) and northZ or southZ
-			end
-		end
-		return (rz <= bounds.center.Z) and northZ or southZ
-	end
-
 	local function moveToCenterLane(abortFn)
 		local hrp = Helpers.GetRoot()
 		if not hrp then return end
 		local bounds = Helpers.GetSafeZoneBounds()
 		local laneX = math.clamp(hrp.Position.X, bounds.maxX - 48, bounds.maxX - 28)
-		if Core.Flags.SideBypassMode then
-			local targetZ = pickSideZ(hrp.Position)
-			if hrp.Position.X <= bounds.maxX + 20 and math.abs(hrp.Position.Z - targetZ) > 5 then
-				Helpers.MoveTo(Vector3.new(laneX, hrp.Position.Y, targetZ), abortFn, { precise = true, arriveDist = 3 })
-			end
-			return
-		end
 		if hrp.Position.X <= bounds.maxX + 20 then
 			if math.abs(hrp.Position.Z - bounds.center.Z) > 4 then
 				Helpers.MoveTo(Vector3.new(laneX, hrp.Position.Y, bounds.center.Z), abortFn, { precise = true, arriveDist = 3 })
@@ -1938,22 +1784,8 @@ local function main()
 			local livePos = Helpers.GetPlotSpawnPos() or pos
 			local hrp = Helpers.GetRoot()
 			if hrp and hrp.Position.X > bounds.maxX - 15 then
-				if Core.Flags.SideBypassMode and hrp.Position.X > bounds.maxX + 10 then
-					local exitSideZ = pickSideZ(hrp.Position, stageFolder)
-					if math.abs(hrp.Position.Z - exitSideZ) > 12 then
-						Helpers.MoveTo(Vector3.new(hrp.Position.X, SIDE_TOP_Y + 3, exitSideZ), stopWhenDelivered, { precise = false })
-						if not Helpers.IsCarrying() then
-							local okDeliv, state = checkDeliveryOrRecover(livePos)
-							if okDeliv then return true end
-							if state ~= "RECOVERED" then return false, state end
-						end
-						if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
-					end
-					Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, exitSideZ), stopWhenDelivered, { precise = false })
-				else
-					local entryZ = math.abs(livePos.Z - bounds.center.Z) > 35 and bounds.center.Z or livePos.Z
-					Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, evadeEnemies = true })
-				end
+				local entryZ = math.abs(livePos.Z - bounds.center.Z) > 35 and bounds.center.Z or livePos.Z
+				Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, evadeEnemies = true })
 				if not Helpers.IsCarrying() then
 					local okDeliv, state = checkDeliveryOrRecover(livePos)
 					if okDeliv then return true end
@@ -2045,7 +1877,6 @@ local function main()
 		local prompt = knownPrompt or checkStageHasPacks(i)
 		if not prompt then return false, "ไม่มีแพ็คให้ขโมย/ด่านปิด" end
 
-		syncSideLane(Core.Flags.SideBypassMode)
 		Helpers.GetPlotSpawnPos() -- แคชพิกัดฐานก่อนออกจากฐาน (กัน Plot stream out)
 		moveToCenterLane(function()
 			return not Core.Flags.AutoSteal or not prompt.Parent
@@ -2080,41 +1911,12 @@ local function main()
 			if not p0 then break end
 			stageFolder = getStageFolder(i)
 
-			local standTarget
-			if Core.Flags.SideBypassMode then
-				local hrp0 = Helpers.GetRoot()
-				local curSideZ = (hrp0 and hrp0.Position.Z <= bounds.center.Z)
-					and (bounds.center.Z - SIDE_OFFSET_Z)
-					or (bounds.center.Z + SIDE_OFFSET_Z)
-				local waitSpot = Vector3.new(p0.X, SIDE_TOP_Y + 3, curSideZ)
-				Helpers.MoveTo(waitSpot, function()
-					return not Core.Flags.AutoSteal or not prompt.Parent
-				end, { precise = false })
-				if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then break end
-
-				-- รอจังหวะสั้นๆ นอกกำแพงหากบอสยืนเฝ้าติดแพ็ค ก่อนพุ่งเข้าขโมยจากด้านข้างนอก
-				local waitEnd = os.clock() + 1.8
-				while os.clock() < waitEnd and Core.Flags.AutoSteal and prompt.Parent do
-					local _, eDist = findNearestEnemyPos(p0, 35, stageFolder)
-					if not eDist or eDist >= 22 then break end
-					task.wait(0.15)
-				end
-
-				local anchor0 = packAnchorPos(prompt) or p0
-				local edgeDir = (curSideZ < anchor0.Z) and -1 or 1
-				local wallSidePos = Vector3.new(anchor0.X, anchor0.Y, anchor0.Z + edgeDir * 2.8)
-				local safePos = safeStandPos(anchor0, stageFolder, 2.8)
-				local _, dWall = findNearestEnemyPos(wallSidePos, math.huge, stageFolder)
-				local _, dSafe = findNearestEnemyPos(safePos, math.huge, stageFolder)
-				standTarget = (dSafe > dWall + 3) and safePos or wallSidePos
-			else
-				standTarget = safeStandPos(packAnchorPos(prompt) or p0, stageFolder, 2.5)
-			end
+			local standTarget = safeStandPos(packAnchorPos(prompt) or p0, stageFolder, 2.5)
 
 			-- เดินเข้าไปยืนด้านที่ห่างบอสที่สุดให้ชิดระยะ Prompt จริง (<= 3.5 studs)
 			Helpers.MoveTo(standTarget, function()
 				return not Core.Flags.AutoSteal or not prompt.Parent
-			end, { precise = true, arriveDist = 2.0, evadeEnemies = not Core.Flags.SideBypassMode })
+			end, { precise = true, arriveDist = 2.0, evadeEnemies = true })
 			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then break end
 			local hrp = Helpers.GetRoot()
 			local pNow = packAnchorPos(prompt) or promptPos(prompt)
@@ -2155,6 +1957,19 @@ local function main()
 
 	local function returnToSafeRest(allowTreadmill)
 		if not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+		-- หากอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะวิ่ง ไม่ต้องเดินหรือขยับตัว
+		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
+
+		local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
+		local canEnter = allowTreadmill and (Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill)
+		local shouldTreadmill = canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull())
+
+		-- หากต้องการขึ้นลู่วิ่ง ให้ลองขึ้นทันที
+		if shouldTreadmill then
+			enterTreadmill()
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
+		end
+
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return end
 		local hrp = Helpers.GetRoot()
@@ -2166,9 +1981,7 @@ local function main()
 				return not Core._alive or not Core.Flags.AutoSteal
 			end, { precise = true, arriveDist = 6 })
 		end
-		local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
-		local canEnter = allowTreadmill and (Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill)
-		if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
+		if shouldTreadmill then
 			enterTreadmill()
 		end
 	end
@@ -2194,13 +2007,17 @@ local function main()
 
 	local function stealCycle()
 		-- 1. ทำ Base Maintenance ก่อนเสมอ (Priority 1 เก็บแพ็คที่พร้อม -> Priority 2 วางแพ็คในตัวให้หมด)
-		if runBaseMaintenance then
-			runBaseMaintenance()
+		-- หากอยู่บนลู่วิ่งและไม่มีแพ็คในตัว ไม่จำเป็นต้องทำ maintenance ซ้ำเพื่อป้องกันตัวละครขยับ
+		local curPacks = (getPacksToPlace and #getPacksToPlace()) or 0
+		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil or curPacks > 0 then
+			if runBaseMaintenance then
+				runBaseMaintenance()
+			end
 		end
 
 		-- Gatekeeper: ตรวจสอบว่ายังมีแพ็คในตัวที่ยังวางไม่หมดหรือไม่
 		-- หากยังมีแพ็คและฐานยังวางได้ ห้ามออกไปขโมยด่านเด็ดขาด ให้เคลียร์แพ็คในตัวให้หมดก่อน
-		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
+		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and curPacks > 0 and not isBaseFull() then
 			return
 		end
 
@@ -2256,15 +2073,18 @@ local function main()
 
 		-- 3. Priority 4: หากไม่มีแพ็คในด่านใดเลย (รอเวลารีสปอว์น) ให้กลับฐานและขึ้นลู่วิ่ง
 		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			if runBaseMaintenance then
-				runBaseMaintenance()
-			end
-			local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
-			local canEnter = Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill
-			if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
-				returnToSafeRest(true)
-			else
-				returnToSafeRest(false)
+			-- หากตัวละครอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะฝึกวิ่งไว้เรื่อยๆ
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+				if runBaseMaintenance then
+					runBaseMaintenance()
+				end
+				local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
+				local canEnter = Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill
+				if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
+					returnToSafeRest(true)
+				else
+					returnToSafeRest(false)
+				end
 			end
 			task.wait(1.5)
 		end
@@ -4195,15 +4015,6 @@ local function main()
 			if v then startStealLoop() end
 		end)
 
-		CreateToggle(pFarm, "ความเร็วสูงสุด 340 (เพดานเกม)", Core.Flags.MaxSpeedMode, function(v)
-			Core.Flags.MaxSpeedMode = v
-		end)
-
-		CreateToggle(pFarm, "โหมดอ้อมขอบนอก (หลบบอส / Side Bypass)", Core.Flags.SideBypassMode, function(v)
-			Core.Flags.SideBypassMode = v
-			syncSideLane(v)
-		end)
-
 		CreateToggle(pFarm, "ลบอนิเมชชั่นโดนตี/ไม่ล้ม (Anti-Ragdoll)", Core.Flags.AntiRagdollMode, function(v)
 			Core.Flags.AntiRagdollMode = v
 			if v then Helpers.RecoverFromHit(LocalPlayer.Character) end
@@ -4456,7 +4267,6 @@ local function main()
 		if Core.Flags.AutoEnter then task.spawn(startEnterLoop) end
 		if Core.Flags.AutoSteal then task.spawn(startStealLoop) end
 		if Core.Flags.AutoPlacePacks then task.spawn(startAutoPlacePacksLoop) end
-		if Core.Flags.SideBypassMode then syncSideLane(true) end
 		if Core.Flags.AutoOpenPacks then task.spawn(startAutoOpenPacksLoop) end
 		if Core.Flags.AutoEquipBest then task.spawn(startAutoEquipBestLoop) end
 		if Core.Flags.AutoMerge then task.spawn(startAutoMergeLoop) end
