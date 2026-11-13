@@ -1222,16 +1222,22 @@ local function main()
 		if not tm then return end
 
 		local pt = tm:FindFirstChild("PlayerTreadmill")
+		local seat = pt and pt:FindFirstChild("Seat")
 		local prim = pt and pt:FindFirstChild("Primary")
-		local targetPart = prim or tm:FindFirstChild("PurplePad") or pt
+		local targetPart = seat or prim or tm:FindFirstChild("PurplePad") or pt
 		local pos = targetPart and Helpers.GetPosition(targetPart)
 		if not pos then return end
 
 		lastEnter = os.clock()
-		-- วาร์ปตรงลงบนชิ้นส่วนสายพานหลักของลู่วิ่ง โดยปรับความสูงให้อยู่ในระดับสัมผัสพอดี
-		local targetCf = (prim and prim:IsA("BasePart"))
-			and (prim.CFrame * CFrame.new(0, 1.2, 0))
-			or CFrame.new(pos + Vector3.new(0, 1.0, 0))
+		-- วาร์ปลงบนแท่นยืนของลู่วิ่งตรงจุด Seat (Y ≈ 70.75) หรือ Primary
+		local targetCf
+		if seat and seat:IsA("BasePart") then
+			targetCf = CFrame.new(seat.Position + Vector3.new(0, 3.0, 0))
+		elseif prim and prim:IsA("BasePart") then
+			targetCf = prim.CFrame * CFrame.new(0, 1.2, 0)
+		else
+			targetCf = CFrame.new(pos + Vector3.new(0, 1.0, 0))
+		end
 
 		Helpers.Teleport(targetCf)
 
@@ -1251,8 +1257,10 @@ local function main()
 
 	local function startEnterLoop()
 		Core:Loop("enter", "AutoEnter", 1, function()
+			-- ถ้าเปิดระบบ AutoSteal ให้ระบบขโมยเป็นผู้ควบคุมการขึ้น-ลงลู่วิ่งทั้งหมดเพียงผู้เดียว เพื่อไม่ให้แย่งสิทธิ์กัน
+			if Core.Flags.AutoSteal then return end
 			if not Core.Busy and not Helpers.IsCarrying() then
-				if not Core.Flags.AutoSteal or LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+				if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
 					enterTreadmill()
 				end
 			end
@@ -1618,7 +1626,25 @@ local function main()
 	local function leaveTreadmill()
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then return end
 		Net.Fire(Net.Paths.ExitRequest, 0.5)
-		waitUntil(function() return LocalPlayer:GetAttribute(TRAINING_ATTR) == nil end, 2.5)
+
+		-- ปลด Anchored และดีดตัวละครก้าวออกจากแท่นสายพานทันที เพื่อให้หลุดจากระยะ Touched
+		local hrp = Helpers.GetRoot()
+		local hum = Helpers.GetHumanoid()
+		if hrp then
+			pcall(function()
+				hrp.Anchored = false
+				-- ขยับตัวละครไปข้างหน้า 10 studs ออกจากเครื่องวิ่งไปยังพื้นที่โล่งของฐาน
+				hrp.CFrame = hrp.CFrame * CFrame.new(0, 2, 10)
+				hrp.AssemblyLinearVelocity = Vector3.zero
+			end)
+		end
+		if hum then
+			pcall(function()
+				hum.Jump = true
+			end)
+		end
+
+		waitUntil(function() return LocalPlayer:GetAttribute(TRAINING_ATTR) == nil end, 2.0)
 	end
 
 	local function moveToCenterLane(abortFn)
