@@ -1313,10 +1313,16 @@ local function main()
 		end)
 	end)
 
+	local getPacksToPlace = nil
+	local openReadyPlacedPacks = nil
+	local placePacksInBase = nil
+	local runBaseMaintenance = nil
+
 	local lastEnter = 0
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 2 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 then return end
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
 		local target = tm:FindFirstChild("PurplePad") or tm:FindFirstChild("PlayerTreadmill")
@@ -1328,7 +1334,7 @@ local function main()
 
 	local function startEnterLoop()
 		Core:Loop("enter", "AutoEnter", 1, function()
-			if not Core.Busy and not Helpers.IsCarrying() then
+			if not Core.Busy and not Helpers.IsCarrying() and not Core.Flags.AutoSteal then
 				enterTreadmill()
 			end
 		end)
@@ -1863,7 +1869,7 @@ local function main()
 		return deliver()
 	end
 
-	local function returnToSafeRest()
+	local function returnToSafeRest(allowTreadmill)
 		if not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return end
@@ -1876,22 +1882,32 @@ local function main()
 				return not Core._alive or not Core.Flags.AutoSteal
 			end, { precise = true, arriveDist = 6 })
 		end
-		if Core.Flags.AutoEnter or Core.Flags.AutoTreadmill then
+		if allowTreadmill and (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) then
 			enterTreadmill()
 		end
 	end
 
-	local placePacksInBase = nil
+	runBaseMaintenance = function()
+		if not Core._alive then return end
+		-- Priority 1: ฟัก/เก็บแพ็คที่พร้อมเปิด เพื่อเคลียร์แท่นและเปิดพื้นที่ว่างบนฐาน
+		if Core.Flags.AutoOpenPacks and openReadyPlacedPacks then
+			pcall(openReadyPlacedPacks)
+		end
 
-	local function stealCycle()
-		-- ตรวจสอบก่อนเริ่มรอบขโมย: ถ้ามีแพ็กในตัวและอยู่ในฐาน ให้วางแพ็กในฐานก่อน
-		if Core.Flags.AutoPlacePacks and placePacksInBase and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			local hrp = Helpers.GetRoot()
-			local pos = Helpers.GetPlotSpawnPos()
-			local bounds = Helpers.GetSafeZoneBounds()
-			if hrp and (hrp.Position.X <= bounds.maxX + 15 or (pos and (hrp.Position - pos).Magnitude <= 50)) then
+		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานเมื่อมีพื้นที่ว่าง
+		if Core.Flags.AutoPlacePacks and placePacksInBase then
+			local count = (getPacksToPlace and #getPacksToPlace()) or 0
+			if count > 0 then
+				leaveTreadmill()
 				placePacksInBase()
 			end
+		end
+	end
+
+	local function stealCycle()
+		-- 1. ทำ Base Maintenance ก่อนเสมอ (Priority 1 เก็บแพ็คที่พร้อม -> Priority 2 วางแพ็คเมื่อมีที่ว่าง)
+		if runBaseMaintenance then
+			runBaseMaintenance()
 		end
 
 		local anyFound = false
@@ -1909,26 +1925,31 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
-						-- ขโมยเสร็จ นำแพ็กมาวางที่ฐานทันที ถึงค่อยเริ่มขโมยใหม่ (ถ้าไม่มีที่วางก็เริ่มขโมยต่อเลย)
-						if Core.Flags.AutoPlacePacks and placePacksInBase then
-							placePacksInBase()
+						-- เมื่อขโมยเสร็จและนำส่งถึงฐาน ให้ทำ Priority 1 และ 2 ทันที
+						if runBaseMaintenance then
+							runBaseMaintenance()
 						end
 					else
 						Stats.stealFail = Stats.stealFail + 1
 						local reason = res
 						if ok then reason = why or "ไม่ทราบสาเหตุ" end
 						logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
-						returnToSafeRest()
+						returnToSafeRest(false)
 					end
 					task.wait(Core.Flags.StealDelay)
 				end
 			end
 		end
 
+		-- 3. Priority 4: หากไม่มีแพ็คในด่านใดเลย (รอเวลารีสปอว์น) ให้กลับฐานและขึ้นลู่วิ่ง
 		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			returnToSafeRest()
-			if Core.Flags.AutoPlacePacks and placePacksInBase then
-				placePacksInBase()
+			if runBaseMaintenance then
+				runBaseMaintenance()
+			end
+			if Core.Flags.AutoEnter or Core.Flags.AutoTreadmill then
+				returnToSafeRest(true)
+			else
+				returnToSafeRest(false)
 			end
 			task.wait(1.5)
 		end
@@ -2534,7 +2555,7 @@ local function main()
 		end
 	end
 
-	local function openReadyPlacedPacks()
+	openReadyPlacedPacks = function()
 		local now = os.clock()
 		local pd = getPlayerData()
 		local inv = pd and pd.Get and pd.Get("Inventory")
@@ -2569,7 +2590,7 @@ local function main()
 		end
 	end
 
-	local function getPacksToPlace()
+	getPacksToPlace = function()
 		local now = os.clock()
 		local packs = {}
 		local seen = {}
@@ -2762,11 +2783,10 @@ local function main()
 
 	local function autoOpenPacksStep()
 		if not Core._alive then return end
-		if Core.Flags.AutoOpenPacks then
-			openReadyPlacedPacks()
-		end
-		if Core.Flags.AutoPlacePacks and not Core.Busy and not Helpers.IsCarrying() then
-			placePacksInBase()
+		-- ถ้ากำลังเปิดโหมด AutoSteal ให้ลูปขโมยเป็นตัวจัดการวงรอบ Base Maintenance เอง
+		if Core.Flags.AutoSteal then return end
+		if runBaseMaintenance then
+			runBaseMaintenance()
 		end
 	end
 
