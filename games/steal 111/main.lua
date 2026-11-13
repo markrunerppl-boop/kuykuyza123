@@ -2170,7 +2170,7 @@ local function main()
 		end
 
 		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน (เฉพาะเมื่อฐานยังไม่เต็ม)
-		if Core.Flags.AutoPlacePacks and placePacksInBase then
+		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and placePacksInBase then
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
 				local okPlace, resWhy = placePacksInBase()
@@ -2189,7 +2189,7 @@ local function main()
 
 		-- Gatekeeper: ตรวจสอบว่ายังมีแพ็คในตัวที่ยังวางไม่หมดหรือไม่
 		-- หากยังมีแพ็คและฐานยังวางได้ ห้ามออกไปขโมยด่านเด็ดขาด ให้เคลียร์แพ็คในตัวให้หมดก่อน
-		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
+		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
 			return
 		end
 
@@ -2198,7 +2198,7 @@ local function main()
 			if not Core._alive or not Core.Flags.AutoSteal then break end
 
 			-- ก่อนเริ่มขโมยด่านถัดไป หากมีแพ็คในตัวและฐานยังวางได้ ให้กลับไปวางให้หมดก่อน
-			if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
+			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
 				if runBaseMaintenance then runBaseMaintenance() end
 				return
 			end
@@ -2220,7 +2220,14 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName)), true)
-						-- เมื่อขโมยเสร็จและนำส่งถึงฐาน ให้ทำ Priority 1 และ 2 ทันที (วางแพ็คที่เพิ่งได้มาให้หมด)
+						-- รอให้เซิร์ฟเวอร์ประมวลผลการส่งและซิงก์แพ็คเข้ากระเป๋า (สูงสุด 2.5 วินาที) ก่อนสั่งวาง
+						local waitSyncEnd = os.clock() + 2.5
+						while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
+							local count = (getPacksToPlace and #getPacksToPlace()) or 0
+							if count > 0 then break end
+							task.wait(0.15)
+						end
+						-- เมื่อนำส่งถึงฐาน ให้ทำ Base Maintenance ทันที (วางแพ็คที่เพิ่งได้มาให้หมด)
 						if runBaseMaintenance then
 							runBaseMaintenance()
 						end
@@ -2895,9 +2902,12 @@ local function main()
 		local pc = getPacksConfig()
 
 		-- 1. Tools ใน Character / Backpack
-		for _, tool in ipairs(getBagTools(false)) do
+		for _, tool in ipairs(getBagTools(true)) do
 			local packId = tool:GetAttribute("PackId")
-			local isPack = tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs"
+			local isChar = (tool:GetAttribute("Kind") == "Character") or (tool:GetAttribute("IsCharacter") == true)
+			local isPack = tool:GetAttribute("CardIsPack") == true
+				or tool:GetAttribute("ItemCategory") == "Packs"
+				or (type(packId) == "string" and packId ~= "" and not isChar)
 			if isPack and type(packId) == "string" and packId ~= "" and not seen[packId] then
 				if (itemSkipUntil["place:" .. packId] or 0) <= now then
 					seen[packId] = true
@@ -2939,7 +2949,7 @@ local function main()
 	local isPlacingPacks = false
 	placePacksInBase = function()
 		if not Core._alive then return false end
-		if not Core.Flags.AutoPlacePacks then return false end
+		if not (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) then return false end
 		if isBaseFull() then return false, "BASE_FULL" end
 		if isPlacingPacks then return false end
 		isPlacingPacks = true
@@ -3065,9 +3075,11 @@ local function main()
 					end
 
 					-- สวมใส่ Tool เข้าร่างกายตัวละคร (เซิร์ฟเวอร์บังคับว่าต้องถือ Tool ก่อนวาง)
-					if hum and packTool and packTool.Parent ~= char then
-						pcall(function() hum:EquipTool(packTool) end)
-						task.wait(0.2)
+					if hum and packTool then
+						if packTool.Parent ~= char then
+							pcall(function() hum:EquipTool(packTool) end)
+							task.wait(0.15)
+						end
 						pcall(function()
 							Net.Fire(Net.Paths.ToolsRequestEquip, nil, {
 								Equipped = true,
@@ -3080,8 +3092,8 @@ local function main()
 					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
 					local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
 
-					-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่
-					for attempt = 1, 6 do
+					-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่ (ลองสูงสุด 15 จุด)
+					for attempt = 1, 15 do
 						local placePos = nil
 						if placementUtil and placementUtil.RandomPointInArea and area then
 							local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
@@ -3135,14 +3147,17 @@ local function main()
 					end
 
 					if not placedThis then
-						if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" or lastReason == "OVERLAPS_PACK" then
+						if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" then
 							noSpace = true
 							baseFullUntil = os.clock() + 60
 							itemSkipUntil["place:" .. packId] = os.clock() + 60
 							logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 							break
-						else
+						elseif lastReason == "OVERLAPS_PACK" then
 							itemSkipUntil["place:" .. packId] = os.clock() + 4
+							logAction("วางแพ็ก", "พิกัดวางชนแพ็คอื่น: " .. tostring(packName) .. " (จะลองใหม่)", false)
+						else
+							itemSkipUntil["place:" .. packId] = os.clock() + 3
 							logAction("วางแพ็ก", "วางไม่สำเร็จ: " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 						end
 					end
