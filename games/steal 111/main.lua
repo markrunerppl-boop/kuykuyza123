@@ -98,7 +98,7 @@ local function main()
 	Core.Flags.AutoTreadmill = false -- กดคูณอัตโนมัติ (ทำคอมโบ)
 	Core.Flags.AutoEnter = false     -- เดินเข้าลู่วิ่งอัตโนมัติ
 	Core.Flags.AutoSteal = false     -- ขโมยแพ็คตามด่านที่เลือก
-	Core.Flags.AutoPlacePacks = true -- วางแพ็คในฐานอัตโนมัติเมื่อพร้อม (รันควบคู่กับขโมยแพ็ค)
+	Core.Flags.AutoPlacePacks = false -- วางแพ็คในฐานอัตโนมัติเมื่อพร้อม (แยกเปิดอิสระ)
 	Core.Flags.AntiRagdollMode = true -- ลบอนิเมชชั่นโดนตี/ไม่ล้ม เพื่อวิ่งกลับฐานต่อเนื่อง
 	Core.Flags.AutoBuyCoach = false   -- ซื้อโค้ชที่แรงกว่าใน Stock อัตโนมัติ
 	Core.Flags.AutoEquipCoach = false -- สวมใส่โค้ชที่ตัวคูณสูงสุดอัตโนมัติ
@@ -1218,7 +1218,6 @@ local function main()
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 1.5 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
-		if Core.Flags.AutoPlacePacks and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then return end
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
 
@@ -1840,25 +1839,14 @@ local function main()
 
 	local function checkStageHasPacks(i)
 		local folder = getStageFolder(i)
-		local prompt = findStealPrompt(folder)
-		if prompt then return prompt end
-
-		local basePos = STAGE_CENTERS[i]
-		if basePos then
-			Helpers.StreamAround(basePos, 1.2)
+		if not folder or not folder:FindFirstChild("SpawnedPacks") then
+			local basePos = STAGE_CENTERS[i]
+			if basePos then
+				Helpers.StreamAround(basePos, 0.8)
+			end
+			folder = getStageFolder(i)
 		end
-		folder = getStageFolder(i)
-		prompt = findStealPrompt(folder)
-		if prompt then return prompt end
-
-		local sp = folder and folder:FindFirstChild("SpawnedPacks")
-		if sp and #sp:GetChildren() > 0 then
-			task.wait(0.2)
-			prompt = findStealPrompt(folder)
-			if prompt then return prompt end
-		end
-
-		return nil
+		return findStealPrompt(folder)
 	end
 
 	local function safeStandPos(p0, stageFolder, radius)
@@ -1960,12 +1948,10 @@ local function main()
 		-- หากอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะวิ่ง ไม่ต้องเดินหรือขยับตัว
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 
-		local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
 		local canEnter = allowTreadmill and (Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill)
-		local shouldTreadmill = canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull())
 
 		-- หากต้องการขึ้นลู่วิ่ง ให้ลองขึ้นทันที
-		if shouldTreadmill then
+		if canEnter then
 			enterTreadmill()
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		end
@@ -1981,7 +1967,7 @@ local function main()
 				return not Core._alive or not Core.Flags.AutoSteal
 			end, { precise = true, arriveDist = 6 })
 		end
-		if shouldTreadmill then
+		if canEnter then
 			enterTreadmill()
 		end
 	end
@@ -1993,8 +1979,8 @@ local function main()
 			pcall(openReadyPlacedPacks)
 		end
 
-		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน (เฉพาะเมื่อฐานยังไม่เต็ม)
-		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and placePacksInBase then
+		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐาน (เฉพาะเมื่อผู้ใช้เปิด AutoPlacePacks และฐานยังไม่เต็ม)
+		if Core.Flags.AutoPlacePacks and placePacksInBase then
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
 				local okPlace, resWhy = placePacksInBase()
@@ -2006,30 +1992,10 @@ local function main()
 	end
 
 	local function stealCycle()
-		-- 1. ทำ Base Maintenance ก่อนเสมอ (Priority 1 เก็บแพ็คที่พร้อม -> Priority 2 วางแพ็คในตัวให้หมด)
-		-- หากอยู่บนลู่วิ่งและไม่มีแพ็คในตัว ไม่จำเป็นต้องทำ maintenance ซ้ำเพื่อป้องกันตัวละครขยับ
-		local curPacks = (getPacksToPlace and #getPacksToPlace()) or 0
-		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil or curPacks > 0 then
-			if runBaseMaintenance then
-				runBaseMaintenance()
-			end
-		end
-
-		-- Gatekeeper: ตรวจสอบว่ายังมีแพ็คในตัวที่ยังวางไม่หมดหรือไม่
-		-- หากยังมีแพ็คและฐานยังวางได้ ห้ามออกไปขโมยด่านเด็ดขาด ให้เคลียร์แพ็คในตัวให้หมดก่อน
-		if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and curPacks > 0 and not isBaseFull() then
-			return
-		end
-
+		-- 1. ลูปตรวจสอบด่าน 1-12 เพื่อหาแพ็คที่ตรงกับเกรดที่เลือก
 		local anyFound = false
 		for i = 1, 12 do
 			if not Core._alive or not Core.Flags.AutoSteal then break end
-
-			-- ก่อนเริ่มขโมยด่านถัดไป หากมีแพ็คในตัวและฐานยังวางได้ ให้กลับไปวางให้หมดก่อน
-			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
-				if runBaseMaintenance then runBaseMaintenance() end
-				if not isBaseFull() then return end
-			end
 
 			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
 				local prompt = checkStageHasPacks(i)
@@ -2048,15 +2014,14 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName)), true)
-						-- รอให้เซิร์ฟเวอร์ประมวลผลการส่งและซิงก์แพ็คเข้ากระเป๋า (สูงสุด 2.5 วินาที) ก่อนสั่งวาง
-						local waitSyncEnd = os.clock() + 2.5
-						while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
-							local count = (getPacksToPlace and #getPacksToPlace()) or 0
-							if count > 0 then break end
-							task.wait(0.15)
-						end
-						-- เมื่อนำส่งถึงฐาน ให้ทำ Base Maintenance ทันที (วางแพ็คที่เพิ่งได้มาให้หมด)
-						if runBaseMaintenance then
+						-- หากผู้ใช้เปิด AutoPlacePacks ให้รอซิงก์แพ็คเข้ากระเป๋าและวางลงฐาน
+						if Core.Flags.AutoPlacePacks and runBaseMaintenance then
+							local waitSyncEnd = os.clock() + 2.0
+							while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
+								local count = (getPacksToPlace and #getPacksToPlace()) or 0
+								if count > 0 then break end
+								task.wait(0.15)
+							end
 							runBaseMaintenance()
 						end
 					else
@@ -2071,22 +2036,13 @@ local function main()
 			end
 		end
 
-		-- 3. Priority 4: หากไม่มีแพ็คในด่านใดเลย (รอเวลารีสปอว์น) ให้กลับฐานและขึ้นลู่วิ่ง
+		-- 2. หากไม่มีแพ็คในด่านใดเลยที่ตรงกับเกรดที่เลือก ให้กลับฐานและขึ้นลู่วิ่งทันที
 		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			-- หากตัวละครอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะฝึกวิ่งไว้เรื่อยๆ
+			-- หากตัวละครยังไม่ได้อยู่บนลู่วิ่ง ให้ขึ้นลู่วิ่งทันที
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
-				if runBaseMaintenance then
-					runBaseMaintenance()
-				end
-				local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
-				local canEnter = Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill
-				if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
-					returnToSafeRest(true)
-				else
-					returnToSafeRest(false)
-				end
+				returnToSafeRest(true)
 			end
-			task.wait(1.5)
+			task.wait(1.0)
 		end
 	end
 
@@ -2786,7 +2742,7 @@ local function main()
 	local isPlacingPacks = false
 	placePacksInBase = function()
 		if not Core._alive then return false end
-		if not (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) then return false end
+		if not Core.Flags.AutoPlacePacks then return false end
 		if isBaseFull() then return false, "BASE_FULL" end
 		if isPlacingPacks then return false end
 		isPlacingPacks = true
@@ -2840,12 +2796,12 @@ local function main()
 				local half = area.Size * 0.5
 				if math.abs(offset.X) > half.X or math.abs(offset.Z) > half.Z then
 					Helpers.MoveTo(area.Position + Vector3.new(0, 2.5, 0), function()
-						return not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks)
+						return not Core._alive or not Core.Flags.AutoPlacePacks
 					end, { precise = true, arriveDist = 4 })
 				end
 			elseif hrp and basePos and (hrp.Position - basePos).Magnitude > 15 then
 				Helpers.MoveTo(basePos + Vector3.new(0, 2.5, 0), function()
-					return not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks)
+					return not Core._alive or not Core.Flags.AutoPlacePacks
 				end, { precise = true, arriveDist = 5 })
 			end
 
@@ -2861,7 +2817,7 @@ local function main()
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local loopPass = 0
 
-			while Core._alive and (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) and not noSpace do
+			while Core._alive and Core.Flags.AutoPlacePacks and not noSpace do
 				loopPass = loopPass + 1
 				if loopPass > 30 then break end
 
@@ -3032,8 +2988,8 @@ local function main()
 	end
 
 	local function startAutoPlacePacksLoop()
-		Core:Loop("placePacks", "AutoPlacePacks", 2.0, function()
-			if not Core.Busy and not Helpers.IsCarrying() and not Core.Flags.AutoSteal then
+		Core:Loop("placePacks", "AutoPlacePacks", 1.5, function()
+			if not Core.Busy and not Helpers.IsCarrying() then
 				if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
 					if placePacksInBase then placePacksInBase() end
 				end
