@@ -1201,6 +1201,7 @@ local function main()
 		CoachesEquip = RP .. "Coaches.Equip",        -- RF: InvokeServer(coachKey)
 		AurasPurchase = RP .. "Auras.Purchase",      -- RF: InvokeServer(auraId)
 		AurasEquip = RP .. "Auras.Equip",            -- RF: InvokeServer(auraId)
+		ToolsRequestEquip = RP .. "Tools.RequestEquip", -- RE: FireServer({Equipped, Tool})
 	}
 
 	function Net.Get(remote)
@@ -2711,6 +2712,8 @@ local function main()
 			end
 
 			local noSpace = false
+			local char = LocalPlayer.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
 
 			for _, pack in ipairs(packs) do
 				if not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) then break end
@@ -2719,22 +2722,66 @@ local function main()
 				local placedThis = false
 				local lastReason = nil
 
+				-- ค้นหา Tool ของแพ็กชิ้นนี้
+				char = LocalPlayer.Character
+				hum = char and char:FindFirstChildOfClass("Humanoid")
+				local bp = LocalPlayer:FindFirstChild("Backpack")
+				local packTool = pack.Tool
+				if not (packTool and packTool.Parent) then
+					packTool = (char and char:FindFirstChild(packName)) or (bp and bp:FindFirstChild(packName))
+				end
+				if not (packTool and packTool:GetAttribute("PackId") == packId) then
+					if bp then
+						for _, t in ipairs(bp:GetChildren()) do
+							if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
+								packTool = t
+								break
+							end
+						end
+					end
+					if not packTool and char then
+						for _, t in ipairs(char:GetChildren()) do
+							if t:IsA("Tool") and t:GetAttribute("PackId") == packId then
+								packTool = t
+								break
+							end
+						end
+					end
+				end
+
+				-- สวมใส่ Tool เข้าร่างกายตัวละคร (เซิร์ฟเวอร์บังคับว่าต้องถือ Tool ก่อนวาง)
+				if hum and packTool and packTool.Parent ~= char then
+					pcall(function() hum:EquipTool(packTool) end)
+					task.wait(0.2)
+					pcall(function()
+						Net.Fire(Net.Paths.ToolsRequestEquip, nil, {
+							Equipped = true,
+							Tool = packTool
+						})
+					end)
+					task.wait(0.1)
+				end
+
+				-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
+				local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
+
 				-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่
 				for attempt = 1, 6 do
 					local placePos = nil
 					if placementUtil and placementUtil.RandomPointInArea and area then
 						local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
 						if okPt and typeof(pt) == "Vector3" then
-							placePos = pt
+							placePos = Vector3.new(pt.X, surfaceY, pt.Z)
 						end
 					end
 					if not placePos then
 						local rx = (math.random() - 0.5) * 2 * halfX
 						local rz = (math.random() - 0.5) * 2 * halfZ
 						if area and area:IsA("BasePart") then
-							placePos = area.CFrame:PointToWorldSpace(Vector3.new(rx, 1.2, rz))
+							local worldPt = area.CFrame:PointToWorldSpace(Vector3.new(rx, 0, rz))
+							placePos = Vector3.new(worldPt.X, surfaceY, worldPt.Z)
 						else
-							placePos = Vector3.new(basePos.X + rx, basePos.Y + 1.2, basePos.Z + rz)
+							placePos = Vector3.new(basePos.X + rx, surfaceY, basePos.Z + rz)
 						end
 					end
 
@@ -2747,13 +2794,21 @@ local function main()
 						placedThis = true
 						logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
 						itemSkipUntil["place:" .. packId] = nil
+						if hum then pcall(function() hum:UnequipTools() end) end
 						task.wait(0.25)
 						break
 					else
 						lastReason = reason or "FAILED"
 						if reason == "NOT_OWNED" or reason == "ALREADY_PLACED" then
 							placedThis = true
+							if hum then pcall(function() hum:UnequipTools() end) end
 							break
+						elseif reason == "NOT_EQUIPPED" then
+							-- เซิร์ฟเวอร์แจ้งว่ายังไม่ได้ถือ Tool ให้ลอง Equip ซ้ำ
+							if hum and packTool then
+								pcall(function() hum:EquipTool(packTool) end)
+								task.wait(0.2)
+							end
 						elseif reason == "LIMIT_REACHED" or reason == "MAX_PLACED" or reason == "NO_SPACE" or reason == "PLOT_FULL" then
 							noSpace = true
 							break
@@ -2763,12 +2818,20 @@ local function main()
 				end
 
 				if not placedThis then
-					noSpace = true
-					itemSkipUntil["place:" .. packId] = os.clock() + 10
-					logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
-					break
+					if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" or lastReason == "OVERLAPS_PACK" then
+						noSpace = true
+						itemSkipUntil["place:" .. packId] = os.clock() + 10
+						logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
+						break
+					else
+						itemSkipUntil["place:" .. packId] = os.clock() + 4
+						logAction("วางแพ็ก", "วางไม่สำเร็จ: " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
+					end
 				end
 			end
+
+			-- ปลดการถือ Tool เมื่อวางเสร็จสิ้นทั้งหมด
+			if hum then pcall(function() hum:UnequipTools() end) end
 
 			if noSpace then
 				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> ขโมยต่อทันที", false)
@@ -3735,11 +3798,6 @@ local function main()
 		CreateToggle(pFarm, "ขโมยแพ็คอัตโนมัติ (Auto Steal Packs)", Core.Flags.AutoSteal, function(v)
 			Core.Flags.AutoSteal = v
 			if v then startStealLoop() end
-		end)
-
-		CreateToggle(pFarm, "วางแพ็คในฐานอัตโนมัติ (Auto Place Packs)", Core.Flags.AutoPlacePacks, function(v)
-			Core.Flags.AutoPlacePacks = v
-			if v then startAutoPlacePacksLoop() end
 		end)
 
 		CreateToggle(pFarm, "ความเร็วสูงสุด 340 (เพดานเกม)", Core.Flags.MaxSpeedMode, function(v)
