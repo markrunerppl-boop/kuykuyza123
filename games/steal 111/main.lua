@@ -1324,12 +1324,12 @@ local function main()
 		end
 		-- หน่วงให้พ้นช่วงแอนิเมชันเปิดปุ่ม (0.2s) แล้วกดปุ่ม Boost จริงก่อน หากไม่ได้ค่อยยิง Remote ตรง
 		Core:Connect(boost.OnClientEvent, function(...)
-			if not Core.Flags.AutoTreadmill then return end
+			if not (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal) then return end
 			local args = table.pack(...)
 			if args.n == 0 then return end
 			task.spawn(function()
 				task.wait(0.24 + math.random() * 0.16)
-				if Core._alive and Core.Flags.AutoTreadmill then
+				if Core._alive and (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal) and LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
 					if tryClickBoostPopup() or Net.Fire(boost, nil, table.unpack(args, 1, args.n)) then
 						Stats.boosts = Stats.boosts + 1
 					end
@@ -2126,7 +2126,8 @@ local function main()
 			end, { precise = true, arriveDist = 6 })
 		end
 		local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
-		if allowTreadmill and (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
+		local canEnter = allowTreadmill and (Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill)
+		if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
 			enterTreadmill()
 		end
 	end
@@ -2139,14 +2140,13 @@ local function main()
 			if okOpen then baseFullUntil = 0 end
 		end
 
-		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน
+		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน (เฉพาะเมื่อฐานยังไม่เต็ม)
 		if Core.Flags.AutoPlacePacks and placePacksInBase then
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
-				leaveTreadmill()
 				local okPlace, resWhy = placePacksInBase()
-				if resWhy == "NO_SPACE" or resWhy == "PLOT_FULL" or resWhy == "LIMIT_REACHED" then
-					baseFullUntil = os.clock() + 6
+				if resWhy == "NO_SPACE" or resWhy == "PLOT_FULL" or resWhy == "LIMIT_REACHED" or resWhy == "BASE_FULL" then
+					baseFullUntil = os.clock() + 60
 				end
 			end
 		end
@@ -2213,7 +2213,8 @@ local function main()
 				runBaseMaintenance()
 			end
 			local hasPacks = (getPacksToPlace and #getPacksToPlace() or 0) > 0
-			if (Core.Flags.AutoEnter or Core.Flags.AutoTreadmill) and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
+			local canEnter = Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill
+			if canEnter and not (Core.Flags.AutoPlacePacks and hasPacks and not isBaseFull()) then
 				returnToSafeRest(true)
 			else
 				returnToSafeRest(false)
@@ -2843,6 +2844,7 @@ local function main()
 								Net.Fire(Net.Paths.PacksOpened, nil, rec.Id)
 								local name = rec.PackName or "Pack"
 								logAction("เปิดแพ็ก", "ฟักสำเร็จ: " .. tostring(name), true)
+								baseFullUntil = 0
 								task.wait(0.2)
 							else
 								itemSkipUntil[rec.Id] = now + 4
@@ -2909,6 +2911,7 @@ local function main()
 	placePacksInBase = function()
 		if not Core._alive then return false end
 		if not Core.Flags.AutoPlacePacks then return false end
+		if isBaseFull() then return false, "BASE_FULL" end
 		if isPlacingPacks then return false end
 		isPlacingPacks = true
 
@@ -3105,7 +3108,8 @@ local function main()
 					if not placedThis then
 						if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" or lastReason == "OVERLAPS_PACK" then
 							noSpace = true
-							itemSkipUntil["place:" .. packId] = os.clock() + 10
+							baseFullUntil = os.clock() + 60
+							itemSkipUntil["place:" .. packId] = os.clock() + 60
 							logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 							break
 						else
@@ -3125,6 +3129,7 @@ local function main()
 			if hum then pcall(function() hum:UnequipTools() end) end
 
 			if noSpace then
+				baseFullUntil = os.clock() + 60
 				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> ขโมยต่อทันที", false)
 				return false, "NO_SPACE"
 			end
@@ -3148,7 +3153,9 @@ local function main()
 	local function startAutoPlacePacksLoop()
 		Core:Loop("placePacks", "AutoPlacePacks", 2.0, function()
 			if not Core.Busy and not Helpers.IsCarrying() and not Core.Flags.AutoSteal then
-				if placePacksInBase then placePacksInBase() end
+				if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
+					if placePacksInBase then placePacksInBase() end
+				end
 			end
 		end)
 	end
