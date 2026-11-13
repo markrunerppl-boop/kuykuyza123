@@ -26,6 +26,8 @@ local function main()
 		pcall(function() ENV.__KUY:Destroy() end)
 	end
 
+	local Config = {}
+
 	local Core = {
 		Flags = {},
 		Busy = false,
@@ -137,54 +139,187 @@ local function main()
 	-- 1.1. CONFIG MANAGER (ระบบจดจำฟังก์ชันและการตั้งค่าอัตโนมัติ)
 	-----------------------------------------------------------------
 	local CONFIG_FILE = "kuykuy_steal111_config.json"
-	local Config = {}
 
-	function Config.Save()
-		if not writefile then return false end
-		local dataToSave = {}
-		for k, v in pairs(Core.Flags) do
-			if type(v) == "boolean" or type(v) == "number" or type(v) == "string" then
-				dataToSave[k] = v
+	local function getEnvVar(name)
+		if type(getgenv) == "function" then
+			local g = getgenv()
+			if g and g[name] ~= nil then return g[name] end
+		end
+		if _G and _G[name] ~= nil then return _G[name] end
+		local envOk, env = pcall(getfenv, 0)
+		if envOk and env and env[name] ~= nil then return env[name] end
+		local renvOk, renv = pcall(function() return getrenv and getrenv() end)
+		if renvOk and renv and renv[name] ~= nil then return renv[name] end
+		return nil
+	end
+
+	local function getFS()
+		local w = getEnvVar("writefile") or (syn and syn.write_file) or (fluxus and fluxus.write_file) or writefile
+		local r = getEnvVar("readfile") or (syn and syn.read_file) or (fluxus and fluxus.read_file) or readfile
+		local i = getEnvVar("isfile") or (syn and syn.is_file) or (fluxus and fluxus.is_file) or isfile
+		return w, r, i
+	end
+
+	local function serializeFallback(data)
+		local lines = { "--KUY_CFG_V1--" }
+		for k, v in pairs(data) do
+			local tv = type(v)
+			if tv == "boolean" then
+				table.insert(lines, string.format("%s=b:%s", tostring(k), v and "1" or "0"))
+			elseif tv == "number" then
+				table.insert(lines, string.format("%s=n:%s", tostring(k), tostring(v)))
+			elseif tv == "string" then
+				table.insert(lines, string.format("%s=s:%s", tostring(k), v))
 			end
 		end
-		local ok, json = pcall(function()
-			return HttpService:JSONEncode(dataToSave)
-		end)
-		if ok and json then
-			pcall(writefile, CONFIG_FILE, json)
-			return true
+		return table.concat(lines, "\n")
+	end
+
+	local function deserializeFallback(str)
+		local data = {}
+		for line in string.gmatch(str, "[^\r\n]+") do
+			local k, t, val = string.match(line, "^([^=]+)=([bns]):(.+)$")
+			if k and t and val then
+				if t == "b" then
+					data[k] = (val == "1" or val == "true")
+				elseif t == "n" then
+					local num = tonumber(val)
+					if num then data[k] = num end
+				elseif t == "s" then
+					data[k] = val
+				end
+			end
 		end
-		return false
+		return data
+	end
+
+	local function encodeConfig(data)
+		local okJson, json = pcall(function()
+			return HttpService:JSONEncode(data)
+		end)
+		if okJson and type(json) == "string" and #json > 2 then
+			return json
+		end
+		return serializeFallback(data)
+	end
+
+	local function decodeConfig(str)
+		if not str or type(str) ~= "string" or #str < 2 then return nil end
+		local okJson, parsed = pcall(function()
+			return HttpService:JSONDecode(str)
+		end)
+		if okJson and type(parsed) == "table" then
+			return parsed
+		end
+		local fallbackData = deserializeFallback(str)
+		if next(fallbackData) ~= nil then
+			return fallbackData
+		end
+		return nil
+	end
+
+	local function safeWriteFile(path, content)
+		local w = getFS()
+		local diskOk, diskErr = false, "no_writefile"
+		if type(w) == "function" then
+			local ok, err = pcall(w, path, content)
+			if ok then
+				diskOk = true
+			else
+				diskErr = tostring(err)
+			end
+		end
+		ENV.__KUY_CONFIG_CACHE = content
+		return diskOk, diskErr
+	end
+
+	local function safeReadFile(path)
+		local _, r, i = getFS()
+		if type(i) == "function" and type(r) == "function" then
+			local existsOk, exists = pcall(i, path)
+			if existsOk and exists then
+				local readOk, data = pcall(r, path)
+				if readOk and type(data) == "string" and #data > 2 then
+					return true, data, "disk"
+				end
+			end
+		end
+		if type(r) == "function" then
+			local readOk, data = pcall(r, path)
+			if readOk and type(data) == "string" and #data > 2 then
+				return true, data, "disk"
+			end
+		end
+		if ENV.__KUY_CONFIG_CACHE and type(ENV.__KUY_CONFIG_CACHE) == "string" and #ENV.__KUY_CONFIG_CACHE > 2 then
+			return true, ENV.__KUY_CONFIG_CACHE, "session"
+		end
+		return false, nil, "none"
+	end
+
+	function Config.Save()
+		local dataToSave = {}
+		for k, v in pairs(Core.Flags) do
+			if k ~= "UI" then
+				local tv = type(v)
+				if tv == "boolean" or tv == "number" or tv == "string" then
+					dataToSave[k] = v
+				end
+			end
+		end
+		local encoded = encodeConfig(dataToSave)
+		local diskOk, diskErr = safeWriteFile(CONFIG_FILE, encoded)
+		if diskOk then
+			return true, "disk"
+		elseif ENV.__KUY_CONFIG_CACHE then
+			return true, "session"
+		end
+		return false, diskErr or "save_failed"
 	end
 
 	function Config.Load()
-		if not (readfile and isfile) then return false end
-		local exists = false
-		pcall(function() exists = isfile(CONFIG_FILE) end)
-		if not exists then return false end
+		local okRead, content, source = safeReadFile(CONFIG_FILE)
+		if not okRead or not content then
+			return false, "not_found"
+		end
 
-		local okContent, content = pcall(readfile, CONFIG_FILE)
-		if not (okContent and type(content) == "string" and #content > 2) then return false end
+		local parsed = decodeConfig(content)
+		if not parsed or type(parsed) ~= "table" then
+			return false, "decode_failed"
+		end
 
-		local okDecode, parsed = pcall(function()
-			return HttpService:JSONDecode(content)
-		end)
-		if okDecode and type(parsed) == "table" then
-			for k, v in pairs(parsed) do
-				if Core.Flags[k] ~= nil and type(Core.Flags[k]) == type(v) then
+		local count = 0
+		for k, v in pairs(parsed) do
+			if Core.Flags[k] ~= nil and type(Core.Flags[k]) == type(v) then
+				Core.Flags[k] = v
+				count = count + 1
+			elseif string.sub(k, 1, 5) == "Stage" and type(v) == "boolean" then
+				Core.Flags[k] = v
+				count = count + 1
+			elseif Core.Flags[k] == nil then
+				local tv = type(v)
+				if tv == "boolean" or tv == "number" or tv == "string" then
 					Core.Flags[k] = v
-				elseif string.sub(k, 1, 5) == "Stage" and type(v) == "boolean" then
-					Core.Flags[k] = v
+					count = count + 1
 				end
 			end
-			return true
 		end
-		return false
+		return true, source, count
 	end
 
-	if Config.Load() then
-		logAction("ตั้งค่า", "โหลดฟังก์ชันที่บันทึกไว้สำเร็จ", true)
+	local loadedOk, loadSrc, loadCount = Config.Load()
+	if loadedOk then
+		logAction("ตั้งค่า", string.format("โหลดฟังก์ชันที่บันทึกไว้สำเร็จ (%s, %d ค่า)", loadSrc == "disk" and "จากไฟล์" or "จากแคช", loadCount or 0), true)
+	else
+		logAction("ตั้งค่า", "ใช้ค่าเริ่มต้น (ยังไม่มีไฟล์บันทึก)", true)
 	end
+
+	pcall(function()
+		game:BindToClose(function()
+			if Config and Config.Save then
+				pcall(Config.Save)
+			end
+		end)
+	end)
 
 	-----------------------------------------------------------------
 	-- 2. HELPERS: Plot / POI / Teleport
@@ -2613,19 +2748,39 @@ local function main()
 			return b
 		end
 
+		local function bindClick(btn, callback)
+			local lastClick = 0
+			local function fire()
+				local now = tick()
+				if now - lastClick < 0.25 then return end
+				lastClick = now
+				callback()
+			end
+			btn.MouseButton1Click:Connect(fire)
+			pcall(function()
+				if btn.Activated then
+					btn.Activated:Connect(fire)
+				end
+			end)
+		end
+
 		local function addToggle(text, flag, x, y, w, h, onChange, onOff, parent)
 			local b = makeButton(text, x, y, w, h, parent)
 			local function paint()
 				b.BackgroundColor3 = Core.Flags[flag] and COL_ON or COL_OFF
 			end
-			b.MouseButton1Click:Connect(function()
+			local function onTrigger()
 				Core.Flags[flag] = not Core.Flags[flag]
 				paint()
 				logAction("สวิตช์", (Core.Flags[flag] and "เปิด: " or "ปิด: ") .. text, Core.Flags[flag])
-				Config.Save()
+				local okSave, saveSrc = Config.Save()
+				if not okSave then
+					warn("[Kuy] Config.Save failed: " .. tostring(saveSrc))
+				end
 				if onChange and Core.Flags[flag] then onChange() end
 				if onOff and not Core.Flags[flag] then onOff() end
-			end)
+			end
+			bindClick(b, onTrigger)
 			paint()
 			if Core.Flags[flag] and onChange then
 				task.spawn(onChange)
@@ -2670,7 +2825,7 @@ local function main()
 		}
 		for i, spec in ipairs(tabSpecs) do
 			local tb = makeButton(spec.text, spec.x, 32, spec.w, 24, frame)
-			tb.MouseButton1Click:Connect(function() selectTab(i) end)
+			bindClick(tb, function() selectTab(i) end)
 			tabBtns[i] = tb
 		end
 
@@ -2732,7 +2887,7 @@ local function main()
 			local cur = Core.Flags.SellBelowRarity or 6
 			rarityBtn.Text = "ขายต่ำกว่า: " .. (RARITY_NAMES[cur] or tostring(cur))
 		end
-		rarityBtn.MouseButton1Click:Connect(function()
+		bindClick(rarityBtn, function()
 			local cur = Core.Flags.SellBelowRarity or 6
 			local idx = 1
 			for i, v in ipairs(rarityCycle) do
@@ -2774,17 +2929,18 @@ local function main()
 
 		local saveCfgBtn = makeButton("บันทึกค่า", 98, 0, 72, 24, pageLog)
 		saveCfgBtn.BackgroundColor3 = Color3.fromRGB(45, 95, 140)
-		saveCfgBtn.MouseButton1Click:Connect(function()
-			if Config.Save() then
-				logAction("ตั้งค่า", "บันทึกฟังก์ชันการตั้งค่าสำเร็จ", true)
+		bindClick(saveCfgBtn, function()
+			local ok, src = Config.Save()
+			if ok then
+				logAction("ตั้งค่า", "บันทึกฟังก์ชันสำเร็จ (" .. (src == "disk" and "ลงไฟล์" or "ลงแคช") .. ")", true)
 			else
-				logAction("ตั้งค่า", "บันทึกการตั้งค่าไม่สำเร็จ", false)
+				logAction("ตั้งค่า", "บันทึกไม่สำเร็จ: " .. tostring(src), false)
 			end
 		end)
 
 		local clearLogBtn = makeButton("ล้างประวัติ", 174, 0, 78, 24, pageLog)
 		clearLogBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 50)
-		clearLogBtn.MouseButton1Click:Connect(function()
+		bindClick(clearLogBtn, function()
 			table.clear(Stats.logs)
 			if renderLogs then renderLogs() end
 		end)
@@ -2865,9 +3021,14 @@ local function main()
 
 		local unload = makeButton("ปิดสคริปต์ (Unload)", 10, 456, 240, 24, frame)
 		unload.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
-		unload.MouseButton1Click:Connect(function() Core:Destroy() end)
+		bindClick(unload, function() Core:Destroy() end)
 
 		Core.Flags.UI = true
+		Core:Loop("autoSaveConfig", "UI", 30, function()
+			if Config and Config.Save then
+				pcall(Config.Save)
+			end
+		end)
 		Core:Loop("status", "UI", 0.5, function()
 			local combo = LocalPlayer:GetAttribute(COMBO_ATTR) or 0
 			local training = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
