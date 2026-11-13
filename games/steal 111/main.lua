@@ -98,6 +98,7 @@ local function main()
 	Core.Flags.AutoTreadmill = false -- กดคูณอัตโนมัติ (ทำคอมโบ)
 	Core.Flags.AutoEnter = false     -- เดินเข้าลู่วิ่งอัตโนมัติ
 	Core.Flags.AutoSteal = false     -- ขโมยแพ็คตามด่านที่เลือก
+	Core.Flags.AutoPlacePacks = true -- วางแพ็คในฐานอัตโนมัติเมื่อพร้อม (รันควบคู่กับขโมยแพ็ค)
 	Core.Flags.MaxSpeedMode = false   -- false = ความเร็วตัวละครจริง, true = ความเร็วสูงสุด 340 (เพดานเกม)
 	Core.Flags.SideBypassMode = true  -- วิ่งบนทางลัดด้านข้างนอกกำแพงด่าน 1-12 เพื่อหลบบอส
 	Core.Flags.AntiRagdollMode = true -- ลบอนิเมชชั่นโดนตี/ไม่ล้ม เพื่อวิ่งกลับฐานต่อเนื่อง
@@ -1880,7 +1881,19 @@ local function main()
 		end
 	end
 
+	local placePacksInBase = nil
+
 	local function stealCycle()
+		-- ตรวจสอบก่อนเริ่มรอบขโมย: ถ้ามีแพ็กในตัวและอยู่ในฐาน ให้วางแพ็กในฐานก่อน
+		if Core.Flags.AutoPlacePacks and placePacksInBase and Helpers.IsAlive() and not Helpers.IsCarrying() then
+			local hrp = Helpers.GetRoot()
+			local pos = Helpers.GetPlotSpawnPos()
+			local bounds = Helpers.GetSafeZoneBounds()
+			if hrp and (hrp.Position.X <= bounds.maxX + 15 or (pos and (hrp.Position - pos).Magnitude <= 50)) then
+				placePacksInBase()
+			end
+		end
+
 		local anyFound = false
 		for i = 1, 12 do
 			if not Core._alive or not Core.Flags.AutoSteal then break end
@@ -1896,6 +1909,10 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", "ด่าน " .. i .. ": สำเร็จ", true)
+						-- ขโมยเสร็จ นำแพ็กมาวางที่ฐานทันที ถึงค่อยเริ่มขโมยใหม่ (ถ้าไม่มีที่วางก็เริ่มขโมยต่อเลย)
+						if Core.Flags.AutoPlacePacks and placePacksInBase then
+							placePacksInBase()
+						end
 					else
 						Stats.stealFail = Stats.stealFail + 1
 						local reason = res
@@ -1910,6 +1927,9 @@ local function main()
 
 		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
 			returnToSafeRest()
+			if Core.Flags.AutoPlacePacks and placePacksInBase then
+				placePacksInBase()
+			end
 			task.wait(1.5)
 		end
 	end
@@ -2253,91 +2273,7 @@ local function main()
 		return candidates
 	end
 
-	local function autoOpenPacksStep()
-		local now = os.clock()
-		local pd = getPlayerData()
-		local inv = pd and pd.Get and pd.Get("Inventory")
-		local placed = inv and inv.Packs and inv.Packs.Placed
-		local pc = getPacksConfig()
-		local sTime = Workspace:GetServerTimeNow()
-
-		-- 1. ตรวจสอบแพ็กที่เพาะอยู่ในฐาน (Placed) ที่ครบกำหนดเวลา -> เรียก OpenOwned เพื่อฟักออกเป็นตัว
-		if type(placed) == "table" then
-			for _, rec in pairs(placed) do
-				if not (Core._alive and Core.Flags.AutoOpenPacks) then return end
-				if type(rec) == "table" and type(rec.Id) == "string" then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character"
-					if not isChar and (rec.GrowthEndsAt == nil or rec.GrowthEndsAt <= sTime) then
-						if (itemSkipUntil[rec.Id] or 0) <= now then
-							local ok, res = Net.Invoke(Net.Paths.OpenOwned, rec.Id)
-							local success, reason = isRemoteOk(res)
-							if ok and success then
-								Net.Fire(Net.Paths.PacksOpened, nil, rec.Id)
-								local name = rec.PackName or "Pack"
-								logAction("เปิดแพ็ก", "ฟักสำเร็จ: " .. tostring(name), true)
-								task.wait(0.35)
-								return
-							else
-								itemSkipUntil[rec.Id] = now + 4
-								if ok and reason and reason ~= "NOT_READY" then
-									logAction("เปิดแพ็ก", "ยังไม่พร้อม (" .. tostring(reason) .. ")", false)
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-
-		-- 2. นำแพ็กที่ขโมยมาในกระเป๋า (CardIsPack == true) วางลงพื้นที่เพาะของฐาน (PlaceOwned)
-		-- หากเปิด AutoMerge อยู่และยังมีแพ็คซ้ำในกระเป๋า ให้รอ AutoMerge รวมให้เสร็จก่อน
-		if Core.Flags.AutoMerge then
-			local mergeCandidates = getBackpackCandidates("merge")
-			local counts = {}
-			for _, c in ipairs(mergeCandidates) do
-				local k = c.Name .. "|" .. c.Mutation
-				counts[k] = (counts[k] or 0) + 1
-				if counts[k] >= 2 then
-					return
-				end
-			end
-		end
-
-		local plot = Helpers.GetPlot()
-		local pu = getPlotUtil()
-		local area = (pu and plot and pu.GetAnimeArea and pu.GetAnimeArea(plot.Name)) or nil
-		local basePos = area and Helpers.GetPosition(area) or Helpers.GetPlotSpawnPos()
-		if basePos then
-			for _, tool in ipairs(getBagTools(false)) do
-				if not (Core._alive and Core.Flags.AutoOpenPacks) then return end
-				local packId = tool:GetAttribute("PackId")
-				local isPack = tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs"
-				if isPack and type(packId) == "string" and packId ~= "" then
-					if (itemSkipUntil["place:" .. packId] or 0) <= now then
-						local rx = (math.random() - 0.5) * 22
-						local rz = (math.random() - 0.5) * 16
-						local placePos = Vector3.new(basePos.X + rx, basePos.Y + 1.2, basePos.Z + rz)
-						local ok, res = Net.Invoke(Net.Paths.PlaceOwned, {
-							PackId = packId,
-							Position = placePos,
-						})
-						local success, reason = isRemoteOk(res)
-						if ok and success then
-							logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(tool.Name), true)
-							itemSkipUntil["place:" .. packId] = now + 2
-							task.wait(0.35)
-							return
-						else
-							itemSkipUntil["place:" .. packId] = now + 5
-							if ok and reason and reason ~= "OVERLAPS_PACK" then
-								logAction("วางแพ็ก", "วางไม่สำเร็จ (" .. tostring(reason) .. ")", false)
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+	-- (ระบบ openReadyPlacedPacks และ placePacksInBase ถูกย้ายไปอยู่หลัง autoFuseStep เพื่อให้เรียกใช้ autoMergeStep ได้อย่างสมบูรณ์)
 
 	local function autoEquipBestStep(manual)
 		local pc = getPacksConfig()
@@ -2596,6 +2532,250 @@ local function main()
 		if okVisit and type(fusedTotal) == "number" and fusedTotal > 0 then
 			logAction("Fuse", string.format("กลายพันธุ์สำเร็จทั้งหมด %d ชุด (หมดตัว)", fusedTotal), true)
 		end
+	end
+
+	local function openReadyPlacedPacks()
+		local now = os.clock()
+		local pd = getPlayerData()
+		local inv = pd and pd.Get and pd.Get("Inventory")
+		local placed = inv and inv.Packs and inv.Packs.Placed
+		local pc = getPacksConfig()
+		local sTime = Workspace:GetServerTimeNow()
+
+		if type(placed) == "table" then
+			for _, rec in pairs(placed) do
+				if not Core._alive then return end
+				if type(rec) == "table" and type(rec.Id) == "string" then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character"
+					if not isChar and (rec.GrowthEndsAt == nil or rec.GrowthEndsAt <= sTime) then
+						if (itemSkipUntil[rec.Id] or 0) <= now then
+							local ok, res = Net.Invoke(Net.Paths.OpenOwned, rec.Id)
+							local success, reason = isRemoteOk(res)
+							if ok and success then
+								Net.Fire(Net.Paths.PacksOpened, nil, rec.Id)
+								local name = rec.PackName or "Pack"
+								logAction("เปิดแพ็ก", "ฟักสำเร็จ: " .. tostring(name), true)
+								task.wait(0.2)
+							else
+								itemSkipUntil[rec.Id] = now + 4
+								if ok and reason and reason ~= "NOT_READY" then
+									logAction("เปิดแพ็ก", "ยังไม่พร้อม (" .. tostring(reason) .. ")", false)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local function getPacksToPlace()
+		local now = os.clock()
+		local packs = {}
+		local seen = {}
+		local pc = getPacksConfig()
+
+		-- 1. Tools ใน Character / Backpack
+		for _, tool in ipairs(getBagTools(false)) do
+			local packId = tool:GetAttribute("PackId")
+			local isPack = tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs"
+			if isPack and type(packId) == "string" and packId ~= "" and not seen[packId] then
+				if (itemSkipUntil["place:" .. packId] or 0) <= now then
+					seen[packId] = true
+					local name = tool:GetAttribute("PackName") or tool.Name
+					table.insert(packs, {
+						Id = packId,
+						Name = name,
+						Tool = tool,
+					})
+				end
+			end
+		end
+
+		-- 2. PlayerData Inventory Backpack (กรณี Tool ยังไม่แสดงใน Workspace)
+		local pd = getPlayerData()
+		local inv = pd and pd.Get and pd.Get("Inventory")
+		local bpRecords = inv and inv.Packs and inv.Packs.Backpack
+		if type(bpRecords) == "table" then
+			for _, rec in pairs(bpRecords) do
+				if type(rec) == "table" and type(rec.Id) == "string" and not seen[rec.Id] then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character"
+					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(rec))
+					if not isChar and not isPath and rec.OpeningCommittedAt == nil then
+						if (itemSkipUntil["place:" .. rec.Id] or 0) <= now then
+							seen[rec.Id] = true
+							table.insert(packs, {
+								Id = rec.Id,
+								Name = rec.PackName or rec.Name or "Pack",
+							})
+						end
+					end
+				end
+			end
+		end
+
+		return packs
+	end
+
+	local isPlacingPacks = false
+	placePacksInBase = function()
+		if not Core._alive then return false end
+		if not Core.Flags.AutoPlacePacks then return false end
+		if isPlacingPacks then return false end
+		isPlacingPacks = true
+
+		local okRun, ret = pcall(function()
+			-- รอให้แพ็กที่เพิ่งได้รับซิงก์เข้ากระเป๋าสักครู่
+			task.wait(0.15)
+
+			-- ถ้าเปิด AutoOpenPacks ให้ฟักแพ็กที่โตเต็มวัยก่อนเพื่อเคลียร์พื้นที่ว่าง
+			if Core.Flags.AutoOpenPacks then
+				openReadyPlacedPacks()
+			end
+
+			-- ถ้าเปิด AutoMerge ให้ลองรวมแพ็กซ้ำก่อนนำไปวาง
+			if Core.Flags.AutoMerge and autoMergeStep then
+				local mergeCandidates = getBackpackCandidates and getBackpackCandidates("merge") or {}
+				local counts = {}
+				local hasPairs = false
+				for _, c in ipairs(mergeCandidates) do
+					local k = c.Name .. "|" .. c.Mutation
+					counts[k] = (counts[k] or 0) + 1
+					if counts[k] >= 2 then
+						hasPairs = true
+						break
+					end
+				end
+				if hasPairs then
+					pcall(autoMergeStep)
+					task.wait(0.2)
+				end
+			end
+
+			local packs = getPacksToPlace()
+			if #packs == 0 then
+				return true
+			end
+
+			local plot = Helpers.GetPlot()
+			local pu = getPlotUtil()
+			local area = (pu and plot and pu.GetAnimeArea and pu.GetAnimeArea(plot.Name))
+				or (plot and plot:FindFirstChild("PlotModel") and plot.PlotModel:FindFirstChild("AnimeArea"))
+			local basePos = area and Helpers.GetPosition(area) or Helpers.GetPlotSpawnPos()
+			if not basePos then
+				return false, "ไม่พบพื้นที่ฐาน"
+			end
+
+			-- ตรวจสอบตำแหน่งตัวละคร: ต้องยืนอยู่ภายใน AnimeArea ของฐานตัวเองเพื่อให้เซิร์ฟเวอร์ยอมรับการวาง
+			local hrp = Helpers.GetRoot()
+			if hrp and area and area:IsA("BasePart") then
+				local offset = area.CFrame:PointToObjectSpace(hrp.Position)
+				local half = area.Size * 0.5
+				if math.abs(offset.X) > half.X or math.abs(offset.Z) > half.Z then
+					Helpers.MoveTo(area.Position + Vector3.new(0, 2.5, 0), function()
+						return not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks)
+					end, { precise = true, arriveDist = 4 })
+				end
+			elseif hrp and basePos and (hrp.Position - basePos).Magnitude > 15 then
+				Helpers.MoveTo(basePos + Vector3.new(0, 2.5, 0), function()
+					return not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks)
+				end, { precise = true, arriveDist = 5 })
+			end
+
+			local placementUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlacementUtil end)
+			local halfX, halfZ = 16, 12
+			if area and area:IsA("BasePart") then
+				halfX = math.max((area.Size.X - 4) / 2, 8)
+				halfZ = math.max((area.Size.Z - 4) / 2, 8)
+			end
+
+			local noSpace = false
+
+			for _, pack in ipairs(packs) do
+				if not Core._alive or not (Core.Flags.AutoSteal or Core.Flags.AutoPlacePacks) then break end
+				local packId = pack.Id
+				local packName = pack.Name or "Pack"
+				local placedThis = false
+				local lastReason = nil
+
+				-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่
+				for attempt = 1, 6 do
+					local placePos = nil
+					if placementUtil and placementUtil.RandomPointInArea and area then
+						local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
+						if okPt and typeof(pt) == "Vector3" then
+							placePos = pt
+						end
+					end
+					if not placePos then
+						local rx = (math.random() - 0.5) * 2 * halfX
+						local rz = (math.random() - 0.5) * 2 * halfZ
+						if area and area:IsA("BasePart") then
+							placePos = area.CFrame:PointToWorldSpace(Vector3.new(rx, 1.2, rz))
+						else
+							placePos = Vector3.new(basePos.X + rx, basePos.Y + 1.2, basePos.Z + rz)
+						end
+					end
+
+					local ok, res = Net.Invoke(Net.Paths.PlaceOwned, {
+						PackId = packId,
+						Position = placePos,
+					})
+					local success, reason = isRemoteOk(res)
+					if ok and success then
+						placedThis = true
+						logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
+						itemSkipUntil["place:" .. packId] = nil
+						task.wait(0.25)
+						break
+					else
+						lastReason = reason or "FAILED"
+						if reason == "NOT_OWNED" or reason == "ALREADY_PLACED" then
+							placedThis = true
+							break
+						elseif reason == "LIMIT_REACHED" or reason == "MAX_PLACED" or reason == "NO_SPACE" or reason == "PLOT_FULL" then
+							noSpace = true
+							break
+						end
+						task.wait(0.05)
+					end
+				end
+
+				if not placedThis then
+					noSpace = true
+					itemSkipUntil["place:" .. packId] = os.clock() + 10
+					logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
+					break
+				end
+			end
+
+			if noSpace then
+				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> ขโมยต่อทันที", false)
+			end
+
+			return true
+		end)
+
+		isPlacingPacks = false
+		return okRun and ret
+	end
+
+	local function autoOpenPacksStep()
+		if not Core._alive then return end
+		if Core.Flags.AutoOpenPacks then
+			openReadyPlacedPacks()
+		end
+		if Core.Flags.AutoPlacePacks and not Core.Busy and not Helpers.IsCarrying() then
+			placePacksInBase()
+		end
+	end
+
+	local function startAutoPlacePacksLoop()
+		Core:Loop("placePacks", "AutoPlacePacks", 2.0, function()
+			if not Core.Busy and not Helpers.IsCarrying() and not Core.Flags.AutoSteal then
+				if placePacksInBase then placePacksInBase() end
+			end
+		end)
 	end
 
 	local function startAutoOpenPacksLoop()
@@ -3537,6 +3717,11 @@ local function main()
 			if v then startStealLoop() end
 		end)
 
+		CreateToggle(pFarm, "วางแพ็คในฐานอัตโนมัติ (Auto Place Packs)", Core.Flags.AutoPlacePacks, function(v)
+			Core.Flags.AutoPlacePacks = v
+			if v then startAutoPlacePacksLoop() end
+		end)
+
 		CreateToggle(pFarm, "ความเร็วสูงสุด 340 (เพดานเกม)", Core.Flags.MaxSpeedMode, function(v)
 			Core.Flags.MaxSpeedMode = v
 		end)
@@ -3575,6 +3760,11 @@ local function main()
 		CreateToggle(pPack, "เปิดแพ็กในกระเป๋าอัตโนมัติ (Auto Open)", Core.Flags.AutoOpenPacks, function(v)
 			Core.Flags.AutoOpenPacks = v
 			if v then startAutoOpenPacksLoop() end
+		end)
+
+		CreateToggle(pPack, "วางแพ็คในฐานอัตโนมัติ (Auto Place Packs)", Core.Flags.AutoPlacePacks, function(v)
+			Core.Flags.AutoPlacePacks = v
+			if v then startAutoPlacePacksLoop() end
 		end)
 
 		CreateToggle(pPack, "วางตัวดีสุดลงฐานอัตโนมัติ (EquipBest)", Core.Flags.AutoEquipBest, function(v)
@@ -3762,6 +3952,7 @@ local function main()
 		-- Startup Loop Initialization
 		if Core.Flags.AutoEnter then task.spawn(startEnterLoop) end
 		if Core.Flags.AutoSteal then task.spawn(startStealLoop) end
+		if Core.Flags.AutoPlacePacks then task.spawn(startAutoPlacePacksLoop) end
 		if Core.Flags.SideBypassMode then syncSideLane(true) end
 		if Core.Flags.AutoOpenPacks then task.spawn(startAutoOpenPacksLoop) end
 		if Core.Flags.AutoEquipBest then task.spawn(startAutoEquipBestLoop) end
