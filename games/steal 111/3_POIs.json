@@ -1,0 +1,230 @@
+{
+  "GameplayData": {
+    "ClickDetectors": [
+      {
+        "Name": "UpgradeClick",
+        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgrade.Button.Primary.UpgradeClick"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Time.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Time.ArrowLeft.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Most Completed Index.ArrowLeft.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Most Completed Index.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Money.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Money.ArrowLeft.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Global Pulls.ArrowLeft.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Global Pulls.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Steals.ArrowLeft.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Steals.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Speed.ArrowRight.ClickDetector"
+      },
+      {
+        "Name": "ClickDetector",
+        "Path": "Workspace.Leaderboards.Top Speed.ArrowLeft.ClickDetector"
+      }
+    ],
+    "ProximityPrompts": [
+      {
+        "ActionText": "LIKE👍",
+        "Name": "LikePrompt",
+        "Path": "Workspace.Plots.5.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Name": "RobuxUpgradeProxy",
+        "Path": "Workspace.Plots.5.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Name": "UpgradeProxy",
+        "Path": "Workspace.Plots.5.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "Hi",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.Plots.5.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Name": "RobuxUpgradeProxy",
+        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Name": "UpgradeProxy",
+        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Name": "LikePrompt",
+        "Path": "Workspace.Plots.3.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Hi",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.Plots.3.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Name": "LikePrompt",
+        "Path": "Workspace.Plots.1.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Name": "RobuxUpgradeProxy",
+        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Name": "UpgradeProxy",
+        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "Hi",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.Plots.1.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Name": "RobuxUpgradeProxy",
+        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Name": "UpgradeProxy",
+        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Name": "LikePrompt",
+        "Path": "Workspace.Plots.4.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Hi",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.Plots.4.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Name": "RobuxUpgradeProxy",
+        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Name": "UpgradeProxy",
+        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Name": "LikePrompt",
+        "Path": "Workspace.Plots.2.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Hi",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.Plots.2.PlotModel.Multiplier.Core.ProximityPrompt"
+      }
+    ],
+    "Tools_And_Items": [
+      {
+        "Name": "War Hammer",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Thor Hammer",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Ape Staff",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Dragon Dagger",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Atomic Blade",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Yoru",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Purple Scythe",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Mace",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Katana",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Ice Sword",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Fire Katana",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Divine Axe",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Bat",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Anti Magic Blade",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "Omni Sword",
+        "Notice": "Prefab in ReplicatedStorage"
+      },
+      {
+        "Name": "PackTool",
+        "Notice": "Prefab in ReplicatedStorage"
+      }
+    ]
+  },
+  "Metadata": {
+    "FileRole": "Gameplay POIs (Workspace Only)",
+    "PlaceId": 133151378618377
+  }
+}

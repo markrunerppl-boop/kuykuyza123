@@ -1,0 +1,1014 @@
+{
+  "LiveNetworkTraffic": {
+    "ReplicatedStorage.Remotes.Auras.Equip": {
+      "CallCount": 2,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "BizarreAura"
+          },
+          "Time": 6280.12
+        },
+        {
+          "Args": {
+            "1": "MugetsuAura"
+          },
+          "Time": 6280.73
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Auras.Purchase": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "PhoenixAura"
+          },
+          "Time": 6282.32
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Coaches.Equip": {
+      "CallCount": 2,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "SymbolOfHope"
+          },
+          "Time": 6274.79
+        },
+        {
+          "Args": {
+            "1": "Levi"
+          },
+          "Time": 6275.85
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Coaches.Purchase": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "SymbolOfHope"
+          },
+          "Time": 6275.25
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Economy.SellItems": {
+      "CallCount": 2,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "1": "9f16fc2f-e10c-4c29-b0b5-49cb7e31565e"
+            }
+          },
+          "Time": 6233.65
+        },
+        {
+          "Args": {
+            "1": {
+              "1": "668789e2-bbf4-4666-a376-6a46c578ad6d"
+            }
+          },
+          "Time": 6259.8
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Leaderboards.Get": {
+      "CallCount": 55,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "Steals",
+            "2": "AllTime"
+          },
+          "Time": 6107.65
+        },
+        {
+          "Args": {
+            "1": "Speed",
+            "2": "AllTime"
+          },
+          "Time": 6107.65
+        },
+        {
+          "Args": {
+            "1": "Playtime",
+            "2": "AllTime"
+          },
+          "Time": 6107.65
+        },
+        {
+          "Args": {
+            "1": "Index",
+            "2": "AllTime"
+          },
+          "Time": 6107.65
+        },
+        {
+          "Args": {
+            "1": "Cash",
+            "2": "AllTime"
+          },
+          "Time": 6107.65
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Mutate.Fuse": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "1": "4510c07a-19a9-4630-9255-3b910a87811d",
+              "2": "be7960e9-6165-49ca-83e5-1e9f57da4c0f",
+              "3": "c7bc8d29-f16d-4fc1-ac7c-4bc42f409ea7"
+            }
+          },
+          "Time": 6305.65
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Mutate.Merge": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "1": "3b975857-8668-455b-bcea-acc03384beef",
+              "2": "11f98c8d-8f21-49e5-bf68-a9bb15b2b59d"
+            }
+          },
+          "Time": 6292.38
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Packs.OpenOwned": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "59d527aa-1e9f-49a4-99c9-179ec2eda03e"
+          },
+          "Time": 6254.98
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Packs.Opened": {
+      "CallCount": 1,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "59d527aa-1e9f-49a4-99c9-179ec2eda03e"
+          },
+          "Time": 6267.79
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Packs.PlaceOwned": {
+      "CallCount": 1,
+      "ClassName": "RemoteFunction",
+      "Method": "InvokeServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "PackId": "d1c5c7e2-c48d-43ee-9f9e-4bb236209f99",
+              "Position": "Vector3(1106.72, 67.54, -431.10)"
+            }
+          },
+          "Time": 6251.72
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Tools.RequestEquip": {
+      "CallCount": 3,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "Equipped": true,
+              "Tool": "Instance<Tool>(Workspace.markergg7.Mikima)"
+            }
+          },
+          "Time": 6241.46
+        },
+        {
+          "Args": {
+            "1": {
+              "Equipped": false,
+              "Tool": "Instance<Tool>(Players.markergg7.Backpack.Mikima)"
+            }
+          },
+          "Time": 6248.12
+        },
+        {
+          "Args": {
+            "1": {
+              "Equipped": true,
+              "Tool": "Instance<Tool>(Workspace.markergg7.Miky)"
+            }
+          },
+          "Time": 6249.23
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Treadmill.Boost": {
+      "CallCount": 3,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": "493f1899-966f-430a-8beb-2e077b07d029"
+          },
+          "Time": 6219.32
+        },
+        {
+          "Args": {
+            "1": "1e6f354c-ba82-485d-802a-f5822879f04a"
+          },
+          "Time": 6222.52
+        },
+        {
+          "Args": {
+            "1": "7ac9f7cc-381b-4d58-ba59-f019c9d76db9"
+          },
+          "Time": 6225.81
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Treadmill.ExitRequest": {
+      "CallCount": 1,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": [],
+          "Time": 6227.73
+        }
+      ]
+    }
+  },
+  "Metadata": {
+    "FileRole": "Network (Filtered)",
+    "PlaceId": 133151378618377
+  },
+  "RemoteEndpoints": [
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SectionUpdated",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.SectionUpdated"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "RequestComments",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.RequestComments"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "RequestSections",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.RequestSections"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ToggleCommentLike",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.ToggleCommentLike"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "CommentLikeUpdated",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.CommentLikeUpdated"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ToggleLike",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.ToggleLike"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "PostComment",
+      "Path": "ReplicatedStorage.DoomscrollRemotes.PostComment"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Show",
+      "Path": "ReplicatedStorage.Remotes.GlobalMessage.Show"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Clear",
+      "Path": "ReplicatedStorage.Remotes.Debris.Clear"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Update",
+      "Path": "ReplicatedStorage.Remotes.Settings.Update"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Show",
+      "Path": "ReplicatedStorage.Remotes.Dialog.Show"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Equip",
+      "Path": "ReplicatedStorage.Remotes.Packs.Equip"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Opened",
+      "Path": "ReplicatedStorage.Remotes.Packs.Opened"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Open",
+      "Path": "ReplicatedStorage.Remotes.Packs.Open"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Unequip",
+      "Path": "ReplicatedStorage.Remotes.Packs.Unequip"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "CarryAction",
+      "Path": "ReplicatedStorage.Remotes.Packs.CarryAction"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "UnequipAll",
+      "Path": "ReplicatedStorage.Remotes.Packs.UnequipAll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "PlaceOwned",
+      "Path": "ReplicatedStorage.Remotes.Packs.PlaceOwned"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SelectGrowthSkip",
+      "Path": "ReplicatedStorage.Remotes.Packs.SelectGrowthSkip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "EquipBest",
+      "Path": "ReplicatedStorage.Remotes.Packs.EquipBest"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "InputDevice",
+      "Path": "ReplicatedStorage.Remotes.Packs.InputDevice"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Merge",
+      "Path": "ReplicatedStorage.Remotes.Packs.Merge"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "OpenOwned",
+      "Path": "ReplicatedStorage.Remotes.Packs.OpenOwned"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Rejoin",
+      "Path": "ReplicatedStorage.Remotes.AntiAfk.Rejoin"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Roll",
+      "Path": "ReplicatedStorage.Remotes.Traits.Roll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Roll",
+      "Path": "ReplicatedStorage.Remotes.Grades.Roll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Equip",
+      "Path": "ReplicatedStorage.Remotes.Titles.Equip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Fuse",
+      "Path": "ReplicatedStorage.Remotes.Mutate.Fuse"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Merge",
+      "Path": "ReplicatedStorage.Remotes.Mutate.Merge"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "MergeAll",
+      "Path": "ReplicatedStorage.Remotes.Mutate.MergeAll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SellItems",
+      "Path": "ReplicatedStorage.Remotes.Economy.SellItems"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SellInventory",
+      "Path": "ReplicatedStorage.Remotes.Economy.SellInventory"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SellHeld",
+      "Path": "ReplicatedStorage.Remotes.Economy.SellHeld"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Notification",
+      "Path": "ReplicatedStorage.Remotes.Notification.Notification"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Finished",
+      "Path": "ReplicatedStorage.Remotes.Intro.Finished"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "RequestEquip",
+      "Path": "ReplicatedStorage.Remotes.Tools.RequestEquip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "EquipWeapon",
+      "Path": "ReplicatedStorage.Remotes.Tools.EquipWeapon"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Lines",
+      "Path": "ReplicatedStorage.Remotes.ChatLog.Lines"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Keep",
+      "Path": "ReplicatedStorage.Remotes.ChatLog.Keep"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Close",
+      "Path": "ReplicatedStorage.Remotes.ChatLog.Close"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Place",
+      "Path": "ReplicatedStorage.Remotes.Build.Place"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Remove",
+      "Path": "ReplicatedStorage.Remotes.Build.Remove"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Move",
+      "Path": "ReplicatedStorage.Remotes.Build.Move"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Purchase",
+      "Path": "ReplicatedStorage.Remotes.SkillTree.Purchase"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Sync",
+      "Path": "ReplicatedStorage.Remotes.Tutorial.Sync"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Request",
+      "Path": "ReplicatedStorage.Remotes.Confirmation.Request"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Response",
+      "Path": "ReplicatedStorage.Remotes.Confirmation.Response"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Purchase",
+      "Path": "ReplicatedStorage.Remotes.BaseUpgrade.Purchase"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SystemMessage",
+      "Path": "ReplicatedStorage.Remotes.Chat.SystemMessage"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LevelReward",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.LevelReward"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Lucky",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.Lucky"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ExitRequest",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.ExitRequest"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Upgrade",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.Upgrade"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "JoinShared",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.JoinShared"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Boost",
+      "Path": "ReplicatedStorage.Remotes.Treadmill.Boost"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Accept",
+      "Path": "ReplicatedStorage.Remotes.Trade.Accept"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Cash",
+      "Path": "ReplicatedStorage.Remotes.Trade.Cash"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Request",
+      "Path": "ReplicatedStorage.Remotes.Trade.Request"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "RequestUpdate",
+      "Path": "ReplicatedStorage.Remotes.Trade.RequestUpdate"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Respond",
+      "Path": "ReplicatedStorage.Remotes.Trade.Respond"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Ready",
+      "Path": "ReplicatedStorage.Remotes.Trade.Ready"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Incoming",
+      "Path": "ReplicatedStorage.Remotes.Trade.Incoming"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "State",
+      "Path": "ReplicatedStorage.Remotes.Trade.State"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Closed",
+      "Path": "ReplicatedStorage.Remotes.Trade.Closed"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Offer",
+      "Path": "ReplicatedStorage.Remotes.Trade.Offer"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Cancel",
+      "Path": "ReplicatedStorage.Remotes.Trade.Cancel"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Claim",
+      "Path": "ReplicatedStorage.Remotes.Daily.Claim"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Unequip",
+      "Path": "ReplicatedStorage.Remotes.Coaches.Unequip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Purchase",
+      "Path": "ReplicatedStorage.Remotes.Coaches.Purchase"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Equip",
+      "Path": "ReplicatedStorage.Remotes.Coaches.Equip"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Recall",
+      "Path": "ReplicatedStorage.Remotes.Trap.Recall"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Place",
+      "Path": "ReplicatedStorage.Remotes.Trap.Place"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Claim",
+      "Path": "ReplicatedStorage.Remotes.FreeGift.Claim"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Favorited",
+      "Path": "ReplicatedStorage.Remotes.Favorite.Favorited"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Prompted",
+      "Path": "ReplicatedStorage.Remotes.Favorite.Prompted"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ShibuyaRolled",
+      "Path": "ReplicatedStorage.Remotes.Monetization.ShibuyaRolled"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "PurchaseGranted",
+      "Path": "ReplicatedStorage.Remotes.Monetization.PurchaseGranted"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GiftMultiplierCandidates",
+      "Path": "ReplicatedStorage.Remotes.Monetization.GiftMultiplierCandidates"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GiftCandidates",
+      "Path": "ReplicatedStorage.Remotes.Monetization.GiftCandidates"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "StartGift",
+      "Path": "ReplicatedStorage.Remotes.Monetization.StartGift"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ShibuyaRevealed",
+      "Path": "ReplicatedStorage.Remotes.Monetization.ShibuyaRevealed"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Prompt",
+      "Path": "ReplicatedStorage.Remotes.Monetization.Prompt"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Souls",
+      "Path": "ReplicatedStorage.Remotes.ShadowEvent.Souls"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Redeem",
+      "Path": "ReplicatedStorage.Remotes.Codes.Redeem"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Roll",
+      "Path": "ReplicatedStorage.Remotes.Perks.Roll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Decline",
+      "Path": "ReplicatedStorage.Remotes.Perks.Decline"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Select",
+      "Path": "ReplicatedStorage.Remotes.Perks.Select"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Drop",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse.Drop"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Mutate",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse.Mutate"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "PathHit",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse.PathHit"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Unequip",
+      "Path": "ReplicatedStorage.Remotes.Dogs.Unequip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Feed",
+      "Path": "ReplicatedStorage.Remotes.Dogs.Feed"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Equip",
+      "Path": "ReplicatedStorage.Remotes.Dogs.Equip"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Hit",
+      "Path": "ReplicatedStorage.Remotes.Dragon.Hit"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Film",
+      "Path": "ReplicatedStorage.Remotes.Dragon.Film"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Join",
+      "Path": "ReplicatedStorage.Remotes.Dragon.Join"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Run",
+      "Path": "ReplicatedStorage.Remotes.Commands.Run"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Upgrade",
+      "Path": "ReplicatedStorage.Remotes.LuckMachine.Upgrade"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "WatchReviveAd",
+      "Path": "ReplicatedStorage.Remotes.Phone.WatchReviveAd"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SubmitScore",
+      "Path": "ReplicatedStorage.Remotes.Phone.SubmitScore"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Point",
+      "Path": "ReplicatedStorage.Remotes.Phone.Point"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "UseRevive",
+      "Path": "ReplicatedStorage.Remotes.Phone.UseRevive"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Start",
+      "Path": "ReplicatedStorage.Remotes.Towers.Start"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Event",
+      "Path": "ReplicatedStorage.Remotes.Towers.Event"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SetAuto",
+      "Path": "ReplicatedStorage.Remotes.Towers.SetAuto"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Exit",
+      "Path": "ReplicatedStorage.Remotes.Towers.Exit"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "Loot",
+      "Path": "ReplicatedStorage.Remotes.Run.Loot"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Stop",
+      "Path": "ReplicatedStorage.Remotes.Run.Stop"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Start",
+      "Path": "ReplicatedStorage.Remotes.Run.Start"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SyncServer",
+      "Path": "ReplicatedStorage.Remotes.Replication.SyncServer"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "RequestData",
+      "Path": "ReplicatedStorage.Remotes.Replication.RequestData"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "SyncPlayer",
+      "Path": "ReplicatedStorage.Remotes.Replication.SyncPlayer"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ClientReady",
+      "Path": "ReplicatedStorage.Remotes.Replication.ClientReady"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Finished",
+      "Path": "ReplicatedStorage.Remotes.UpdateCinematic.Finished"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Strikes",
+      "Path": "ReplicatedStorage.Remotes.InstantGrowth.Strikes"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Purchase",
+      "Path": "ReplicatedStorage.Remotes.Auras.Purchase"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Preview",
+      "Path": "ReplicatedStorage.Remotes.Auras.Preview"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Equip",
+      "Path": "ReplicatedStorage.Remotes.Auras.Equip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Unequip",
+      "Path": "ReplicatedStorage.Remotes.Auras.Unequip"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Seen",
+      "Path": "ReplicatedStorage.Remotes.UpdateLog.Seen"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "StateChanged",
+      "Path": "ReplicatedStorage.Remotes.Index.StateChanged"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GetState",
+      "Path": "ReplicatedStorage.Remotes.Index.GetState"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "ClaimReward",
+      "Path": "ReplicatedStorage.Remotes.Index.ClaimReward"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Vote",
+      "Path": "ReplicatedStorage.Remotes.Poll.Vote"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Claim",
+      "Path": "ReplicatedStorage.Remotes.Offline.Claim"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Request",
+      "Path": "ReplicatedStorage.Remotes.Rebirth.Request"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Done",
+      "Path": "ReplicatedStorage.Remotes.Rebirth.Done"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Swing",
+      "Path": "ReplicatedStorage.Remotes.Bat.Swing"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Walking",
+      "Path": "ReplicatedStorage.Remotes.Speed.Walking"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "SetSlowMode",
+      "Path": "ReplicatedStorage.Remotes.Speed.SetSlowMode"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReliableTween",
+      "Path": "ReplicatedStorage.Remotes.FX.ReliableTween"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "BatchTween",
+      "Path": "ReplicatedStorage.Remotes.FX.BatchTween"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "Firework",
+      "Path": "ReplicatedStorage.Remotes.FX.Firework"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "PurchaseBurst",
+      "Path": "ReplicatedStorage.Remotes.FX.PurchaseBurst"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "MoneyGained",
+      "Path": "ReplicatedStorage.Remotes.FX.MoneyGained"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "BulkTween",
+      "Path": "ReplicatedStorage.Remotes.FX.BulkTween"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "PackGrab",
+      "Path": "ReplicatedStorage.Remotes.FX.PackGrab"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReliableBulkTween",
+      "Path": "ReplicatedStorage.Remotes.FX.ReliableBulkTween"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "OfflineCash",
+      "Path": "ReplicatedStorage.Remotes.FX.OfflineCash"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "GuardImpact",
+      "Path": "ReplicatedStorage.Remotes.FX.GuardImpact"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "Highlight",
+      "Path": "ReplicatedStorage.Remotes.FX.Highlight"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "Tween",
+      "Path": "ReplicatedStorage.Remotes.FX.Tween"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Get",
+      "Path": "ReplicatedStorage.Remotes.Leaderboards.Get"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GetPulls",
+      "Path": "ReplicatedStorage.Remotes.Leaderboards.GetPulls"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "EquipMount",
+      "Path": "ReplicatedStorage.Remotes.Cosmetics.EquipMount"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "MountToggle",
+      "Path": "ReplicatedStorage.Remotes.Cosmetics.MountToggle"
+    }
+  ]
+}

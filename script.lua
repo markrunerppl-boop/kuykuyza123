@@ -103,6 +103,15 @@ local SupportedGames = {
         Category = "Fishing / Simulator",
         Path = "fishing/main.lua"
     },
+
+    -- --------------------------------------------------------------------
+    -- 📦 8. ขโมยแพ็คอนิเมะ (Steal Anime Packs)
+    -- --------------------------------------------------------------------
+    [133151378618377] = {
+        Name = "ขโมยแพ็คอนิเมะ (Steal Anime Packs)",
+        Category = "Steal / Simulator",
+        Path = "steal 111/main.lua"
+    },
 }
 
 -- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/ดันเจี้ยน/วาป
@@ -220,7 +229,8 @@ task.spawn(function()
 
     -- 3. ฟังก์ชันดาวน์โหลดโค้ดสคริปต์ (Dual-Method Fetch with Cache-Buster)
     local function FetchScript(path)
-        local fullUrl = BaseUrl .. path
+        local safePath = path:gsub(" ", "%%20")
+        local fullUrl = BaseUrl .. safePath
         local saltUrl = fullUrl .. "?v=" .. tostring(os.time()) .. "&salt=" .. tostring(math.random(100000, 999999))
 
         -- ลองโหลดด้วย Salt URL ป้องกันแคช
