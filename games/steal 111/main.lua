@@ -12,6 +12,7 @@ local function main()
 	local ContextActionService = game:GetService("ContextActionService")
 	local HttpService = game:GetService("HttpService")
 	local TweenService = game:GetService("TweenService")
+	local CollectionService = game:GetService("CollectionService")
 	local CoreGui = game:GetService("CoreGui")
 	local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
 	local VirtualInputManager = vimOk and vimSvc or nil
@@ -592,6 +593,15 @@ local function main()
 		end)
 	end
 
+	local function waitUntil(cond, timeout)
+		local deadline = os.clock() + timeout
+		while os.clock() < deadline and Core._alive do
+			if cond() then return true end
+			task.wait(0.1)
+		end
+		return cond()
+	end
+
 	local mutatePadCache = nil
 	function Helpers.GetMutateMachinePad()
 		if mutatePadCache and mutatePadCache.Parent then
@@ -911,6 +921,7 @@ local function main()
 		local timeout = os.clock() + math.max(90, initFlat / 12 + 30)
 
 		while Core._alive and Helpers.IsAlive() and os.clock() < timeout do
+			local now = os.clock()
 			if shouldAbort and shouldAbort() then
 				if precise then
 					stopMotion(hum, hrp, false)
@@ -1614,15 +1625,6 @@ local function main()
 		return diag
 	end
 
-	local function waitUntil(cond, timeout)
-		local deadline = os.clock() + timeout
-		while os.clock() < deadline and Core._alive do
-			if cond() then return true end
-			task.wait(0.1)
-		end
-		return cond()
-	end
-
 	local function leaveTreadmill()
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then return end
 		Net.Fire(Net.Paths.ExitRequest, 0.5)
@@ -2056,6 +2058,7 @@ local function main()
 						if ok then reason = why or "ไม่ทราบสาเหตุ" end
 						logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
 						returnToSafeRest(false)
+						task.wait(math.max(Core.Flags.StealDelay or 0.2, 0.4))
 					end
 					task.wait(Core.Flags.StealDelay)
 				end
