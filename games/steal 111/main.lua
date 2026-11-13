@@ -1355,6 +1355,18 @@ local function main()
 	local placePacksInBase = nil
 	local runBaseMaintenance = nil
 	local baseFullUntil = 0
+	local function isFullReason(reason)
+		if not reason then return false end
+		local r = string.upper(tostring(reason))
+		return r:find("FULL") ~= nil
+			or r:find("LIMIT") ~= nil
+			or r:find("MAX") ~= nil
+			or r:find("SPACE") ~= nil
+			or r:find("เต็ม") ~= nil
+			or r:find("CAPACITY") ~= nil
+			or r:find("AREA") ~= nil
+			or r:find("PLOT") ~= nil
+	end
 	local function isBaseFull()
 		return os.clock() < baseFullUntil
 	end
@@ -2165,8 +2177,7 @@ local function main()
 		if not Core._alive then return end
 		-- Priority 1: ฟัก/เก็บแพ็คที่พร้อมเปิด เพื่อเคลียร์แท่นและเปิดพื้นที่ว่างบนฐาน
 		if Core.Flags.AutoOpenPacks and openReadyPlacedPacks then
-			local okOpen = pcall(openReadyPlacedPacks)
-			if okOpen then baseFullUntil = 0 end
+			pcall(openReadyPlacedPacks)
 		end
 
 		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐานให้หมดก่อน (เฉพาะเมื่อฐานยังไม่เต็ม)
@@ -2174,7 +2185,7 @@ local function main()
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
 				local okPlace, resWhy = placePacksInBase()
-				if resWhy == "NO_SPACE" or resWhy == "PLOT_FULL" or resWhy == "LIMIT_REACHED" or resWhy == "BASE_FULL" then
+				if isFullReason(resWhy) then
 					baseFullUntil = os.clock() + 60
 				end
 			end
@@ -2200,7 +2211,7 @@ local function main()
 			-- ก่อนเริ่มขโมยด่านถัดไป หากมีแพ็คในตัวและฐานยังวางได้ ให้กลับไปวางให้หมดก่อน
 			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoSteal) and getPacksToPlace and #getPacksToPlace() > 0 and not isBaseFull() then
 				if runBaseMaintenance then runBaseMaintenance() end
-				return
+				if not isBaseFull() then return end
 			end
 
 			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
@@ -2289,8 +2300,10 @@ local function main()
 
 	local function isRemoteOk(res)
 		if type(res) == "table" then
-			if res.Success ~= nil then return res.Success == true, res.Reason end
-			if res.Ok ~= nil then return res.Ok == true, res.Reason end
+			local reason = res.Reason or res.reason or res.Message or res.message or res.Error or res.error or res.why or res.Why
+			if res.Success ~= nil then return res.Success == true, reason end
+			if res.Ok ~= nil then return res.Ok == true, reason end
+			if res.success ~= nil then return res.success == true, reason end
 		end
 		return res ~= false, nil
 	end
@@ -2904,10 +2917,14 @@ local function main()
 		-- 1. Tools ใน Character / Backpack
 		for _, tool in ipairs(getBagTools(true)) do
 			local packId = tool:GetAttribute("PackId")
-			local isChar = (tool:GetAttribute("Kind") == "Character") or (tool:GetAttribute("IsCharacter") == true)
-			local isPack = tool:GetAttribute("CardIsPack") == true
-				or tool:GetAttribute("ItemCategory") == "Packs"
-				or (type(packId) == "string" and packId ~= "" and not isChar)
+			local itemCat = tool:GetAttribute("ItemCategory")
+			local cardIsPack = tool:GetAttribute("CardIsPack")
+			local charName = tool:GetAttribute("CharacterName")
+
+			-- กรองยูนิตตัวละครออก: หากเป็น Units หรือ CardIsPack เป็น false หรือมี CharacterName ห้ามนำมาวางเด็ดขาด
+			local isUnit = (itemCat == "Units") or (cardIsPack == false) or (charName ~= nil)
+			local isPack = not isUnit and (cardIsPack == true or itemCat == "Packs" or (type(packId) == "string" and packId ~= ""))
+
 			if isPack and type(packId) == "string" and packId ~= "" and not seen[packId] then
 				if (itemSkipUntil["place:" .. packId] or 0) <= now then
 					seen[packId] = true
@@ -2928,7 +2945,7 @@ local function main()
 		if type(bpRecords) == "table" then
 			for _, rec in pairs(bpRecords) do
 				if type(rec) == "table" and type(rec.Id) == "string" and not seen[rec.Id] then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character"
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character" or rec.CharacterName ~= nil
 					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(rec))
 					if not isChar and not isPath and rec.OpeningCommittedAt == nil then
 						if (itemSkipUntil["place:" .. rec.Id] or 0) <= now then
@@ -3138,7 +3155,7 @@ local function main()
 									pcall(function() hum:EquipTool(packTool) end)
 									task.wait(0.2)
 								end
-							elseif reason == "LIMIT_REACHED" or reason == "MAX_PLACED" or reason == "NO_SPACE" or reason == "PLOT_FULL" then
+							elseif isFullReason(reason) then
 								noSpace = true
 								break
 							end
@@ -3147,7 +3164,7 @@ local function main()
 					end
 
 					if not placedThis then
-						if lastReason == "LIMIT_REACHED" or lastReason == "MAX_PLACED" or lastReason == "NO_SPACE" or lastReason == "PLOT_FULL" then
+						if isFullReason(lastReason) or noSpace then
 							noSpace = true
 							baseFullUntil = os.clock() + 60
 							itemSkipUntil["place:" .. packId] = os.clock() + 60
@@ -3369,6 +3386,41 @@ local function main()
 			pcall(function()
 				VirtualUser:CaptureController()
 				VirtualUser:ClickButton2(Vector2.new())
+			end)
+		end
+	end)
+
+	-- ดักจับการแจ้งเตือนจากเซิร์ฟเวอร์ (เช่น "พื้นที่ของคุณเต็มแล้ว") เพื่อตั้ง baseFullUntil ทันที
+	pcall(function()
+		local notifRemote = Helpers.ResolvePath("ReplicatedStorage.Remotes.Notification.Notification")
+		if notifRemote and notifRemote:IsA("RemoteEvent") then
+			Core:Connect(notifRemote.OnClientEvent, function(...)
+				local args = table.pack(...)
+				for i = 1, args.n do
+					local val = args[i]
+					local txt = ""
+					if typeof(val) == "string" then
+						txt = val
+					elseif typeof(val) == "table" then
+						txt = tostring(val.Text or val.Message or val.Title or val.Reason or "")
+					end
+					if isFullReason(txt) then
+						baseFullUntil = os.clock() + 60
+						logAction("ฐาน", "ตรวจพบแจ้งเตือน: " .. txt .. " (สลับไปขโมยต่อ)", false)
+						break
+					end
+				end
+			end)
+		end
+	end)
+
+	pcall(function()
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if pgui then
+			Core:Connect(pgui.DescendantAdded, function(desc)
+				if (desc:IsA("TextLabel") or desc:IsA("TextButton")) and isFullReason(desc.Text) then
+					baseFullUntil = os.clock() + 60
+				end
 			end)
 		end
 	end)
