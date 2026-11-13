@@ -588,6 +588,7 @@ local function main()
 		local hrp = Helpers.GetRoot()
 		if not hrp then return false, "NO_HRP" end
 
+		Core.Busy = true
 		local wasAtMachine = Helpers.IsAtMutateMachine()
 		local origCF = hrp.CFrame
 		local padCF = CFrame.new(pad.Position + Vector3.new(0, 3, 0))
@@ -602,11 +603,12 @@ local function main()
 		if not wasAtMachine and Helpers.IsAlive() and not Helpers.IsCarrying() then
 			Helpers.Teleport(origCF)
 		end
+		Core.Busy = false
 
 		if not ok then
 			return false, tostring(res)
 		end
-		return res, extra
+		return true, res, extra
 	end
 
 	-- คำนวณความเร็วเคลื่อนที่ปลอดภัยจาก SpeedConfig.ToWalkSpeed ของตัวละคร (หรือเพดานสูงสุด 340)
@@ -2148,6 +2150,107 @@ local function main()
 		return nil
 	end
 
+	local function getBackpackCandidates(mode) -- mode: "merge" or "fuse"
+		local now = os.clock()
+		local favMap = getPlayerDataKey("Favorited")
+		local pd = getPlayerData()
+		local inv = pd and pd.Get and pd.Get("Inventory")
+		local packsData = inv and inv.Packs or {}
+		local pc = getPacksConfig()
+		local seenIds = {}
+		local candidates = {}
+
+		local function isFav(id, tool)
+			if type(favMap) == "table" and favMap[id] == true then return true end
+			if tool and isToolFavorited and isToolFavorited(tool, id, favMap) then return true end
+			return false
+		end
+
+		local function normMutation(mut)
+			if mut == nil or mut == "" or mut == "None" or mut == false then
+				return "Normal"
+			end
+			return tostring(mut)
+		end
+
+		-- 1. สแกนจาก Tools ใน Backpack / Character
+		for _, tool in ipairs(getBagTools(false)) do
+			local packId = tool:GetAttribute("PackId")
+			if type(packId) == "string" and packId ~= "" and not seenIds[packId] then
+				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
+				if not isSkip and not isFav(packId, tool) then
+					local isPack = tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs"
+					local isUnit = tool:GetAttribute("CardIsPack") == false or tool:GetAttribute("ItemCategory") == "Units"
+					local mut = normMutation(getToolMutation(tool))
+
+					if mode == "merge" and isPack then
+						local name = tool:GetAttribute("PackName") or tool.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = tool,
+							})
+						end
+					elseif mode == "fuse" and isUnit then
+						local name = tool:GetAttribute("CharacterName") or tool.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = tool,
+							})
+						end
+					end
+				end
+			end
+		end
+
+		-- 2. สแกนจาก Inventory.Packs.Backpack (PlayerData) เผื่อ Tool ยังไม่โหลด
+		local bpList = (type(packsData.Backpack) == "table" and packsData.Backpack) or {}
+		for _, item in pairs(bpList) do
+			if type(item) == "table" and type(item.Id) == "string" and not seenIds[item.Id] then
+				local packId = item.Id
+				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
+				if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
+					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
+					local mut = normMutation(item.Mutation)
+
+					if mode == "merge" and not isChar and not isPath then
+						local name = item.PackName or item.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = item,
+							})
+						end
+					elseif mode == "fuse" and isChar then
+						local name = item.CharacterName or item.PackName or item.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = item,
+							})
+						end
+					end
+				end
+			end
+		end
+
+		return candidates
+	end
+
 	local function autoOpenPacksStep()
 		local now = os.clock()
 		local pd = getPlayerData()
@@ -2185,6 +2288,19 @@ local function main()
 		end
 
 		-- 2. นำแพ็กที่ขโมยมาในกระเป๋า (CardIsPack == true) วางลงพื้นที่เพาะของฐาน (PlaceOwned)
+		-- หากเปิด AutoMerge อยู่และยังมีแพ็คซ้ำในกระเป๋า ให้รอ AutoMerge รวมให้เสร็จก่อน
+		if Core.Flags.AutoMerge then
+			local mergeCandidates = getBackpackCandidates("merge")
+			local counts = {}
+			for _, c in ipairs(mergeCandidates) do
+				local k = c.Name .. "|" .. c.Mutation
+				counts[k] = (counts[k] or 0) + 1
+				if counts[k] >= 2 then
+					return
+				end
+			end
+		end
+
 		local plot = Helpers.GetPlot()
 		local pu = getPlotUtil()
 		local area = (pu and plot and pu.GetAnimeArea and pu.GetAnimeArea(plot.Name)) or nil
@@ -2334,174 +2450,149 @@ local function main()
 
 	local function autoMergeStep()
 		if Core.Busy or Helpers.IsCarrying() then return end
-		local mc = getMutateConfig()
-		local rl = math.max((mc and mc.RateLimit) or 1, 1.8)
 		local now = os.clock()
-		if now - lastMerge < rl then return end
+		local mc = getMutateConfig()
+		local rl = math.max((mc and mc.RateLimit) or 0.35, 0.35)
+		if now - lastMerge < 1.0 then return end
 
-		local favMap = getPlayerDataKey("Favorited")
-		local pd = getPlayerData()
-		local inv = pd and pd.Get and pd.Get("Inventory")
-		local packsData = inv and inv.Packs or {}
-		local pc = getPacksConfig()
-
-		-- สแกนเฉพาะ Backpack (ไม่รวม Placed ที่กำลังเพาะพันธุ์) เพื่อความปลอดภัยและไม่ชนสถานะ BUSY
+		local candidates = getBackpackCandidates("merge")
 		local groups = {}
-		local bpList = (type(packsData.Backpack) == "table" and packsData.Backpack) or {}
-		for _, item in ipairs(bpList) do
-			if type(item) == "table" and type(item.Id) == "string" and not permSkipItems["merge:" .. item.Id] then
-				local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
-				local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
-				if not isChar and not isPath and item.OpeningCommittedAt == nil then
-					local packName = item.PackName
-					if type(packName) == "string" and packName ~= "" then
-						local isFav = (type(favMap) == "table" and favMap[item.Id] == true)
-						if not isFav and (itemSkipUntil["merge:" .. item.Id] or 0) <= now then
-							local key = packName .. "|" .. tostring(item.Mutation or "")
-							groups[key] = groups[key] or { name = packName, list = {} }
-							table.insert(groups[key].list, item)
-						end
-					end
-				end
-			end
+		for _, c in ipairs(candidates) do
+			local key = c.Name .. "|" .. c.Mutation
+			groups[key] = groups[key] or { name = c.Name, list = {} }
+			table.insert(groups[key].list, c)
 		end
 
-		-- ตรวจหาคู่ที่มีอย่างน้อย 2 ชิ้น และผ่านเงื่อนไข CanMerge
-		local targetItemA, targetItemB = nil, nil
+		local pairsToMerge = {}
 		for _, g in pairs(groups) do
-			if #g.list >= 2 then
-				if pc and pc.CanMerge then
-					for i = 1, #g.list do
-						for j = i + 1, #g.list do
-							local can, why = pc.CanMerge(g.list[i], g.list[j])
-							if can then
-								targetItemA = g.list[i]
-								targetItemB = g.list[j]
-								break
-							elseif why == "MERGE_LIMIT" then
-								permSkipItems["merge:" .. g.list[i].Id] = true
-								permSkipItems["merge:" .. g.list[j].Id] = true
-							end
-						end
-						if targetItemA then break end
-					end
-				else
-					targetItemA = g.list[1]
-					targetItemB = g.list[2]
-				end
-				if targetItemA then break end
+			local list = g.list
+			local i = 1
+			while i + 1 <= #list do
+				table.insert(pairsToMerge, {
+					itemA = list[i],
+					itemB = list[i + 1],
+					packName = g.name,
+				})
+				i = i + 2
 			end
 		end
 
-		if not targetItemA or not targetItemB then return end
-
+		if #pairsToMerge == 0 then return end
 		lastMerge = now
-		local pName = targetItemA.PackName or "Pack"
 
-		local visitOk, invokeOk, res = Helpers.VisitMutateMachine(function()
-			-- ลองใช้ MergeAll ก่อน (รวมทั้งหมดของประเภทนั้นใน 1 คำสั่ง)
-			local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, targetItemA.Id)
-			local sAll, rAll = isRemoteOk(resAll)
-			if okAll and sAll then
-				return true, resAll
+		local okVisit, mergedTotal = Helpers.VisitMutateMachine(function()
+			local count = 0
+			for _, pair in ipairs(pairsToMerge) do
+				if not (Core._alive and Core.Flags.AutoMerge) then break end
+				local idA = pair.itemA.Id
+				local idB = pair.itemB.Id
+				local pName = pair.packName
+
+				-- ลองใช้ MergeAll ก่อนเผื่อเซิร์ฟเวอร์รองรับ
+				local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, idA)
+				local sAll, rAll = isRemoteOk(resAll)
+				if okAll and sAll then
+					count = count + 1
+					task.wait(rl)
+				else
+					-- Fallback ใช้ MutateMerge รายคู่
+					local okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
+					local sPair, rPair = isRemoteOk(resPair)
+					if okPair and sPair then
+						count = count + 1
+						task.wait(rl)
+					else
+						local failReason = rPair or rAll or "REJECTED"
+						if failReason == "MERGE_LIMIT" then
+							permSkipItems["merge:" .. idA] = true
+							permSkipItems["merge:" .. idB] = true
+							logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
+						else
+							itemSkipUntil["merge:" .. idA] = os.clock() + 6
+							itemSkipUntil["merge:" .. idB] = os.clock() + 6
+							logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
+						end
+					end
+				end
 			end
-			-- Fallback: ใช้ Merge คู่ 2 ชิ้น
-			local okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { targetItemA.Id, targetItemB.Id })
-			return okPair, resPair
+			return count
 		end)
 
-		local success, reason = isRemoteOk(res)
-		if visitOk and invokeOk and success then
-			logAction("Merge", "รวมแพ็ก " .. tostring(pName) .. " สำเร็จ!", true)
-			task.wait(0.4)
-		else
-			local failReason = (not visitOk and tostring(invokeOk)) or reason or "ไม่ทราบสาเหตุ"
-			if failReason == "MERGE_LIMIT" then
-				permSkipItems["merge:" .. targetItemA.Id] = true
-				permSkipItems["merge:" .. targetItemB.Id] = true
-				logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
-			else
-				itemSkipUntil["merge:" .. targetItemA.Id] = now + 6
-				itemSkipUntil["merge:" .. targetItemB.Id] = now + 6
-				logAction("Merge", "Merge " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
-			end
+		if okVisit and type(mergedTotal) == "number" and mergedTotal > 0 then
+			logAction("Merge", string.format("รวมแพ็คสำเร็จ %d คู่ (หมดตัว)", mergedTotal), true)
 		end
 	end
 
 	local function autoFuseStep()
 		if Core.Busy or Helpers.IsCarrying() then return end
-		local mc = getMutateConfig()
-		local rl = math.max((mc and mc.RateLimit) or 1, 1.8)
 		local now = os.clock()
-		if now - lastFuse < rl then return end
+		local mc = getMutateConfig()
+		local rl = math.max((mc and mc.RateLimit) or 0.38, 0.38)
+		if now - lastFuse < 1.0 then return end
 
-		local favMap = getPlayerDataKey("Favorited")
-		local pd = getPlayerData()
-		local inv = pd and pd.Get and pd.Get("Inventory")
-		local packsData = inv and inv.Packs or {}
-		local pc = getPacksConfig()
-		local upgTable = (mc and mc.Upgrades) or {}
-
+		local candidates = getBackpackCandidates("fuse")
 		local groups = {}
-		local function scanCharList(list)
-			if type(list) ~= "table" then return end
-			for _, item in pairs(list) do
-				if type(item) == "table" and type(item.Id) == "string" and not permSkipItems["fuse:" .. item.Id] then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
-					if isChar and item.OpeningCommittedAt == nil then
-						local charName = item.CharacterName or item.PackName
-						local mut = item.Mutation
-						if type(charName) == "string" and charName ~= "" and (mut == nil or upgTable[mut] ~= nil) then
-							local isFav = (type(favMap) == "table" and favMap[item.Id] == true)
-							if not isFav and (itemSkipUntil["fuse:" .. item.Id] or 0) <= now then
-								local key = charName .. "|" .. tostring(mut or "Normal")
-								groups[key] = groups[key] or { name = charName, mut = mut, ids = {} }
-								table.insert(groups[key].ids, item.Id)
-							end
-						end
+		for _, c in ipairs(candidates) do
+			local key = c.Name .. "|" .. c.Mutation
+			groups[key] = groups[key] or { name = c.Name, mut = c.Mutation, list = {} }
+			table.insert(groups[key].list, c)
+		end
+
+		local triosToFuse = {}
+		for _, g in pairs(groups) do
+			local list = g.list
+			local i = 1
+			while i + 2 <= #list do
+				table.insert(triosToFuse, {
+					itemA = list[i],
+					itemB = list[i + 1],
+					itemC = list[i + 2],
+					charName = g.name,
+					mut = g.mut,
+				})
+				i = i + 3
+			end
+		end
+
+		if #triosToFuse == 0 then return end
+		lastFuse = now
+
+		local okVisit, fusedTotal = Helpers.VisitMutateMachine(function()
+			local count = 0
+			for _, trio in ipairs(triosToFuse) do
+				if not (Core._alive and Core.Flags.AutoFuse) then break end
+				local idA = trio.itemA.Id
+				local idB = trio.itemB.Id
+				local idC = trio.itemC.Id
+				local cName = trio.charName
+
+				local okFuse, resFuse = Net.Invoke(Net.Paths.MutateFuse, { idA, idB, idC })
+				local sFuse, rFuse = isRemoteOk(resFuse)
+				if okFuse and sFuse then
+					count = count + 1
+					local mutResult = (type(resFuse) == "table" and resFuse.Character and resFuse.Character.Mutation) or "สำเร็จ"
+					logAction("Fuse", string.format("กลายพันธุ์ %s สำเร็จ! (%s)", tostring(cName), tostring(mutResult)), true)
+					task.wait(rl)
+				else
+					local failReason = rFuse or "REJECTED"
+					if failReason == "MAX_MUTATION" then
+						permSkipItems["fuse:" .. idA] = true
+						permSkipItems["fuse:" .. idB] = true
+						permSkipItems["fuse:" .. idC] = true
+						logAction("Fuse", cName .. " ถึงระดับกลายพันธุ์สูงสุดแล้ว", false)
+					else
+						itemSkipUntil["fuse:" .. idA] = os.clock() + 6
+						itemSkipUntil["fuse:" .. idB] = os.clock() + 6
+						itemSkipUntil["fuse:" .. idC] = os.clock() + 6
+						logAction("Fuse", "กลายพันธุ์ " .. tostring(cName) .. " พลาด: " .. tostring(failReason), false)
 					end
 				end
 			end
-		end
-
-		scanCharList(packsData.Backpack)
-		scanCharList(packsData.Placed)
-
-		-- ตรวจหาตัวละครที่ครบ 3 ตัว
-		local targetGroup = nil
-		for _, g in pairs(groups) do
-			if #g.ids >= 3 then
-				targetGroup = g
-				break
-			end
-		end
-
-		if not targetGroup then return end
-
-		lastFuse = now
-		local cName = targetGroup.name
-		local id1, id2, id3 = targetGroup.ids[1], targetGroup.ids[2], targetGroup.ids[3]
-
-		local visitOk, invokeOk, res = Helpers.VisitMutateMachine(function()
-			return Net.Invoke(Net.Paths.MutateFuse, { id1, id2, id3 })
+			return count
 		end)
 
-		local success, reason = isRemoteOk(res)
-		if visitOk and invokeOk and success then
-			local mutResult = (type(res) == "table" and res.Character and res.Character.Mutation) or "สำเร็จ"
-			logAction("Fuse", string.format("กลายพันธุ์ %s สำเร็จ! (%s)", tostring(cName), tostring(mutResult)), true)
-			task.wait(0.4)
-		else
-			local failReason = (not visitOk and tostring(invokeOk)) or reason or "ไม่ทราบสาเหตุ"
-			if failReason == "MAX_MUTATION" then
-				permSkipItems["fuse:" .. id1] = true
-				logAction("Fuse", cName .. " ถึงระดับกลายพันธุ์สูงสุดแล้ว", false)
-			else
-				itemSkipUntil["fuse:" .. id1] = now + 6
-				itemSkipUntil["fuse:" .. id2] = now + 6
-				itemSkipUntil["fuse:" .. id3] = now + 6
-				logAction("Fuse", "กลายพันธุ์ " .. tostring(cName) .. " พลาด: " .. tostring(failReason), false)
-			end
+		if okVisit and type(fusedTotal) == "number" and fusedTotal > 0 then
+			logAction("Fuse", string.format("กลายพันธุ์สำเร็จทั้งหมด %d ชุด (หมดตัว)", fusedTotal), true)
 		end
 	end
 
