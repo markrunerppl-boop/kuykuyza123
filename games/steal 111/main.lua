@@ -114,6 +114,7 @@ local function main()
 	Core.Flags.AutoFuse = false       -- กลายพันธุ์ยูนิตซ้ำ 3 ตัวอัตโนมัติ
 	Core.Flags.AutoUpgradeTreadmill = false -- อัปเกรดลู่วิ่งอัตโนมัติ
 	Core.Flags.AutoUpgradeBase = false      -- อัปเกรดฐานอัตโนมัติ
+	Core.Flags.AutoUpgradeLuck = false      -- อัปเกรดโชคในบ้านอัตโนมัติ (Upgrade Luck Machine)
 	Core.Flags.AutoRebirth = false          -- เกิดใหม่อัตโนมัติเมื่อ Speed ถึงเกณฑ์
 	Core.Flags.AutoClaim = false            -- เคลม Offline / Daily / Index อัตโนมัติ
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
@@ -476,6 +477,14 @@ local function main()
 			BaseUpgradeConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.BaseUpgradeConfig end)
 		end
 		return BaseUpgradeConfig
+	end
+
+	local LuckMachineConfig = nil
+	local function getLuckMachineConfig()
+		if not LuckMachineConfig then
+			LuckMachineConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.LuckMachineConfig end)
+		end
+		return LuckMachineConfig
 	end
 
 	function Helpers.GetSafeZoneBounds()
@@ -1117,6 +1126,7 @@ local function main()
 		MutateFuse = RP .. "Mutate.Fuse",            -- RF: InvokeServer({id1, id2, id3})
 		TreadmillUpgrade = RP .. "Treadmill.Upgrade", -- RF: InvokeServer({})
 		BaseUpgradePurchase = RP .. "BaseUpgrade.Purchase", -- RF: InvokeServer({})
+		LuckMachineUpgrade = RP .. "LuckMachine.Upgrade", -- RF: InvokeServer(mode) ("Max" / "One")
 		RebirthRequest = RP .. "Rebirth.Request",    -- RF: InvokeServer()
 		OfflineClaim = RP .. "Offline.Claim",        -- RF: InvokeServer()
 		DailyClaim = RP .. "Daily.Claim",            -- RF: InvokeServer()
@@ -2592,6 +2602,44 @@ local function main()
 			end
 		end
 
+		-- 3. สแกนจาก Inventory.Packs.Placed (แพ็คที่กำลังวางบนฐาน และ ยูนิตที่กำลังใช้งานอยู่)
+		local placedList = (type(packsData.Placed) == "table" and packsData.Placed) or {}
+		for _, item in pairs(placedList) do
+			if type(item) == "table" and type(item.Id) == "string" and not seenIds[item.Id] then
+				local packId = item.Id
+				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
+				if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
+					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
+					local mut = normMutation(item.Mutation)
+
+					if mode == "merge" and not isChar and not isPath then
+						local name = item.PackName or item.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = item,
+							})
+						end
+					elseif mode == "fuse" and isChar then
+						local name = item.CharacterName or item.PackName or item.Name
+						if type(name) == "string" and name ~= "" then
+							seenIds[packId] = true
+							table.insert(candidates, {
+								Id = packId,
+								Name = name,
+								Mutation = mut,
+								Raw = item,
+							})
+						end
+					end
+				end
+			end
+		end
+
 		return candidates
 	end
 
@@ -2853,6 +2901,12 @@ local function main()
 
 		if okVisit and type(fusedTotal) == "number" and fusedTotal > 0 then
 			logAction("Fuse", string.format("กลายพันธุ์สำเร็จทั้งหมด %d ชุด (หมดตัว)", fusedTotal), true)
+			if autoEquipBestStep then
+				task.spawn(function()
+					task.wait(0.5)
+					autoEquipBestStep(false)
+				end)
+			end
 		end
 	end
 
@@ -3319,6 +3373,43 @@ local function main()
 		end
 	end
 
+	local nextLuckUpgrade = 0
+
+	local function autoUpgradeLuckStep()
+		local now = os.clock()
+		if now < nextLuckUpgrade then return end
+
+		local lmc = getLuckMachineConfig()
+		local curLvl = tonumber(LocalPlayer:GetAttribute("HatchLuckLevel")) or 0
+		local nextPrice = lmc and lmc.GetPrice and lmc.GetPrice(curLvl)
+
+		if nextPrice == nil then
+			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
+			nextLuckUpgrade = now + 60
+			return
+		end
+
+		local cash = getPlayerCash()
+		if cash < nextPrice then
+			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
+			nextLuckUpgrade = now + 4
+			return
+		end
+
+		local ok, res = Net.Invoke(Net.Paths.LuckMachineUpgrade, "Max")
+		local success, reason = isRemoteOk(res)
+		if ok and success then
+			nextLuckUpgrade = now + 1.0
+			local newLvl = tonumber(LocalPlayer:GetAttribute("HatchLuckLevel")) or (curLvl + 1)
+			logAction("อัปเกรด", "อัปเกรดเครื่องโชคสำเร็จ (Level: " .. tostring(newLvl) .. ")", true)
+		else
+			nextLuckUpgrade = now + 5
+			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
+				logAction("อัปเกรด", "เครื่องโชค: " .. tostring(reason), false)
+			end
+		end
+	end
+
 	local function autoRebirthStep()
 		local now = os.clock()
 		if now - lastRebirthTry < 3 then return end
@@ -3389,9 +3480,16 @@ local function main()
 			end
 			if hasUnclaimed then
 				nextIndexClaim = now + 25
-				local okU, resU = Net.Invoke(Net.Paths.IndexClaimReward, nil, nil, "Units")
-				local okL, resL = Net.Invoke(Net.Paths.IndexClaimReward, nil, nil, "Limited")
-				if (okU and isRemoteOk(resU)) or (okL and isRemoteOk(resL)) then
+				local mutationsToClaim = { nil, "Gold", "Emerald", "Diamond", "Cursed", "Transcendent", "Glitched" }
+				local claimedAny = false
+				for _, mut in ipairs(mutationsToClaim) do
+					local ok, res = Net.Invoke(Net.Paths.IndexClaimReward, nil, nil, mut)
+					if ok and isRemoteOk(res) then
+						claimedAny = true
+					end
+					task.wait(0.1)
+				end
+				if claimedAny then
 					logAction("เคลม", "เคลม Index Rewards สำเร็จ", true)
 				end
 			else
@@ -3406,6 +3504,10 @@ local function main()
 
 	local function startAutoUpgradeBaseLoop()
 		Core:Loop("upgBase", "AutoUpgradeBase", 0.5, autoUpgradeBaseStep)
+	end
+
+	local function startAutoUpgradeLuckLoop()
+		Core:Loop("upgLuck", "AutoUpgradeLuck", 0.5, autoUpgradeLuckStep)
 	end
 
 	local function startAutoRebirthLoop()
@@ -4390,6 +4492,11 @@ local function main()
 			if v then startAutoUpgradeBaseLoop() end
 		end)
 
+		CreateToggle(pUpg, "อัปเกรดโชคในบ้านอัตโนมัติ (Upgrade Luck Machine)", Core.Flags.AutoUpgradeLuck, function(v)
+			Core.Flags.AutoUpgradeLuck = v
+			if v then startAutoUpgradeLuckLoop() end
+		end)
+
 		CreateToggle(pUpg, "เกิดใหม่อัตโนมัติเมื่อครบเกณฑ์ (Auto Rebirth)", Core.Flags.AutoRebirth, function(v)
 			Core.Flags.AutoRebirth = v
 			if v then startAutoRebirthLoop() end
@@ -4503,6 +4610,7 @@ local function main()
 		if Core.Flags.AutoEquipAura then task.spawn(startAutoEquipAuraLoop) end
 		if Core.Flags.AutoUpgradeTreadmill then task.spawn(startAutoUpgradeTreadmillLoop) end
 		if Core.Flags.AutoUpgradeBase then task.spawn(startAutoUpgradeBaseLoop) end
+		if Core.Flags.AutoUpgradeLuck then task.spawn(startAutoUpgradeLuckLoop) end
 		if Core.Flags.AutoRebirth then task.spawn(startAutoRebirthLoop) end
 		if Core.Flags.AutoClaim then task.spawn(startAutoClaimLoop) end
 
