@@ -1282,6 +1282,25 @@ local function main()
 		return os.clock() < baseFullUntil
 	end
 
+	local function getActivePlacedPacksCount()
+		local pd = getPlayerData()
+		local inv = pd and pd.Get and pd.Get("Inventory")
+		local placed = inv and inv.Packs and inv.Packs.Placed
+		local pc = getPacksConfig()
+		local count = 0
+		if type(placed) == "table" then
+			for _, rec in pairs(placed) do
+				if type(rec) == "table" and type(rec.Id) == "string" then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character" or rec.CharacterName ~= nil
+					if not isChar then
+						count = count + 1
+					end
+				end
+			end
+		end
+		return count
+	end
+
 	local lastEnter = 0
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
@@ -2216,7 +2235,7 @@ local function main()
 
 	local stageStealCount = 0
 	local currentTargetStage = nil
-	local nextStealBatchTime = 0
+	local lastQuotaLogTime = 0
 
 	local function stealCycle()
 		-- 1. ตรวจสอบด่านเป้าหมายเพียงด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
@@ -2232,27 +2251,51 @@ local function main()
 		local i = targetStages[1]
 		local maxPacks = Core.Flags.MaxStageStealPacks or 4
 
-		-- หากมีการสลับด่านเป้าหมาย (เช่น Speed เพิ่มขึ้นจนวิ่งทันด่านที่สูงกว่า) ให้รีเซ็ตโควต้าเริ่มใหม่
+		local currentPending = (getPacksToPlace and #getPacksToPlace()) or 0
+		local currentPlaced = (getActivePlacedPacksCount and getActivePlacedPacksCount()) or 0
+		local activeTotal = currentPending + currentPlaced
+
+		-- หากมีการสลับด่านเป้าหมาย (เช่น Speed เพิ่มขึ้นจนวิ่งทันด่านที่สูงกว่า) 
+		-- จะรีเซ็ตโควต้าเริ่มใหม่ได้ก็ต่อเมื่อไม่มีแพ็คค้างในระบบแล้วเท่านั้น
 		if currentTargetStage ~= i then
 			currentTargetStage = i
-			stageStealCount = 0
-			nextStealBatchTime = 0
+			if activeTotal == 0 then
+				stageStealCount = 0
+			end
 		end
 
-		-- ตรวจสอบว่าในรอบปัจจุบันขโมยครบโควต้า 4 ใบแล้วหรือยัง
-		local now = os.clock()
-		if stageStealCount >= maxPacks then
-			if now < nextStealBatchTime then
-				-- ยังอยู่ในช่วงพักรอบ (25 วินาที) ให้ขึ้นลู่วิ่งปั๊ม Speed รอชุดใหม่
+		-- ตรวจสอบโควต้าการขโมย:
+		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว (stageStealCount >= maxPacks)
+		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋า+บนฐานครบ 4 ใบขึ้นไป (activeTotal >= maxPacks)
+		-- 3) หรือฐานเต็มแล้ว (isBaseFull())
+		-- ให้กลับฐาน ขึ้นลู่วิ่งฝึกซ้อมอย่างต่อเนื่อง และรันการฟัก/รวม/วาง ห้ามวิ่งออกไปขโมยเพิ่มเด็ดขาด!
+		if stageStealCount >= maxPacks or activeTotal >= maxPacks or isBaseFull() then
+			-- ถ้าแพ็คเดิมได้รับการฟักจนหมดแล้ว และไม่มีแพ็คค้างในกระเป๋า (activeTotal == 0) จึงจะเริ่มรอบใหม่ได้
+			if activeTotal == 0 and not isBaseFull() then
+				if stageStealCount >= maxPacks then
+					stageStealCount = 0
+					logAction("ขโมย", string.format("ด่าน %d: แพ็คชุดเดิมฟักสำเร็จทั้งหมดแล้ว -> เริ่มรอบขโมยการ์ดใหม่ (โควต้า %d ใบ)", i, maxPacks), true)
+				end
+			else
+				local now = os.clock()
+				if now - lastQuotaLogTime > 15 then
+					lastQuotaLogTime = now
+					local reason = isBaseFull() and "ฐานเต็ม"
+						or (activeTotal >= maxPacks and string.format("มีแพ็ครอดำเนินการครบโควต้า %d ใบ (กระเป๋า %d, ฐาน %d)", maxPacks, currentPending, currentPlaced))
+						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (กำลังฟักบนฐาน %d ใบ)", stageStealCount, maxPacks, currentPlaced)
+					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งรอแพ็คฟัก", false)
+				end
+
 				if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 					returnToSafeRest(true)
 				end
+
+				if runBaseMaintenance then
+					pcall(runBaseMaintenance)
+				end
+
 				task.wait(1.0)
 				return
-			else
-				-- ครบเวลาพักรอบแล้ว รีเซ็ตตัวนับเพื่อเริ่มขโมย 4 ใบใหม่ในด่าน
-				stageStealCount = 0
-				logAction("ขโมย", string.format("ด่าน %d: เริ่มรอบขโมยการ์ดที่ดีที่สุดชุดใหม่ (%d ใบ)", i, maxPacks), true)
 			end
 		end
 
@@ -2301,10 +2344,13 @@ local function main()
 				runBaseMaintenance()
 			end
 
-			-- หากขโมยครบโควต้า 4 ใบแล้ว ให้กลับฐานขึ้นลู่วิ่งและพักรอบ 25 วินาที
-			if stageStealCount >= maxPacks then
-				nextStealBatchTime = os.clock() + 25
-				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งฝึกซ้อม (รอชุดใหม่)", maxPacks, i), true)
+			-- หากขโมยครบโควต้า หรือมีแพ็คค้างในระบบครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งทันที
+			local afterPending = (getPacksToPlace and #getPacksToPlace()) or 0
+			local afterPlaced = (getActivePlacedPacksCount and getActivePlacedPacksCount()) or 0
+			local afterTotal = afterPending + afterPlaced
+
+			if stageStealCount >= maxPacks or afterTotal >= maxPacks then
+				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งฝึกซ้อม (รอแพ็คฟัก)", maxPacks, i), true)
 				if runBaseMaintenance then pcall(runBaseMaintenance) end
 				returnToSafeRest(true)
 			end
@@ -3394,7 +3440,7 @@ local function main()
 
 			if noSpace then
 				baseFullUntil = os.clock() + 60
-				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> ขโมยต่อทันที", false)
+				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> รอแพ็คฟักเพื่อเปิดพื้นที่", false)
 				return false, "NO_SPACE"
 			end
 
@@ -3731,7 +3777,7 @@ local function main()
 					end
 					if isFullReason(txt) then
 						baseFullUntil = os.clock() + 60
-						logAction("ฐาน", "ตรวจพบแจ้งเตือน: " .. txt .. " (สลับไปขโมยต่อ)", false)
+						logAction("ฐาน", "ตรวจพบแจ้งเตือน: " .. txt .. " (ฐานเต็ม - พักบนลู่วิ่งรอแพ็คฟัก)", false)
 						break
 					end
 				end
