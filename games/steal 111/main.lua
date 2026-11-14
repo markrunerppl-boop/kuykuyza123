@@ -706,7 +706,7 @@ local function main()
 		Core.Busy = true
 		local wasAtMachine = Helpers.IsAtMutateMachine()
 		local origCF = hrp.CFrame
-		local padCF = CFrame.new(pad.Position + Vector3.new(0, 3, 0))
+		local padCF = CFrame.new(pad.Position.X, 74.0, pad.Position.Z)
 
 		local wasTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 		if not wasAtMachine then
@@ -715,7 +715,7 @@ local function main()
 				task.wait(0.15)
 			end
 			Helpers.Teleport(padCF)
-			task.wait(0.4)
+			task.wait(0.55)
 		end
 
 		local ok, res, extra = pcall(actionFn)
@@ -1324,8 +1324,6 @@ local function main()
 			or r:find("SPACE") ~= nil
 			or r:find("เต็ม") ~= nil
 			or r:find("CAPACITY") ~= nil
-			or r:find("AREA") ~= nil
-			or r:find("PLOT") ~= nil
 	end
 	local function isBaseFull()
 		return os.clock() < baseFullUntil
@@ -2507,6 +2505,19 @@ local function main()
 			return
 		end
 
+		-- จัดการงานฐาน (รวมแพ็คซ้ำ + วางแพ็คลงแปลงเพาะ) ให้เรียบร้อยก่อนออกจากฐานไปขโมย
+		if not Helpers.IsCarrying() and runBaseMaintenance then
+			local hrp = Helpers.GetRoot()
+			local bPos = Helpers.GetPlotSpawnPos()
+			if hrp and bPos and (hrp.Position - bPos).Magnitude <= 50 then
+				local hasPacks = (getPacksToPlace and #getPacksToPlace() > 0)
+				local hasMerges = (Core.Flags.AutoMerge and getBackpackCandidates and #getBackpackCandidates("merge") >= 2)
+				if hasPacks or hasMerges then
+					pcall(runBaseMaintenance)
+				end
+			end
+		end
+
 		local prompt, diagReason = checkStageHasPacks(i)
 		if not prompt then
 			-- ลอง Stream ซ้ำอีกครั้งก่อนตัดสินใจพัก
@@ -3201,25 +3212,33 @@ local function main()
 			-- ฟังก์ชันรวมการ์ดจริง (Direct Remote First)
 			local function executeMergeRoutine()
 				local count = 0
+				local atMachine = (Helpers.IsAtMutateMachine and Helpers.IsAtMutateMachine()) or false
 				for _, g in ipairs(eligibleGroups) do
 					if not Core._alive then break end
 					local list = g.list
 					local pName = g.name
 					local firstId = list[1] and list[1].Id
 
+					local groupMerged = false
 					-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่ม)
-					local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
-					local sAll, rAll = isRemoteOk(resAll)
-					if okAll and sAll then
-						local pairsInGroup = math.floor(#list / 2)
-						count = count + math.max(pairsInGroup, 1)
-						task.wait(rl)
-					else
-						local failAllReason = string.upper(tostring(rAll or ""))
-						if failAllReason:find("MACHINE") then
-							return count, "NEED_MACHINE"
+					if firstId then
+						local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
+						local sAll, rAll = isRemoteOk(resAll)
+						if okAll and sAll then
+							local pairsInGroup = math.floor(#list / 2)
+							count = count + math.max(pairsInGroup, 1)
+							groupMerged = true
+							task.wait(rl)
+						else
+							local failAllReason = string.upper(tostring(rAll or ""))
+							if not atMachine and failAllReason:find("MACHINE") then
+								return count, "NEED_MACHINE"
+							end
 						end
-						-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
+					end
+
+					-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
+					if not groupMerged then
 						local i = 1
 						while i + 1 <= #list do
 							if not Core._alive then break end
@@ -3230,18 +3249,20 @@ local function main()
 							local sPair, rPair = isRemoteOk(resPair)
 							if okPair and sPair then
 								count = count + 1
+								itemSkipUntil["merge:" .. idA] = nil
+								itemSkipUntil["merge:" .. idB] = nil
 								task.wait(rl)
 							else
-								local failReason = string.upper(tostring(rPair or rAll or "REJECTED"))
-								if failReason:find("MACHINE") then
+								local failReason = string.upper(tostring(rPair or "REJECTED"))
+								if not atMachine and failReason:find("MACHINE") then
 									return count, "NEED_MACHINE"
 								elseif failReason:find("LIMIT") then
 									permSkipItems["merge:" .. idA] = true
 									permSkipItems["merge:" .. idB] = true
 									logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
 								else
-									itemSkipUntil["merge:" .. idA] = os.clock() + 15
-									itemSkipUntil["merge:" .. idB] = os.clock() + 15
+									itemSkipUntil["merge:" .. idA] = os.clock() + 10
+									itemSkipUntil["merge:" .. idB] = os.clock() + 10
 									logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
 								end
 								break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
@@ -3588,16 +3609,16 @@ local function main()
 						task.wait(0.08)
 					end
 
-					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
-					local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
+					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + ครึ่งความหนา + 0.3 studs ตาม PlacementLiftStuds)
+					local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + (area.Size.Y * 0.5) + 0.3)) or (basePos.Y + 0.3)
 
 					-- สร้างรายการพิกัดแบบตารางกริด (Jittered Grid) ทั่วแปลงเพาะ เพื่อตัดปัญหาชนแพ็คเดิม (OVERLAPS_PACK)
 					local gridCandidates = {}
-					local step = 3.6
+					local step = 3.2
 					for gx = -halfX + 2, halfX - 2, step do
 						for gz = -halfZ + 2, halfZ - 2, step do
-							local jx = gx + (math.random() - 0.5) * 0.8
-							local jz = gz + (math.random() - 0.5) * 0.8
+							local jx = gx + (math.random() - 0.5) * 1.2
+							local jz = gz + (math.random() - 0.5) * 1.2
 							table.insert(gridCandidates, Vector2.new(jx, jz))
 						end
 					end
@@ -3707,12 +3728,14 @@ local function main()
 
 	function Loops.PlacePacks()
 		Core:Loop("placePacks", "AutoPlacePacks", 1.5, function()
-			-- เมื่อเปิดใช้งาน AutoSteal ระบบขโมยจะดูแลวงจรการวางแพ็คหลังส่งมอบแบบ Sequential เอง ป้องกันคำสั่งแย่งกัน
-			if Core.Flags.AutoSteal then return end
-			if not Core.Busy and not Helpers.IsCarrying() then
-				if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
-					if placePacksInBase then placePacksInBase() end
-				end
+			if Helpers.IsCarrying() then return end
+			local hrp = Helpers.GetRoot()
+			local bPos = Helpers.GetPlotSpawnPos()
+			local atBase = hrp and bPos and (hrp.Position - bPos).Magnitude <= 50
+			-- หากเปิด AutoSteal อนุญาตให้ทำงานเฉพาะตอนตัวละครพัก/ฝึกซ้อมอยู่ที่ฐานเท่านั้น เพื่อไม่ให้ขัดจังหวะการวิ่งขโมย
+			if Core.Flags.AutoSteal and not atBase then return end
+			if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
+				if placePacksInBase then placePacksInBase() end
 			end
 		end)
 	end
@@ -3734,7 +3757,16 @@ local function main()
 
 	function Loops.Merge()
 		task.spawn(function() autoMergeStep(true) end)
-		Core:Loop("mergePacks", "AutoMerge", 4.0, autoMergeStep)
+		Core:Loop("mergePacks", "AutoMerge", 3.0, function()
+			if Helpers.IsCarrying() then return end
+			local hrp = Helpers.GetRoot()
+			local bPos = Helpers.GetPlotSpawnPos()
+			local atBase = hrp and bPos and (hrp.Position - bPos).Magnitude <= 50
+			-- อนุญาตให้รวมแพ็คได้ทั้งตอนไม่ติด Busy หรือตอนที่ตัวละครกำลังพัก/ฝึกซ้อมอยู่ที่ฐาน
+			if (not Core.Busy or atBase) and autoMergeStep then
+				autoMergeStep(true)
+			end
+		end)
 	end
 
 	function Loops.Fuse()
