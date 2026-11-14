@@ -1237,6 +1237,14 @@ local function main()
 	local function enterTreadmill()
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 1.5 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
+
+		-- ตรวจสอบว่าลู่วิ่งปลดล็อคแล้วหรือยัง (ไอดีใหม่ที่ยังไม่ผ่านเควสต์สอนเล่น TreadmillLevel จะเป็น "Level0")
+		local pd = getPlayerData()
+		if pd and pd.Get then
+			local ok, lvl = pcall(pd.Get, "TreadmillLevel")
+			if ok and lvl == "Level0" then return end
+		end
+
 		local tm = Helpers.GetPlotChild("Treadmil")
 		if not tm then return end
 
@@ -2088,7 +2096,8 @@ local function main()
 		for i = 1, 12 do
 			if Core.Flags["Stage" .. i] then
 				local bSpd = getStageBossSpeed(i)
-				local canOutrun = mySpeed >= (bSpd * margin)
+				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
+				local canOutrun = (i == 1) or (mySpeed >= (bSpd * margin))
 				if canOutrun or not outrunOnly then
 					table.insert(candidates, {
 						stage = i,
@@ -2134,7 +2143,10 @@ local function main()
 			local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
 			if sig ~= lastOrderSig then
 				lastOrderSig = sig
-				logAction("ด่านเป้าหมาย", string.format("เลือกด่าน %d (บอสเร็ว %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed), true)
+				local info = (best.stage == 1 and mySpeed < best.bossSpeed)
+					and string.format("เลือกด่าน 1 (ด่านเริ่มต้น/เควสต์สอนเล่น | เราเร็ว %.0f)", mySpeed)
+					or string.format("เลือกด่าน %d (บอสเร็ว %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed)
+				logAction("ด่านเป้าหมาย", info, true)
 			end
 			return { best.stage }
 		end
