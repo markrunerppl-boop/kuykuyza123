@@ -708,6 +708,28 @@ local function main()
 		return true, res, extra
 	end
 
+	local SUFFIX_MAP = {
+		k = 1e3, m = 1e6, b = 1e9, t = 1e12,
+		qa = 1e15, qi = 1e18, sx = 1e21, sp = 1e24,
+		oc = 1e27, no = 1e30, dc = 1e33,
+	}
+	local function parseSuffixNumber(str)
+		if type(str) == "number" then return str end
+		if type(str) ~= "string" then return nil end
+		local clean = str:gsub(",", ""):gsub("%s+", "")
+		local num = tonumber(clean)
+		if num then return num end
+		local nPart, sPart = clean:match("^([%d%.]+)%s*([%a]+)$")
+		if nPart and sPart then
+			local n = tonumber(nPart)
+			local mul = SUFFIX_MAP[sPart:lower()]
+			if n and mul then
+				return n * mul
+			end
+		end
+		return nil
+	end
+
 	-- คำนวณความเร็วเคลื่อนที่ปลอดภัยจาก SpeedConfig.ToWalkSpeed ของตัวละคร (ไม่เกินเพดานเกม)
 	function Helpers.GetMoveSpeed()
 		local sc = getSpeedConfig()
@@ -716,12 +738,16 @@ local function main()
 		local pd = getPlayerData()
 		if pd and pd.Get then
 			local ok, val = pcall(pd.Get, "Speed")
-			if ok then spdStat = tonumber(val) end
+			if ok and val ~= nil then
+				spdStat = tonumber(val) or parseSuffixNumber(val)
+			end
 		end
 		if not spdStat then
 			local ls = LocalPlayer:FindFirstChild("leaderstats")
 			local sv = ls and ls:FindFirstChild("Speed")
-			if sv then spdStat = tonumber(sv.Value) end
+			if sv then
+				spdStat = tonumber(sv.Value) or parseSuffixNumber(sv.Value)
+			end
 		end
 		if sc and sc.ToWalkSpeed and spdStat then
 			local ok, ws = pcall(sc.ToWalkSpeed, spdStat, false)
@@ -921,7 +947,7 @@ local function main()
 		local precise = not (opts and opts.precise == false)
 		local evadeEnemies = opts and opts.evadeEnemies == true
 		local safeBounds = Helpers.GetSafeZoneBounds()
-		local arriveDist = (opts and opts.arriveDist) or (precise and 4 or 10)
+		local arriveDist = (opts and opts.arriveDist) or (precise and 3 or 8)
 		local floorRefreshAt = 0
 
 		local function stopMotion(h, r, settle)
@@ -960,6 +986,9 @@ local function main()
 			if precise then
 				stopMotion(hum, hrp, true)
 			end
+			pcall(function()
+				if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
+			end)
 			return true
 		end
 
@@ -976,6 +1005,9 @@ local function main()
 				if precise then
 					stopMotion(hum, hrp, false)
 				end
+				pcall(function()
+					if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
+				end)
 				return true
 			end
 			char = LocalPlayer.Character
@@ -992,6 +1024,9 @@ local function main()
 				if precise then
 					stopMotion(hum, hrp, true)
 				end
+				pcall(function()
+					if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
+				end)
 				return true
 			end
 
@@ -1003,28 +1038,12 @@ local function main()
 			if not locked then
 				local topSpeed = Helpers.GetMoveSpeed()
 				local desiredSpeed = topSpeed
-				if precise then
-					local minSpd = math.min(16, topSpeed)
-					local maxSpd = math.max(minSpd, topSpeed)
-					if flatDist <= 10 then
-						desiredSpeed = math.clamp(flatDist * 2.5, minSpd, math.max(minSpd, math.min(26, maxSpd)))
-					elseif flatDist <= 90 then
-						desiredSpeed = math.clamp(flatDist * 2.5, minSpd, maxSpd)
-					end
+				-- ชะลอความเร็วเล็กน้อยเฉพาะระยะประชิดตัว 5.5 studs สุดท้ายในโหมด precise เพื่อให้หยุดตรงจุด
+				-- ระยะทางไกลวิ่งด้วย topSpeed เต็ม 100% ตลอดเส้นทาง ไม่กดสปีดลงล่วงหน้า
+				if precise and flatDist <= 5.5 then
+					desiredSpeed = math.clamp(flatDist * 12, 45, topSpeed)
 				end
 				hum.WalkSpeed = desiredSpeed
-
-				if precise and flatDist <= 90 then
-					local v = hrp.AssemblyLinearVelocity
-					local hVel = Vector3.new(v.X, 0, v.Z)
-					local maxAllowed = desiredSpeed * 1.05 + 2
-					if hVel.Magnitude > maxAllowed then
-						local clamped = hVel.Unit * desiredSpeed
-						pcall(function()
-							hrp.AssemblyLinearVelocity = Vector3.new(clamped.X, v.Y, clamped.Z)
-						end)
-					end
-				end
 
 				-- หลีกเลี่ยงบอสบนทางหลักระหว่างวิ่งในด่าน
 				if evadeEnemies and safeBounds and cur.X > safeBounds.maxX and cur.Y > 64 and flatDist > 40 then
@@ -1046,7 +1065,7 @@ local function main()
 				if hum.Sit then hum.Sit = false end
 				if hum.PlatformStand then hum.PlatformStand = false end
 			end
-			local issueInterval = (precise and flatDist <= 35) and 0.02 or 0.1
+			local issueInterval = 0.1
 			local moveFlat = Vector3.new(moveTarget.X - cur.X, 0, moveTarget.Z - cur.Z)
 			local moveFlatDist = moveFlat.Magnitude
 			local flatDir = moveFlatDist > 0.05 and moveFlat.Unit or Vector3.zero
@@ -1077,6 +1096,9 @@ local function main()
 					borderStallStart = now
 				elseif now - borderStallStart >= 2.5 then
 					stopMotion(hum, hrp, true)
+					pcall(function()
+						if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
+					end)
 					return false
 				end
 			else
@@ -1086,6 +1108,9 @@ local function main()
 			RunService.Heartbeat:Wait()
 		end
 		stopMotion(hum, hrp, false)
+		pcall(function()
+			if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
+		end)
 		return false
 	end
 
@@ -1700,6 +1725,11 @@ local function main()
 			end
 			RunService.Heartbeat:Wait()
 		end
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
+		end
 	end
 
 	local function usePrompt(prompt, method, stageFolder)
@@ -1721,6 +1751,11 @@ local function main()
 			end
 			if Helpers.IsCarrying() or diag.trig then
 				for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+				local char = LocalPlayer.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
+				end
 				return diag
 			end
 		end
@@ -1731,6 +1766,11 @@ local function main()
 		pressPromptKey(prompt, false)
 
 		for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
+		end
 		return diag
 	end
 
@@ -1756,6 +1796,11 @@ local function main()
 		end
 
 		waitUntil(function() return LocalPlayer:GetAttribute(TRAINING_ATTR) == nil end, 2.0)
+		local cNow = LocalPlayer.Character
+		local hNow = cNow and cNow:FindFirstChildOfClass("Humanoid")
+		if hNow then
+			pcall(function() hNow.WalkSpeed = Helpers.GetMoveSpeed() end)
+		end
 	end
 
 	local function moveToCenterLane(abortFn)
@@ -1765,10 +1810,10 @@ local function main()
 		local laneX = math.clamp(hrp.Position.X, bounds.maxX - 48, bounds.maxX - 28)
 		if hrp.Position.X <= bounds.maxX + 20 then
 			if math.abs(hrp.Position.Z - bounds.center.Z) > 4 then
-				Helpers.MoveTo(Vector3.new(laneX, hrp.Position.Y, bounds.center.Z), abortFn, { precise = true, arriveDist = 3 })
+				Helpers.MoveTo(Vector3.new(laneX, hrp.Position.Y, bounds.center.Z), abortFn, { precise = false, arriveDist = 5 })
 			end
 		elseif math.abs(hrp.Position.Z - bounds.center.Z) > 20 then
-			Helpers.MoveTo(Vector3.new(hrp.Position.X, hrp.Position.Y, bounds.center.Z), abortFn, { precise = true, arriveDist = 4 })
+			Helpers.MoveTo(Vector3.new(hrp.Position.X, hrp.Position.Y, bounds.center.Z), abortFn, { precise = false, arriveDist = 5 })
 		end
 	end
 
@@ -1890,6 +1935,11 @@ local function main()
 		if not pos then return false, "ไม่พบจุดเกิดของฐาน" end
 		local bounds = Helpers.GetSafeZoneBounds()
 
+		local curHum = origChar and origChar:FindFirstChildOfClass("Humanoid")
+		if curHum then
+			pcall(function() curHum.WalkSpeed = Helpers.GetMoveSpeed() end)
+		end
+
 		local function isSafelyDelivered(livePos)
 			if Helpers.IsCarrying() then return false end
 			local char = LocalPlayer.Character
@@ -1939,7 +1989,7 @@ local function main()
 			-- เฉพาะเมื่อตัวละครยังอยู่นอกฐาน (X > bounds.maxX - 15) และยังไม่ถึงฐาน จึงจะเดินผ่านประตูทางเข้า SafeZone
 			if not atBase and hrp and hrp.Position.X > bounds.maxX - 15 then
 				local entryZ = math.abs(livePos.Z - bounds.center.Z) > 35 and bounds.center.Z or livePos.Z
-				Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, evadeEnemies = true })
+				Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, arriveDist = 8, evadeEnemies = true })
 				if not Helpers.IsCarrying() then
 					local okDeliv, state = checkDeliveryOrRecover(livePos)
 					if okDeliv then return true end
@@ -1948,7 +1998,7 @@ local function main()
 				if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then break end
 			end
 
-			Helpers.MoveTo(livePos + Vector3.new(0, 3, 0), stopWhenDelivered, { evadeEnemies = true })
+			Helpers.MoveTo(livePos + Vector3.new(0, 3, 0), stopWhenDelivered, { precise = false, arriveDist = 6, evadeEnemies = true })
 			if not Helpers.IsCarrying() then
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
@@ -2160,7 +2210,7 @@ local function main()
 		if flatDistToBase > 20 or hrp.Position.X > (bounds.maxX - 15) then
 			Helpers.MoveTo(pos + Vector3.new(0, 3, 0), function()
 				return not Core._alive or not Core.Flags.AutoSteal
-			end, { precise = true, arriveDist = 6 })
+			end, { precise = false, arriveDist = 8 })
 		end
 		if canEnter then
 			enterTreadmill()
@@ -3400,7 +3450,7 @@ local function main()
 			if not isTraining and hrp and basePos and (hrp.Position - basePos).Magnitude > 55 then
 				Helpers.MoveTo(basePos + Vector3.new(0, 2.5, 0), function()
 					return not Core._alive or not Core.Flags.AutoPlacePacks
-				end, { precise = true, arriveDist = 8 })
+				end, { precise = false, arriveDist = 10 })
 			end
 
 			local placementUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlacementUtil end)
