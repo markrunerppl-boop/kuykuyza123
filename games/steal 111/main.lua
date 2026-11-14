@@ -1054,13 +1054,8 @@ local function main()
 			local locked = char:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true)
 			if not locked then
 				local topSpeed = Helpers.GetMoveSpeed()
-				local desiredSpeed = topSpeed
-				-- ชะลอความเร็วเล็กน้อยเฉพาะระยะประชิดตัว 5.5 studs สุดท้ายในโหมด precise เพื่อให้หยุดตรงจุด
-				-- ระยะทางไกลวิ่งด้วย topSpeed เต็ม 100% ตลอดเส้นทาง ไม่กดสปีดลงล่วงหน้า
-				if precise and flatDist <= 5.5 then
-					desiredSpeed = math.clamp(flatDist * 12, 45, topSpeed)
-				end
-				hum.WalkSpeed = desiredSpeed
+				-- วิ่งด้วย topSpeed เต็ม 100% ตลอดเส้นทาง ไม่กดสปีดลง เพื่อให้เข้าถึงแพ็คการ์ดเร็วที่สุด
+				hum.WalkSpeed = topSpeed
 
 				-- หลีกเลี่ยงบอสบนทางหลักระหว่างวิ่งในด่าน
 				if evadeEnemies and safeBounds and cur.X > safeBounds.maxX and cur.Y > 64 and flatDist > 40 then
@@ -1734,8 +1729,9 @@ local function main()
 		-- หาก executor รองรับ fireproximityprompt และไม่ได้ระบุ hold_only ให้ลอง trigger ทันที (Instant Trigger)
 		if fireproximityprompt and method ~= "hold_only" then
 			pcall(fireproximityprompt, prompt, 0, true)
+			pcall(fireproximityprompt, prompt, 10, true)
 			pcall(fireproximityprompt, prompt)
-			local tEnd = os.clock() + 0.18
+			local tEnd = os.clock() + 0.35
 			while os.clock() < tEnd and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
 				if Helpers.IsCarrying() or diag.trig then break end
 				RunService.Heartbeat:Wait()
@@ -2159,18 +2155,36 @@ local function main()
 		local a0 = packAnchorPos(prompt) or p0
 
 		local standTarget = safeStandPos(a0, stageFolder, 2.0)
+		local preFired = false
+		local pNow = packAnchorPos(prompt) or p0
 
-		-- เดินเข้าไปยืนตำแหน่งประชิด 2.0 studs
+		-- วิ่งตรงเข้าไปยืนตำแหน่งประชิด 2.0 studs พร้อม Pre-trigger คว้าการ์ดทันทีขณะวิ่งเข้าถึง
 		Helpers.MoveTo(standTarget, function()
-			return not Core.Flags.AutoSteal or not prompt.Parent
-		end, { precise = true, arriveDist = 2.0, evadeEnemies = true })
+			if not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying() then
+				return true
+			end
+			local r = Helpers.GetRoot()
+			if r and pNow and not preFired and (r.Position - pNow).Magnitude <= 8.5 then
+				preFired = true
+				if fireproximityprompt then
+					pcall(fireproximityprompt, prompt, 0, true)
+					pcall(fireproximityprompt, prompt, 10, true)
+					pcall(fireproximityprompt, prompt)
+				end
+			end
+			return Helpers.IsCarrying()
+		end, { precise = true, arriveDist = 2.0, evadeEnemies = false })
 
 		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
 			return false, "ยกเลิก/ตัวละครตาย"
 		end
 
+		if Helpers.IsCarrying() then
+			return deliver(stageFolder)
+		end
+
 		local hrp = Helpers.GetRoot()
-		local pNow = packAnchorPos(prompt) or promptPos(prompt)
+		pNow = packAnchorPos(prompt) or promptPos(prompt)
 		if hrp and pNow then
 			lastDist = (hrp.Position - pNow).Magnitude
 			if lastDist > 3.8 then
@@ -2181,7 +2195,6 @@ local function main()
 			end
 		end
 
-		task.wait(0.04)
 		local promptDiag = usePrompt(prompt, "auto", stageFolder)
 		lastDiag = promptDiag
 		local got = waitUntil(Helpers.IsCarrying, 0.4)
@@ -3143,16 +3156,12 @@ local function main()
 		end
 	end
 
-	autoMergeStep = function()
+	autoMergeStep = function(forceMulti)
 		if Core.Busy or Helpers.IsCarrying() then return end
 		local now = os.clock()
 		local mc = getMutateConfig()
 		local rl = math.max((mc and mc.RateLimit) or 0.35, 0.35)
-		if now - lastMerge < 3.0 then return end
-
-		-- 1. ตรวจสอบจำนวนแพ็คจริงในตัวก่อน: ต้องมีแพ็คในกระเป๋าอย่างน้อย 2 ชิ้นจึงจะเริ่มตรวจสอบคู่
-		local pendingPacks = (getPacksToPlace and getPacksToPlace()) or {}
-		if #pendingPacks < 2 then return end
+		if not forceMulti and (now - lastMerge < 2.0) then return end
 
 		local candidates = getBackpackCandidates("merge")
 		local groups = {}
@@ -3183,10 +3192,11 @@ local function main()
 
 		lastMerge = now
 
-		local okVisit, mergedTotal = Helpers.VisitMutateMachine(function()
+		-- ฟังก์ชันรวมการ์ดจริง (Direct Remote First)
+		local function executeMergeRoutine()
 			local count = 0
 			for _, g in ipairs(eligibleGroups) do
-				if not (Core._alive and Core.Flags.AutoMerge) then break end
+				if not Core._alive then break end
 				local list = g.list
 				local pName = g.name
 				local firstId = list[1] and list[1].Id
@@ -3199,10 +3209,14 @@ local function main()
 					count = count + math.max(pairsInGroup, 1)
 					task.wait(rl)
 				else
+					local failAllReason = rAll or ""
+					if failAllReason == "USE_MACHINE" then
+						return count, "NEED_MACHINE"
+					end
 					-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
 					local i = 1
 					while i + 1 <= #list do
-						if not (Core._alive and Core.Flags.AutoMerge) then break end
+						if not Core._alive then break end
 						local idA = list[i].Id
 						local idB = list[i + 1].Id
 
@@ -3213,13 +3227,15 @@ local function main()
 							task.wait(rl)
 						else
 							local failReason = rPair or rAll or "REJECTED"
-							if failReason == "MERGE_LIMIT" then
+							if failReason == "USE_MACHINE" then
+								return count, "NEED_MACHINE"
+							elseif failReason == "MERGE_LIMIT" then
 								permSkipItems["merge:" .. idA] = true
 								permSkipItems["merge:" .. idB] = true
 								logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
 							else
-								itemSkipUntil["merge:" .. idA] = os.clock() + 30
-								itemSkipUntil["merge:" .. idB] = os.clock() + 30
+								itemSkipUntil["merge:" .. idA] = os.clock() + 15
+								itemSkipUntil["merge:" .. idB] = os.clock() + 15
 								logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
 							end
 							break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
@@ -3228,11 +3244,26 @@ local function main()
 					end
 				end
 			end
-			return count
-		end)
+			return count, "DONE"
+		end
 
-		if okVisit and type(mergedTotal) == "number" and mergedTotal > 0 then
-			logAction("Merge", string.format("รวมแพ็คสำเร็จ %d คู่ (หมดตัว)", mergedTotal), true)
+		-- ขั้นตอนที่ 1: ลองยิงคำสั่งโดยตรงก่อนโดยไม่ต้องวาร์ปไปเครื่อง
+		local directCount, directStatus = executeMergeRoutine()
+		local totalMerged = directCount or 0
+
+		-- ขั้นตอนที่ 2: หากเซิร์ฟเวอร์ตอบว่าต้องยืนที่เครื่อง (USE_MACHINE) จึงค่อยวาร์ปไปเครื่อง
+		if directStatus == "NEED_MACHINE" and Helpers.VisitMutateMachine then
+			local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+				local c, _ = executeMergeRoutine()
+				return c or 0
+			end)
+			if okVisit and type(visitCount) == "number" then
+				totalMerged = totalMerged + visitCount
+			end
+		end
+
+		if totalMerged > 0 then
+			logAction("Merge", string.format("รวมแพ็คซ้ำสำเร็จ %d คู่", totalMerged), true)
 		end
 	end
 
@@ -3462,9 +3493,9 @@ local function main()
 						end
 					end
 					if not hasPairs then break end
-					local okMerge = pcall(autoMergeStep)
+					local okMerge = pcall(autoMergeStep, true)
 					if not okMerge then break end
-					task.wait(0.35)
+					task.wait(0.2)
 				end
 				packs = getPacksToPlace()
 				if #packs == 0 then
@@ -3557,7 +3588,10 @@ local function main()
 					if hum and packTool then
 						if packTool.Parent ~= char then
 							pcall(function() hum:EquipTool(packTool) end)
-							task.wait(0.15)
+							local tEquipDeadline = os.clock() + 0.35
+							while os.clock() < tEquipDeadline and packTool.Parent ~= char do
+								RunService.Heartbeat:Wait()
+							end
 						end
 						pcall(function()
 							Net.Fire(Net.Paths.ToolsRequestEquip, nil, {
@@ -3565,30 +3599,37 @@ local function main()
 								Tool = packTool
 							})
 						end)
-						task.wait(0.1)
+						task.wait(0.08)
 					end
 
 					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + 0.3 studs ตาม PlacementLiftStuds)
 					local surfaceY = (area and area:IsA("BasePart") and (area.Position.Y + 0.3)) or (basePos.Y + 0.3)
 
-					-- พยายามวางหลายๆ จุด ถ้าชน OVERLAPS_PACK ให้สุ่มพิกัดใหม่ (ลองสูงสุด 15 จุด)
-					for attempt = 1, 15 do
-						local placePos = nil
-						if placementUtil and placementUtil.RandomPointInArea and area then
-							local okPt, pt = pcall(placementUtil.RandomPointInArea, area)
-							if okPt and typeof(pt) == "Vector3" then
-								placePos = Vector3.new(pt.X, surfaceY, pt.Z)
-							end
+					-- สร้างรายการพิกัดแบบตารางกริด (Jittered Grid) ทั่วแปลงเพาะ เพื่อตัดปัญหาชนแพ็คเดิม (OVERLAPS_PACK)
+					local gridCandidates = {}
+					local step = 3.6
+					for gx = -halfX + 2, halfX - 2, step do
+						for gz = -halfZ + 2, halfZ - 2, step do
+							local jx = gx + (math.random() - 0.5) * 0.8
+							local jz = gz + (math.random() - 0.5) * 0.8
+							table.insert(gridCandidates, Vector2.new(jx, jz))
 						end
-						if not placePos then
-							local rx = (math.random() - 0.5) * 2 * halfX
-							local rz = (math.random() - 0.5) * 2 * halfZ
-							if area and area:IsA("BasePart") then
-								local worldPt = area.CFrame:PointToWorldSpace(Vector3.new(rx, 0, rz))
-								placePos = Vector3.new(worldPt.X, surfaceY, worldPt.Z)
-							else
-								placePos = Vector3.new(basePos.X + rx, surfaceY, basePos.Z + rz)
-							end
+					end
+					-- สับเปลี่ยนลำดับเพื่อกระจายแพ็คทั่วแปลง
+					for k = #gridCandidates, 2, -1 do
+						local j = math.random(k)
+						gridCandidates[k], gridCandidates[j] = gridCandidates[j], gridCandidates[k]
+					end
+
+					-- พยายามวางตามจุดในตารางกริด (ลองสูงสุด 18 จุด)
+					for attempt = 1, math.min(18, #gridCandidates) do
+						local pt2d = gridCandidates[attempt]
+						local placePos
+						if area and area:IsA("BasePart") then
+							local worldPt = area.CFrame:PointToWorldSpace(Vector3.new(pt2d.X, 0, pt2d.Y))
+							placePos = Vector3.new(worldPt.X, surfaceY, worldPt.Z)
+						else
+							placePos = Vector3.new(basePos.X + pt2d.X, surfaceY, basePos.Z + pt2d.Y)
 						end
 
 						local ok, res = Net.Invoke(Net.Paths.PlaceOwned, {
@@ -3601,39 +3642,37 @@ local function main()
 							placedAnyInPass = true
 							logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
 							itemSkipUntil["place:" .. packId] = nil
-							if hum then pcall(function() hum:UnequipTools() end) end
-							task.wait(0.25)
+							task.wait(0.18)
 							break
 						else
 							lastReason = reason or "FAILED"
 							if reason == "NOT_OWNED" or reason == "ALREADY_PLACED" then
 								placedThis = true
 								placedAnyInPass = true
-								if hum then pcall(function() hum:UnequipTools() end) end
 								break
 							elseif reason == "NOT_EQUIPPED" then
 								-- เซิร์ฟเวอร์แจ้งว่ายังไม่ได้ถือ Tool ให้ลอง Equip ซ้ำ
 								if hum and packTool then
 									pcall(function() hum:EquipTool(packTool) end)
-									task.wait(0.2)
+									task.wait(0.15)
 								end
 							elseif isFullReason(reason) then
 								noSpace = true
 								break
 							end
-							task.wait(0.05)
+							task.wait(0.04)
 						end
 					end
 
 					if not placedThis then
 						if isFullReason(lastReason) or noSpace then
 							noSpace = true
-							baseFullUntil = os.clock() + 60
-							itemSkipUntil["place:" .. packId] = os.clock() + 60
+							baseFullUntil = os.clock() + 6
+							itemSkipUntil["place:" .. packId] = os.clock() + 6
 							logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 							break
 						elseif lastReason == "OVERLAPS_PACK" then
-							itemSkipUntil["place:" .. packId] = os.clock() + 4
+							itemSkipUntil["place:" .. packId] = os.clock() + 2
 							logAction("วางแพ็ก", "พิกัดวางชนแพ็คอื่น: " .. tostring(packName) .. " (จะลองใหม่)", false)
 						else
 							itemSkipUntil["place:" .. packId] = os.clock() + 3
@@ -3652,7 +3691,7 @@ local function main()
 			if hum then pcall(function() hum:UnequipTools() end) end
 
 			if noSpace then
-				baseFullUntil = os.clock() + 60
+				baseFullUntil = os.clock() + 6
 				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> รอแพ็คฟักเพื่อเปิดพื้นที่", false)
 				return false, "NO_SPACE"
 			end
