@@ -962,10 +962,12 @@ local function main()
 				local topSpeed = Helpers.GetMoveSpeed()
 				local desiredSpeed = topSpeed
 				if precise then
+					local minSpd = math.min(16, topSpeed)
+					local maxSpd = math.max(minSpd, topSpeed)
 					if flatDist <= 10 then
-						desiredSpeed = math.clamp(flatDist * 2.5, 16, 26)
+						desiredSpeed = math.clamp(flatDist * 2.5, minSpd, math.max(minSpd, math.min(26, maxSpd)))
 					elseif flatDist <= 90 then
-						desiredSpeed = math.clamp(flatDist * 2.5, 22, topSpeed)
+						desiredSpeed = math.clamp(flatDist * 2.5, minSpd, maxSpd)
 					end
 				end
 				hum.WalkSpeed = desiredSpeed
@@ -1609,7 +1611,8 @@ local function main()
 					local dir = toPlayer.Magnitude > 0.1 and toPlayer.Unit or Vector3.new(-1, 0, 0)
 					targetPos = Vector3.new(aPos.X + dir.X * 2.4, hrp.Position.Y, aPos.Z + dir.Z * 2.4)
 				end
-				hum.WalkSpeed = math.clamp(Helpers.GetMoveSpeed(), 22, 38)
+				local curSpd = Helpers.GetMoveSpeed()
+				hum.WalkSpeed = math.clamp(curSpd, math.min(16, curSpd), 38)
 				pcall(function() hum:MoveTo(targetPos) end)
 			else
 				pcall(function()
@@ -1629,19 +1632,26 @@ local function main()
 			table.insert(conns, prompt.PromptButtonHoldEnded:Connect(function() diag.ended = true end))
 			table.insert(conns, prompt.Triggered:Connect(function() diag.trig = true end))
 		end)
-		local hold = prompt.HoldDuration
-		if method == "fire" and fireproximityprompt then
+
+		-- หาก executor รองรับ fireproximityprompt และไม่ได้ระบุ hold_only ให้ยิงตรงทันที
+		if fireproximityprompt and method ~= "hold_only" then
 			pcall(fireproximityprompt, prompt)
-			local tEnd = os.clock() + 0.65
+			local tEnd = os.clock() + 0.5
 			while os.clock() < tEnd and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
 				if Helpers.IsCarrying() or diag.trig then break end
 				RunService.Heartbeat:Wait()
 			end
-		else
-			holdAndOrbit(prompt, hold + 0.3, stageFolder, diag)
-			pcall(function() prompt:InputHoldEnd() end)
-			pressPromptKey(prompt, false)
+			if Helpers.IsCarrying() or diag.trig then
+				for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+				return diag
+			end
 		end
+
+		local hold = prompt.HoldDuration or 0.5
+		holdAndOrbit(prompt, hold + 0.3, stageFolder, diag)
+		pcall(function() prompt:InputHoldEnd() end)
+		pressPromptKey(prompt, false)
+
 		for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
 		return diag
 	end
@@ -1781,11 +1791,11 @@ local function main()
 			task.wait(0.05)
 		end
 
-		local holdDiag = usePrompt(prompt, "hold", stageFolder)
-		local got = waitUntil(Helpers.IsCarrying, 0.8)
-		if not got and fireproximityprompt and prompt.Parent then
-			usePrompt(prompt, "fire", stageFolder)
-			got = waitUntil(Helpers.IsCarrying, 1.0)
+		local holdDiag = usePrompt(prompt, "auto", stageFolder)
+		local got = waitUntil(Helpers.IsCarrying, 0.6)
+		if not got and prompt.Parent and Core.Flags.AutoSteal and Helpers.IsAlive() then
+			usePrompt(prompt, "hold_only", stageFolder)
+			got = waitUntil(Helpers.IsCarrying, 0.8)
 		end
 
 		if got or Helpers.IsCarrying() then
@@ -1967,18 +1977,20 @@ local function main()
 				end
 			end
 			task.wait(0.05)
-			local holdDiag = usePrompt(prompt, "hold", stageFolder)
-			lastDiag = holdDiag
-			local got = waitUntil(Helpers.IsCarrying, 0.7)
+			local promptDiag = usePrompt(prompt, "auto", stageFolder)
+			lastDiag = promptDiag
+			local got = waitUntil(Helpers.IsCarrying, 0.6)
 			if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and prompt.Parent then
-				local fireDiag = usePrompt(prompt, "fire", stageFolder) -- สำรอง
-				got = waitUntil(Helpers.IsCarrying, 1.0)
+				local fallDiag = usePrompt(prompt, "hold_only", stageFolder) -- สำรอง
+				got = waitUntil(Helpers.IsCarrying, 0.8)
 				if not got then
 					lastDiag = {
-						began = holdDiag.began,
-						trig = fireDiag.trig or holdDiag.trig,
-						fireTrig = fireDiag.trig,
+						began = promptDiag.began or fallDiag.began,
+						trig = promptDiag.trig or fallDiag.trig,
+						fireTrig = promptDiag.trig,
 					}
+				else
+					lastDiag = fallDiag
 				end
 			end
 			if got or Helpers.IsCarrying() then break end
