@@ -2263,12 +2263,13 @@ local function main()
 
 		-- Priority 2: หากมีแพ็คที่รวมได้ (ต้องมีในกระเป๋าอย่างน้อย 2 ใบ) ให้รวมให้เรียบร้อยก่อนนำไปวาง
 		if count >= 2 and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
-			pcall(autoMergeStep)
+			pcall(function() autoMergeStep(true) end)
 		end
 
 		-- Priority 3: นำแพ็คในกระเป๋าไปวางลงฐาน (เฉพาะเมื่อผู้ใช้เปิด AutoPlacePacks และฐานยังไม่เต็ม)
 		if Core.Flags.AutoPlacePacks and placePacksInBase then
-			if count > 0 and not isBaseFull() then
+			local remaining = (getPacksToPlace and #getPacksToPlace()) or 0
+			if remaining > 0 and not isBaseFull() then
 				local okPlace, resWhy = placePacksInBase()
 				if isFullReason(resWhy) then
 					baseFullUntil = os.clock() + 60
@@ -2526,7 +2527,6 @@ local function main()
 		local pName = packModel and (packModel:GetAttribute("PackName") or packModel.Name) or ""
 		local ok, res, why = pcall(stealFromStage, i, prompt)
 		stopPin()
-		Core.Busy = false
 
 		if ok and res then
 			StealState.stageStealCount = StealState.stageStealCount + 1
@@ -2536,7 +2536,7 @@ local function main()
 				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), StealState.stageStealCount, maxPacks)
 			logAction("ขโมย", info, true)
 
-			-- จัดการนำแพ็คไปรวม/วางที่ฐาน
+			-- จัดการนำแพ็คไปรวม/วางที่ฐาน (Core.Busy ยังคงล็อกเป็น true ป้องกันคำสั่งอื่นชนกัน)
 			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
 				local waitSyncEnd = os.clock() + 2.0
 				while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
@@ -2570,8 +2570,13 @@ local function main()
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				return char and hum and hum.Health > 0
 			end, 3.0)
+			if runBaseMaintenance then pcall(runBaseMaintenance) end
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				returnToSafeRest(true)
+			end
 		end
 
+		Core.Busy = false
 		task.wait(Core.Flags.StealDelay)
 	end
 
@@ -3157,32 +3162,11 @@ local function main()
 	end
 
 	autoMergeStep = function(forceMulti)
-		if Core.Busy or Helpers.IsCarrying() then return end
+		if (not forceMulti and Core.Busy) or Helpers.IsCarrying() then return end
 		local now = os.clock()
 		local mc = getMutateConfig()
 		local rl = math.max((mc and mc.RateLimit) or 0.35, 0.35)
 		if not forceMulti and (now - lastMerge < 2.0) then return end
-
-		local candidates = getBackpackCandidates("merge")
-		local groups = {}
-		for _, c in ipairs(candidates) do
-			local key = c.Name .. "|" .. c.Mutation
-			groups[key] = groups[key] or { name = c.Name, mut = c.Mutation, list = {} }
-			table.insert(groups[key].list, c)
-		end
-
-		-- คัดกรองเฉพาะกลุ่มที่มีแพ็คพร้อมรวมตั้งแต่ 2 ชิ้นขึ้นไปเท่านั้น (Readiness Pre-check)
-		local eligibleGroups = {}
-		local totalPairs = 0
-		for _, g in pairs(groups) do
-			if #g.list >= 2 then
-				table.insert(eligibleGroups, g)
-				totalPairs = totalPairs + math.floor(#g.list / 2)
-			end
-		end
-
-		-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่ในกระเป๋าเลย ให้หยุดทันที (ไม่เดิน ไม่วาร์ป และไม่ยิงรีโมท)
-		if totalPairs == 0 then return end
 
 		-- ตรวจสอบสถานะตัวละคร: ต้องมีชีวิต ไม่ติดล้ม (Ragdolled) และไม่กำลังถือของ
 		local char = LocalPlayer.Character
@@ -3190,80 +3174,122 @@ local function main()
 			return
 		end
 
-		lastMerge = now
+		local totalMergedOverall = 0
+		local passCount = 0
 
-		-- ฟังก์ชันรวมการ์ดจริง (Direct Remote First)
-		local function executeMergeRoutine()
-			local count = 0
-			for _, g in ipairs(eligibleGroups) do
-				if not Core._alive then break end
-				local list = g.list
-				local pName = g.name
-				local firstId = list[1] and list[1].Id
+		-- ลูป Exhaustive Multi-Pass: รวมแพ็คที่ซ้ำทั้งหมดจนกว่าจะไม่เหลือคู่ซ้ำในกระเป๋า (จำกัดสูงสุด 10 รอบเพื่อความปลอดภัย)
+		while Core._alive and passCount < 10 do
+			passCount = passCount + 1
 
-				-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่มในกระเป๋า)
-				local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
-				local sAll, rAll = isRemoteOk(resAll)
-				if okAll and sAll then
-					local pairsInGroup = math.floor(#list / 2)
-					count = count + math.max(pairsInGroup, 1)
-					task.wait(rl)
-				else
-					local failAllReason = rAll or ""
-					if failAllReason == "USE_MACHINE" then
-						return count, "NEED_MACHINE"
-					end
-					-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
-					local i = 1
-					while i + 1 <= #list do
-						if not Core._alive then break end
-						local idA = list[i].Id
-						local idB = list[i + 1].Id
+			local candidates = getBackpackCandidates("merge")
+			local groups = {}
+			for _, c in ipairs(candidates) do
+				local packName = c.Name or ""
+				local key = packName .. "|" .. tostring(c.Mutation or "")
+				groups[key] = groups[key] or { name = packName, mut = c.Mutation, list = {} }
+				table.insert(groups[key].list, c)
+			end
 
-						local okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
-						local sPair, rPair = isRemoteOk(resPair)
-						if okPair and sPair then
-							count = count + 1
-							task.wait(rl)
-						else
-							local failReason = rPair or rAll or "REJECTED"
-							if failReason == "USE_MACHINE" then
-								return count, "NEED_MACHINE"
-							elseif failReason == "MERGE_LIMIT" then
-								permSkipItems["merge:" .. idA] = true
-								permSkipItems["merge:" .. idB] = true
-								logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
-							else
-								itemSkipUntil["merge:" .. idA] = os.clock() + 15
-								itemSkipUntil["merge:" .. idB] = os.clock() + 15
-								logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
-							end
-							break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
-						end
-						i = i + 2
-					end
+			-- คัดกรองเฉพาะกลุ่มที่มีแพ็คพร้อมรวมตั้งแต่ 2 ชิ้นขึ้นไปเท่านั้น (Readiness Pre-check)
+			local eligibleGroups = {}
+			local totalPairs = 0
+			for _, g in pairs(groups) do
+				if #g.list >= 2 then
+					table.insert(eligibleGroups, g)
+					totalPairs = totalPairs + math.floor(#g.list / 2)
 				end
 			end
-			return count, "DONE"
-		end
 
-		-- ขั้นตอนที่ 1: ลองยิงคำสั่งโดยตรงก่อนโดยไม่ต้องวาร์ปไปเครื่อง
-		local directCount, directStatus = executeMergeRoutine()
-		local totalMerged = directCount or 0
-
-		-- ขั้นตอนที่ 2: หากเซิร์ฟเวอร์ตอบว่าต้องยืนที่เครื่อง (USE_MACHINE) จึงค่อยวาร์ปไปเครื่อง
-		if directStatus == "NEED_MACHINE" and Helpers.VisitMutateMachine then
-			local okVisit, visitCount = Helpers.VisitMutateMachine(function()
-				local c, _ = executeMergeRoutine()
-				return c or 0
-			end)
-			if okVisit and type(visitCount) == "number" then
-				totalMerged = totalMerged + visitCount
+			-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่ในกระเป๋าแล้ว ให้หยุดทันที
+			if totalPairs == 0 then
+				break
 			end
+
+			lastMerge = os.clock()
+
+			-- ฟังก์ชันรวมการ์ดจริง (Direct Remote First)
+			local function executeMergeRoutine()
+				local count = 0
+				for _, g in ipairs(eligibleGroups) do
+					if not Core._alive then break end
+					local list = g.list
+					local pName = g.name
+					local firstId = list[1] and list[1].Id
+
+					-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่มในกระเป๋า)
+					local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
+					local sAll, rAll = isRemoteOk(resAll)
+					if okAll and sAll then
+						local pairsInGroup = math.floor(#list / 2)
+						count = count + math.max(pairsInGroup, 1)
+						task.wait(rl)
+					else
+						local failAllReason = rAll or ""
+						if failAllReason == "USE_MACHINE" then
+							return count, "NEED_MACHINE"
+						end
+						-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
+						local i = 1
+						while i + 1 <= #list do
+							if not Core._alive then break end
+							local idA = list[i].Id
+							local idB = list[i + 1].Id
+
+							local okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
+							local sPair, rPair = isRemoteOk(resPair)
+							if okPair and sPair then
+								count = count + 1
+								task.wait(rl)
+							else
+								local failReason = rPair or rAll or "REJECTED"
+								if failReason == "USE_MACHINE" then
+									return count, "NEED_MACHINE"
+								elseif failReason == "MERGE_LIMIT" then
+									permSkipItems["merge:" .. idA] = true
+									permSkipItems["merge:" .. idB] = true
+									logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
+								else
+									itemSkipUntil["merge:" .. idA] = os.clock() + 15
+									itemSkipUntil["merge:" .. idB] = os.clock() + 15
+									logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
+								end
+								break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
+							end
+							i = i + 2
+						end
+					end
+				end
+				return count, "DONE"
+			end
+
+			-- ขั้นตอนที่ 1: ลองยิงคำสั่งโดยตรงก่อนโดยไม่ต้องวาร์ปไปเครื่อง
+			local directCount, directStatus = executeMergeRoutine()
+			local passMerged = directCount or 0
+
+			-- ขั้นตอนที่ 2: หากเซิร์ฟเวอร์ตอบว่าต้องยืนที่เครื่อง (USE_MACHINE) จึงค่อยวาร์ปไปเครื่อง
+			if directStatus == "NEED_MACHINE" and Helpers.VisitMutateMachine then
+				local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+					local c, _ = executeMergeRoutine()
+					return c or 0
+				end)
+				if okVisit and type(visitCount) == "number" then
+					passMerged = passMerged + visitCount
+				end
+			end
+
+			totalMergedOverall = totalMergedOverall + passMerged
+
+			-- ถ้าในรอบนี้รวมไม่ได้เลยแม้แต่คู่เดียว ให้จบลูปทันที
+			if passMerged == 0 then
+				break
+			end
+
+			-- รอให้อินเวนทอรีอัปเดตสั้นๆ ก่อนสแกนรอบถัดไป
+			task.wait(0.25)
 		end
 
-		if totalMerged > 0 then
-			logAction("Merge", string.format("รวมแพ็คซ้ำสำเร็จ %d คู่", totalMerged), true)
+		if totalMergedOverall > 0 then
+			logAction("Merge", string.format("รวมแพ็คซ้ำทั้งหมดสำเร็จ %d คู่ (สแกน %d รอบ)", totalMergedOverall, passCount), true)
 		end
 	end
 
@@ -3473,30 +3499,9 @@ local function main()
 				openReadyPlacedPacks()
 			end
 
-			-- หากมีแพ็คในกระเป๋าตั้งแต่ 2 ชิ้นขึ้นไป ให้รวมแบบ Multi-Pass จนกว่าจะหมดคู่ก่อนนำไปวางที่ฐาน
+			-- หากมีแพ็คในกระเป๋าตั้งแต่ 2 ชิ้นขึ้นไป ให้รวมแพ็คซ้ำทั้งหมดให้เรียบร้อยก่อนนำไปวางที่ฐาน
 			if #packs >= 2 and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
-				local maxPasses = 4
-				while maxPasses > 0 and Core._alive do
-					maxPasses = maxPasses - 1
-					local currentPacks = getPacksToPlace()
-					if #currentPacks < 2 then break end
-
-					local mergeCandidates = getBackpackCandidates and getBackpackCandidates("merge") or {}
-					local counts = {}
-					local hasPairs = false
-					for _, c in ipairs(mergeCandidates) do
-						local k = c.Name .. "|" .. c.Mutation
-						counts[k] = (counts[k] or 0) + 1
-						if counts[k] >= 2 then
-							hasPairs = true
-							break
-						end
-					end
-					if not hasPairs then break end
-					local okMerge = pcall(autoMergeStep, true)
-					if not okMerge then break end
-					task.wait(0.2)
-				end
+				pcall(function() autoMergeStep(true) end)
 				packs = getPacksToPlace()
 				if #packs == 0 then
 					return true
@@ -3510,16 +3515,6 @@ local function main()
 			local basePos = area and Helpers.GetPosition(area) or Helpers.GetPlotSpawnPos()
 			if not basePos then
 				return false, "ไม่พบพื้นที่ฐาน"
-			end
-
-			-- ตรวจสอบตำแหน่งตัวละคร: หากอยู่นอกเขตฐานไกลเกิน 55 studs จึงจะเดินกลับเข้ามาที่ฐาน
-			-- หากยืนอยู่บนฐานของตนเองอยู่แล้ว (รวมถึงบนลู่วิ่ง) ไม่ต้องเดิน MoveTo ไปกลาง AnimeArea ซ้ำซ้อน
-			local hrp = Helpers.GetRoot()
-			local isTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
-			if not isTraining and hrp and basePos and (hrp.Position - basePos).Magnitude > 55 then
-				Helpers.MoveTo(basePos + Vector3.new(0, 2.5, 0), function()
-					return not Core._alive or not Core.Flags.AutoPlacePacks
-				end, { precise = false, arriveDist = 10 })
 			end
 
 			local placementUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlacementUtil end)
@@ -3721,6 +3716,8 @@ local function main()
 
 	function Loops.PlacePacks()
 		Core:Loop("placePacks", "AutoPlacePacks", 1.5, function()
+			-- เมื่อเปิดใช้งาน AutoSteal ระบบขโมยจะดูแลวงจรการวางแพ็คหลังส่งมอบแบบ Sequential เอง ป้องกันคำสั่งแย่งกัน
+			if Core.Flags.AutoSteal then return end
 			if not Core.Busy and not Helpers.IsCarrying() then
 				if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
 					if placePacksInBase then placePacksInBase() end
