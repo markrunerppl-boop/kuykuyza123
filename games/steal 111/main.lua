@@ -579,6 +579,11 @@ local function main()
 		return char and char:FindFirstChild("HumanoidRootPart")
 	end
 
+	function Helpers.GetHumanoid()
+		local char = LocalPlayer.Character
+		return char and char:FindFirstChildOfClass("Humanoid")
+	end
+
 	function Helpers.IsAlive()
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1238,19 +1243,24 @@ local function main()
 		local pt = tm:FindFirstChild("PlayerTreadmill")
 		local seat = pt and pt:FindFirstChild("Seat")
 		local prim = pt and pt:FindFirstChild("Primary")
-		local targetPart = seat or prim or tm:FindFirstChild("PurplePad") or pt
+		local box = tm:FindFirstChild("TreadmilBox")
+		local pp = tm:FindFirstChild("PurplePad")
+		local ppPart = pp and (pp:FindFirstChildWhichIsA("BasePart", true) or (pp:IsA("BasePart") and pp))
+		local targetPart = (pt and (seat or prim)) or box or ppPart or tm:FindFirstChildWhichIsA("BasePart", true)
 		local pos = targetPart and Helpers.GetPosition(targetPart)
 		if not pos then return end
 
 		lastEnter = os.clock()
-		-- วาร์ปลงบนแท่นยืนของลู่วิ่งตรงจุด Seat (Y ≈ 70.75) หรือ Primary
+		-- วาร์ปลงบนแท่นยืนของลู่วิ่งตรงจุด Box หรือ Seat/Primary
 		local targetCf
 		if seat and seat:IsA("BasePart") then
-			targetCf = CFrame.new(seat.Position + Vector3.new(0, 3.0, 0))
+			targetCf = CFrame.new(seat.Position + Vector3.new(0, 2.5, 0))
 		elseif prim and prim:IsA("BasePart") then
 			targetCf = prim.CFrame * CFrame.new(0, 1.2, 0)
+		elseif box and box:IsA("BasePart") then
+			targetCf = CFrame.new(box.Position + Vector3.new(0, 1.5, 0))
 		else
-			targetCf = CFrame.new(pos + Vector3.new(0, 1.0, 0))
+			targetCf = CFrame.new(pos + Vector3.new(0, 1.2, 0))
 		end
 
 		Helpers.Teleport(targetCf)
@@ -2087,6 +2097,24 @@ local function main()
 					})
 				end
 			end
+		end
+
+		-- หากเปิด OutrunOnly แต่ความเร็วตัวละครยังต่ำกว่าบอสทุกด่านที่เลือก
+		if #candidates == 0 then
+			local lowestSelected = nil
+			for i = 1, 12 do
+				if Core.Flags["Stage" .. i] then
+					lowestSelected = i
+					break
+				end
+			end
+			local minSpd = lowestSelected and getStageBossSpeed(lowestSelected) or 20
+			local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
+			if sig ~= lastOrderSig then
+				lastOrderSig = sig
+				logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) กำลังวิ่งลู่วิ่งเพื่อปั๊ม Speed...", mySpeed, lowestSelected or 1, minSpd), true)
+			end
+			return {}
 		end
 
 		-- เรียงลำดับ: ด่านที่วิ่งหนีทันมาก่อน -> ในกลุ่มที่วิ่งหนีทัน ให้ด่านที่บอสเร็วที่สุด (bossSpeed สูงสุด) มาก่อน
