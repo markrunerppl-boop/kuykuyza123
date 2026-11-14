@@ -2505,15 +2505,19 @@ local function main()
 			return
 		end
 
-		-- จัดการงานฐาน (รวมแพ็คซ้ำ + วางแพ็คลงแปลงเพาะ) ให้เรียบร้อยก่อนออกจากฐานไปขโมย
+		-- จัดการงานฐาน (รวมแพ็คซ้ำ + วางแพ็คลงแปลงเพาะ) ให้เรียบร้อยก่อนออกจากฐานไปขโมย (Throttled 10s ป้องกันลูปค้าง)
 		if not Helpers.IsCarrying() and runBaseMaintenance then
 			local hrp = Helpers.GetRoot()
 			local bPos = Helpers.GetPlotSpawnPos()
 			if hrp and bPos and (hrp.Position - bPos).Magnitude <= 50 then
-				local hasPacks = (getPacksToPlace and #getPacksToPlace() > 0)
-				local hasMerges = (Core.Flags.AutoMerge and getBackpackCandidates and #getBackpackCandidates("merge") >= 2)
-				if hasPacks or hasMerges then
-					pcall(runBaseMaintenance)
+				local now = os.clock()
+				if (now - (StealState.lastPreMaintenanceTime or 0)) >= 10 then
+					local hasPacks = (getPacksToPlace and #getPacksToPlace() > 0)
+					local hasMerges = (Core.Flags.AutoMerge and getBackpackCandidates and #getBackpackCandidates("merge") >= 2)
+					if hasPacks or hasMerges then
+						StealState.lastPreMaintenanceTime = now
+						pcall(runBaseMaintenance)
+					end
 				end
 			end
 		end
@@ -2545,6 +2549,8 @@ local function main()
 
 		Core.Busy = true
 		leaveTreadmill()
+		local curHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if curHum then pcall(function() curHum:UnequipTools() end) end
 		local packModel = prompt.Parent
 		while packModel and packModel ~= Workspace and not packModel:IsA("Model") do
 			packModel = packModel.Parent
@@ -3530,6 +3536,25 @@ local function main()
 			end
 
 			local placementUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlacementUtil end)
+			local char = LocalPlayer.Character
+			local hrp = Helpers.GetRoot()
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local origCF = hrp and hrp.CFrame
+			local wasTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
+
+			-- วาร์ปตัวละครเข้าสู่ใจกลาง AnimeArea ชั่วคราว เพื่อให้ผ่านการตรวจ IsPlayerInOwnedPlot ของเซิร์ฟเวอร์
+			if area and area:IsA("BasePart") and hrp then
+				local areaCenter = area.Position + Vector3.new(0, 3.5, 0)
+				if (hrp.Position - area.Position).Magnitude > (area.Size.X * 0.45) then
+					if wasTraining and Helpers.LeaveTreadmill then
+						pcall(Helpers.LeaveTreadmill)
+						task.wait(0.1)
+					end
+					Helpers.Teleport(CFrame.new(areaCenter))
+					task.wait(0.2)
+				end
+			end
+
 			local halfX, halfZ = 16, 12
 			if area and area:IsA("BasePart") then
 				halfX = math.max((area.Size.X - 4) / 2, 8)
@@ -3537,13 +3562,11 @@ local function main()
 			end
 
 			local noSpace = false
-			local char = LocalPlayer.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local loopPass = 0
 
 			while Core._alive and Core.Flags.AutoPlacePacks and not noSpace do
 				loopPass = loopPass + 1
-				if loopPass > 30 then break end
+				if loopPass > 15 then break end
 
 				local currentPacks = getPacksToPlace()
 				if #currentPacks == 0 then
@@ -3595,7 +3618,7 @@ local function main()
 					if hum and packTool then
 						if packTool.Parent ~= char then
 							pcall(function() hum:EquipTool(packTool) end)
-							local tEquipDeadline = os.clock() + 0.35
+							local tEquipDeadline = os.clock() + 0.3
 							while os.clock() < tEquipDeadline and packTool.Parent ~= char do
 								RunService.Heartbeat:Wait()
 							end
@@ -3606,7 +3629,7 @@ local function main()
 								Tool = packTool
 							})
 						end)
-						task.wait(0.08)
+						task.wait(0.06)
 					end
 
 					-- คำนวณระดับความสูงพื้นแปลงเพาะ (AnimeArea.Position.Y + ครึ่งความหนา + 0.3 studs ตาม PlacementLiftStuds)
@@ -3628,8 +3651,8 @@ local function main()
 						gridCandidates[k], gridCandidates[j] = gridCandidates[j], gridCandidates[k]
 					end
 
-					-- พยายามวางตามจุดในตารางกริด (ลองสูงสุด 18 จุด)
-					for attempt = 1, math.min(18, #gridCandidates) do
+					-- พยายามวางตามจุดในตารางกริด (ลองสูงสุด 6 จุดเพื่อความเร็ว)
+					for attempt = 1, math.min(6, #gridCandidates) do
 						local pt2d = gridCandidates[attempt]
 						local placePos
 						if area and area:IsA("BasePart") then
@@ -3647,9 +3670,9 @@ local function main()
 						if ok and success then
 							placedThis = true
 							placedAnyInPass = true
-							logAction("วางแพ็ก", "นำลงเพาะในฐาน: " .. tostring(packName), true)
+							logAction("วางแพ็ก", "นำลงเพาะในแปลง: " .. tostring(packName), true)
 							itemSkipUntil["place:" .. packId] = nil
-							task.wait(0.18)
+							task.wait(0.12)
 							break
 						else
 							lastReason = reason or "FAILED"
@@ -3658,10 +3681,9 @@ local function main()
 								placedAnyInPass = true
 								break
 							elseif reason == "NOT_EQUIPPED" then
-								-- เซิร์ฟเวอร์แจ้งว่ายังไม่ได้ถือ Tool ให้ลอง Equip ซ้ำ
 								if hum and packTool then
 									pcall(function() hum:EquipTool(packTool) end)
-									task.wait(0.15)
+									task.wait(0.12)
 								end
 							elseif isFullReason(reason) then
 								noSpace = true
@@ -3674,15 +3696,15 @@ local function main()
 					if not placedThis then
 						if isFullReason(lastReason) or noSpace then
 							noSpace = true
-							baseFullUntil = os.clock() + 6
-							itemSkipUntil["place:" .. packId] = os.clock() + 6
+							baseFullUntil = os.clock() + 10
+							itemSkipUntil["place:" .. packId] = os.clock() + 10
 							logAction("วางแพ็ก", "ฐานไม่มีที่ว่างสำหรับวาง " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 							break
 						elseif lastReason == "OVERLAPS_PACK" then
-							itemSkipUntil["place:" .. packId] = os.clock() + 2
-							logAction("วางแพ็ก", "พิกัดวางชนแพ็คอื่น: " .. tostring(packName) .. " (จะลองใหม่)", false)
+							itemSkipUntil["place:" .. packId] = os.clock() + 15
+							logAction("วางแพ็ก", "พิกัดวางชนแพ็คอื่น: " .. tostring(packName) .. " (จะลองใหม่ภายหลัง)", false)
 						else
-							itemSkipUntil["place:" .. packId] = os.clock() + 3
+							itemSkipUntil["place:" .. packId] = os.clock() + 15
 							logAction("วางแพ็ก", "วางไม่สำเร็จ: " .. tostring(packName) .. " (" .. tostring(lastReason) .. ")", false)
 						end
 					end
@@ -3695,10 +3717,25 @@ local function main()
 			end
 
 			-- ปลดการถือ Tool เมื่อวางเสร็จสิ้นทั้งหมด
+			char = LocalPlayer.Character
+			hum = char and char:FindFirstChildOfClass("Humanoid")
+			hrp = Helpers.GetRoot()
 			if hum then pcall(function() hum:UnequipTools() end) end
 
+			-- วาร์ปตัวละครกลับตำแหน่งเดิม และขึ้นลู่วิ่งหากเดิมกำลังฝึกซ้อมอยู่
+			if origCF and hrp and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				Helpers.Teleport(origCF)
+				task.wait(0.15)
+				if wasTraining and Core.Flags.AutoEnter and enterTreadmill then
+					task.spawn(function()
+						task.wait(0.3)
+						pcall(enterTreadmill)
+					end)
+				end
+			end
+
 			if noSpace then
-				baseFullUntil = os.clock() + 6
+				baseFullUntil = os.clock() + 10
 				logAction("วางแพ็ก", "ไม่มีที่วางในฐานแล้ว -> รอแพ็คฟักเพื่อเปิดพื้นที่", false)
 				return false, "NO_SPACE"
 			end
