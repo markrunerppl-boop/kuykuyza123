@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.3 (Config Persistence System + Position Guards + Anti-Spam Guard + Auto Food)
+-- เวอร์ชัน: v2.4 (Throw Freeze Fix + Flight Timing & Reveal + Train Recovery + Anti-Spam Guard)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -43,10 +43,10 @@ local Core = {
 ENV.__KUY = Core
 
 -- รายชื่อ Flags เริ่มต้น (Default Values)
-Core.Flags.AutoThrow        = false   -- โยนอาหารอัตโนมัติ (วาร์ปไปเส้นโยน + คะแนนเต็ม 100%)
+Core.Flags.AutoThrow        = false   -- โยนอาหารอัตโนมัติ (วาร์ปไปเส้นโยน + ป้องกันค้าง + คะแนนเต็ม 100%)
 Core.Flags.PerfectThrow     = true    -- บังคับคะแนนเต็ม 100% (Meter Accuracy = 1.0)
 Core.Flags.AutoSuperThrow   = false   -- ใช้งาน Super Throw เมื่อมีสิทธิ์
-Core.Flags.AutoTrain        = false   -- ฝึกพลังอัตโนมัติ (วาร์ปไปแท่นฝึก + แท่นเริ่มต้น)
+Core.Flags.AutoTrain        = false   -- ฝึกพลังอัตโนมัติ (วาร์ปไปแท่นฝึก + ระบบแก้ค้าง)
 Core.Flags.AutoTapBonus     = true    -- กดคูณ 2 อัตโนมัติทันทีที่มีรอบโบนัสขณะฝึกซ้อม
 Core.Flags.AutoStandUpgrade = false   -- อัปเกรดแท่นฝึกอัตโนมัติ (พร้อมระบบกันแจ้งเตือนเงินไม่พอ)
 Core.Flags.AutoBuyFood      = true    -- ซื้ออาหารอัตโนมัติเมื่อเงินพอ
@@ -93,7 +93,6 @@ function Config._encode(data)
     if okJson and type(json) == "string" and #json > 2 then
         return json
     end
-    -- Fallback manual serializer
     local parts = {}
     for k, v in pairs(data) do
         table.insert(parts, string.format("%s=%s", tostring(k), tostring(v)))
@@ -109,7 +108,6 @@ function Config._decode(str)
     if okJson and type(parsed) == "table" then
         return parsed
     end
-    -- Fallback manual deserializer
     local data = {}
     for pair in string.gmatch(str, "[^;]+") do
         local k, v = string.match(pair, "^([^=]+)=(.+)$")
@@ -226,28 +224,6 @@ function Core:Loop(name, flag, interval, fn)
     end)
 end
 
-function Core:Destroy()
-    pcall(Config.Save)
-    self._alive = false
-    for name in pairs(self._loops) do
-        self:StopLoop(name)
-    end
-    for _, c in ipairs(self._conns) do
-        pcall(function() c:Disconnect() end)
-    end
-    for _, fn in ipairs(self._cleanups) do
-        pcall(fn)
-    end
-    if self._gui then
-        pcall(function() self._gui:Destroy() end)
-    end
-    self._conns = {}
-    self._cleanups = {}
-    if ENV.__KUY == self then
-        ENV.__KUY = nil
-    end
-end
-
 -- =====================================================================
 -- 3. CIRCULAR BUFFER LOGGING (80 รายการ)
 -- =====================================================================
@@ -317,8 +293,19 @@ end
 -- 5. CACHE CLIENT CONTROLLERS & CONFIGS
 -- =====================================================================
 local DataController
+local ClientState, Movement, CameraRig, ScreenFX
+
 pcall(function()
-    DataController = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("Controllers"):WaitForChild("DataController"))
+    local playerScripts = LocalPlayer:WaitForChild("PlayerScripts", 5)
+    local clientFolder = playerScripts and playerScripts:WaitForChild("Client", 5)
+    local controllers = clientFolder and clientFolder:WaitForChild("Controllers", 5)
+    if controllers then
+        pcall(function() DataController = require(controllers:WaitForChild("DataController", 3)) end)
+        pcall(function() ClientState = require(controllers:WaitForChild("ClientState", 3)) end)
+        pcall(function() Movement = require(controllers:WaitForChild("Movement", 3)) end)
+        pcall(function() CameraRig = require(controllers:WaitForChild("CameraRig", 3)) end)
+        pcall(function() ScreenFX = require(controllers:WaitForChild("ScreenFX", 3)) end)
+    end
 end)
 
 local FoodsConfig, FenceConfig, StandsConfig
@@ -345,6 +332,7 @@ remotes.Training_Bonus      = getRemote("Training_Bonus", "RemoteEvent")
 
 remotes.Throw_Start         = getRemote("Throw_Start", "RemoteFunction")
 remotes.Throw_Resolve       = getRemote("Throw_Resolve", "RemoteFunction")
+remotes.Throw_Revealed      = getRemote("Throw_Revealed", "RemoteEvent")
 remotes.Throw_Complete      = getRemote("Throw_Complete", "RemoteFunction")
 remotes.Throw_Cancel        = getRemote("Throw_Cancel", "RemoteFunction")
 remotes.Throw_UseSuper      = getRemote("Throw_UseSuper", "RemoteFunction")
@@ -364,7 +352,7 @@ remotes.RingRush_Begin      = getRemote("RingRush_Begin", "RemoteFunction")
 remotes.RingRush_End        = getRemote("RingRush_End", "RemoteFunction")
 
 -- =====================================================================
--- 6. HELPERS & POSITION SAFEGUARDS
+-- 6. HELPERS, WATCHDOG & POSITION SAFEGUARDS
 -- =====================================================================
 local Helpers = {}
 
@@ -377,6 +365,29 @@ function Helpers.IsAlive()
     local c = LocalPlayer.Character
     local h = c and c:FindFirstChildOfClass("Humanoid")
     return h and h.Health > 0 and c:FindFirstChild("HumanoidRootPart") ~= nil
+end
+
+-- ระบบฟื้นฟูตัวละครและแก้ค้างฉุกเฉิน (Unstick / Watchdog Recovery)
+function Helpers.RecoverCharacter()
+    local hrp = Helpers.GetRoot()
+    if hrp and hrp.Anchored and not Core.Busy then
+        hrp.Anchored = false
+    end
+    if Movement and Movement.Unlock then
+        pcall(Movement.Unlock)
+    end
+    if CameraRig and CameraRig.Release then
+        pcall(CameraRig.Release)
+    end
+    if ScreenFX and ScreenFX.Reset then
+        pcall(ScreenFX.Reset)
+    end
+    if ClientState and ClientState.Busy then
+        local busyStr = tostring(ClientState.Busy)
+        if busyStr == "Throw" or busyStr == "KuykuyThrow" or busyStr == "KuykuyTrain" then
+            ClientState.Busy = nil
+        end
+    end
 end
 
 function Helpers.TeleportTo(targetPos)
@@ -442,6 +453,29 @@ function Helpers.GetLaunchCFrame()
     return nil
 end
 
+function Core:Destroy()
+    pcall(Config.Save)
+    Helpers.RecoverCharacter()
+    self._alive = false
+    for name in pairs(self._loops) do
+        self:StopLoop(name)
+    end
+    for _, c in ipairs(self._conns) do
+        pcall(function() c:Disconnect() end)
+    end
+    for _, fn in ipairs(self._cleanups) do
+        pcall(fn)
+    end
+    if self._gui then
+        pcall(function() self._gui:Destroy() end)
+    end
+    self._conns = {}
+    self._cleanups = {}
+    if ENV.__KUY == self then
+        ENV.__KUY = nil
+    end
+end
+
 -- =====================================================================
 -- 7. FEATURE LOGIC & AUTOMATION LOOPS
 -- =====================================================================
@@ -471,15 +505,17 @@ Core:OnCleanup(function()
     if remotes.Training_Stop then
         pcall(function() Net.Invoke(remotes.Training_Stop) end)
     end
+    Helpers.RecoverCharacter()
 end)
 
-local isCurrentlyTraining = false
-
--- [ฟังก์ชันหลัก 1]: ลูปฝึกซ้อม (Auto Train Power พร้อมระบบตรวจจับตำแหน่งแท่นฝึก)
+-- [ฟังก์ชันหลัก 1]: ลูปฝึกซ้อม (Auto Train Power ปลอดภัย ไร้สถานะค้าง)
 local function runTrainCycle()
     if Core.Busy then return end
     if not Helpers.IsAlive() then return end
     if not remotes.Training_Start then return end
+
+    -- ล้างสถานะตกค้างหากมี
+    Helpers.RecoverCharacter()
 
     -- ตรวจสอบแท่นฝึกเริ่มต้น หากยังไม่มี Stand ให้สั่งซื้อเริ่มต้นก่อน
     local curStand = 0
@@ -502,11 +538,11 @@ local function runTrainCycle()
         end
     end
 
-    local isTrainingAttr = LocalPlayer:GetAttribute("Training")
-    if not isCurrentlyTraining and not isTrainingAttr then
+    -- ตรวจสอบสถานะจริงของเซิร์ฟเวอร์
+    local isTraining = (LocalPlayer:GetAttribute("Training") == true)
+    if not isTraining then
         local ok, res = Net.Invoke(remotes.Training_Start)
         if ok and res and res.Ok then
-            isCurrentlyTraining = true
             logAction("ฝึกพลัง", "เริ่มการฝึกซ้อมบนแท่นฝึกสำเร็จ", true)
         else
             local reason = (res and res.Reason) or tostring(res)
@@ -515,7 +551,7 @@ local function runTrainCycle()
     end
 end
 
--- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% (Auto Throw Food พร้อมระบบวาร์ปไปเส้นโยน)
+-- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% (ป้องกันการค้างด้วย ClientState Isolation + Throw_Revealed)
 local function runThrowCycle()
     if Core.Busy then return end
     if not Helpers.IsAlive() then return end
@@ -523,25 +559,28 @@ local function runThrowCycle()
         return
     end
 
-    Core.Busy = true
+    -- ปลดล็อคและฟื้นฟูตัวละครก่อนเริ่ม
+    Helpers.RecoverCharacter()
 
     -- หยุดฝึกซ้อมก่อนโยนอาหาร
-    if isCurrentlyTraining or LocalPlayer:GetAttribute("Training") then
-        if remotes.Training_Stop then
-            Net.Invoke(remotes.Training_Stop)
-            isCurrentlyTraining = false
-            task.wait(0.4)
-        end
+    if LocalPlayer:GetAttribute("Training") and remotes.Training_Stop then
+        Net.Invoke(remotes.Training_Stop)
+        task.wait(0.4)
     end
 
-    -- ตรวจสอบตำแหน่ง: ต้องยืนที่เส้นปล่อยอาหาร StarterArea
+    Core.Busy = true
+    if ClientState then
+        ClientState.Busy = "KuykuyThrow" -- บล็อก pollLine ของตัวเกมไม่ให้แย่งเปิด UI/ล็อคกล้อง
+    end
+
+    -- เคลื่อนย้ายตัวละครไปยังเส้นปล่อยอาหาร StarterArea
     local launchCF = Helpers.GetLaunchCFrame()
     local hrp = Helpers.GetRoot()
     if launchCF and hrp then
         local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(launchCF.Position.X, 0, launchCF.Position.Z)).Magnitude
-        if flatDist > 12 then
+        if flatDist > 10 then
             Helpers.TeleportTo(launchCF)
-            task.wait(0.3)
+            task.wait(0.25)
         end
     end
 
@@ -558,7 +597,14 @@ local function runThrowCycle()
         local okResolve, resolveRes = Net.Invoke(remotes.Throw_Resolve, accuracy)
 
         if okResolve and resolveRes and resolveRes.Ok then
-            task.wait(0.2)
+            -- รอเวลาจำลองการบินของอาหารและส่งสัญญาณ Throw_Revealed (ป้องกันเซิร์ฟเวอร์ตีกลับว่า "ลูกยังไม่ตก")
+            task.wait(1.8)
+            if remotes.Throw_Revealed then
+                pcall(function() remotes.Throw_Revealed:FireServer() end)
+            end
+            task.wait(0.3)
+
+            -- ยืนยันจบการโยนและรับรางวัล
             local okComp, compRes = Net.Invoke(remotes.Throw_Complete)
             local animalName = (compRes and compRes.AnimalName) or (resolveRes and resolveRes.ModelName) or "สัตว์ใหม่"
             logAction("โยนอาหาร", string.format("โยนคะแนนเต็ม 100%% สำเร็จ! ได้รับ: %s", tostring(animalName)), true)
@@ -573,7 +619,8 @@ local function runThrowCycle()
     end
 
     Core.Busy = false
-    task.wait(0.8)
+    Helpers.RecoverCharacter()
+    task.wait(1.2)
 end
 
 -- [ฟังก์ชันหลัก 3]: ระบบอัปเกรดแท่นฝึก (พร้อม Anti-Spam Pre-check Guard ป้องกันแจ้งเตือนเงินไม่พอ)
@@ -756,6 +803,17 @@ Core:Connect(LocalPlayer.Idled, function()
     end
 end)
 
+-- ลูปเฝ้าระวังตัวละครแก้ค้างอัตโนมัติ (Watchdog Heartbeat)
+Core:Connect(RunService.Heartbeat, function()
+    if not Core._alive then return end
+    if not Core.Busy then
+        local hrp = Helpers.GetRoot()
+        if hrp and hrp.Anchored then
+            hrp.Anchored = false
+        end
+    end
+end)
+
 -- ผูกลูปเข้ากับ Core:Loop ตามการตั้งค่าที่โหลดมา
 if Core.Flags.AutoThrow then Core:Loop("Loop_Throw", "AutoThrow", 1.8, runThrowCycle) end
 if Core.Flags.AutoTrain then Core:Loop("Loop_Train", "AutoTrain", 2.2, runTrainCycle) end
@@ -864,7 +922,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.3</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.4</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -931,7 +989,7 @@ StatusText.Font = Enum.Font.RobotoMono
 StatusText.TextSize = 11
 StatusText.TextColor3 = UIColors.TextSecondary
 StatusText.TextXAlignment = Enum.TextXAlignment.Left
-StatusText.Text = string.format("สถานะ: ACTIVE | บันทึกการตั้งค่า: %s", loadedFromDisk and ("โหลดแล้ว (" .. tostring(loadSource) .. ")") or "ค่าเริ่มต้น")
+StatusText.Text = "สถานะ: ACTIVE | Watchdog ป้องกันค้างพร้อมทำงาน"
 StatusText.Parent = StatusBar
 
 -- Draggable Logic
@@ -1172,6 +1230,7 @@ CreateToggle(FarmPage, "AutoThrow", "โยนอาหารอัตโนม�
         Core:Loop("Loop_Throw", "AutoThrow", 1.8, runThrowCycle)
     else
         Core:StopLoop("Loop_Throw")
+        Helpers.RecoverCharacter()
     end
 end)
 
@@ -1188,7 +1247,7 @@ CreateToggle(FarmPage, "AutoTrain", "ฝึกพลังอัตโนมั�
     else
         Core:StopLoop("Loop_Train")
         if remotes.Training_Stop then pcall(function() Net.Invoke(remotes.Training_Stop) end) end
-        isCurrentlyTraining = false
+        Helpers.RecoverCharacter()
     end
 end)
 
@@ -1365,6 +1424,11 @@ CreateSection(SettingsPage, "ความปลอดภัยและระบ
 CreateToggle(SettingsPage, "AntiAfk", "กันเตะออกจากเกม (Anti-AFK 20 นาที)", function(val)
 end)
 
+CreateButton(SettingsPage, "🛡️ ปลดล็อคตัวละครฉุกเฉิน (Fix Stuck Character)", UIColors.Card, function()
+    Helpers.RecoverCharacter()
+    logAction("ความปลอดภัย", "ปลดล็อคตัวละครและคืนค่ากล้องสำเร็จ", true)
+end)
+
 CreateSection(SettingsPage, "ระบบจดจำการตั้งค่า (Config Management)")
 CreateButton(SettingsPage, "💾 บันทึกการตั้งค่าตอนนี้ (Save Config)", UIColors.Card, function()
     local ok = Config.Save()
@@ -1392,6 +1456,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.3 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v2.4 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.3 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.4 โหลดสำเร็จ 100%")
