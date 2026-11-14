@@ -2307,6 +2307,8 @@ local function main()
 	-- 5.5. FEATURE: COACHES & AURAS (Auto Buy / Auto Equip Best)
 	-----------------------------------------------------------------
 	local lastCoachBuy, lastCoachEquip = 0, 0
+	local lastEquippedCoachKey = ""
+	local coachEquipDebounceUntil = 0
 	local lastAuraBuy, lastAuraEquip = 0, 0
 
 	local function getPlayerDataKey(key)
@@ -2338,18 +2340,43 @@ local function main()
 	local function equipBestCoach()
 		local cu = getCoachUtil()
 		local cc = getCoachConfig()
+		local mc = getMutationConfig()
 		local coachData = getPlayerDataKey("Coaches")
 		if not (cu and type(coachData) == "table" and type(coachData.Owned) == "table") then return end
 
-		local bestKey, bestMult, bestOrder = nil, -1, -1
+		local mutOrderMap = {}
+		if mc and mc.Order then
+			for idx, mName in ipairs(mc.Order) do
+				mutOrderMap[mName] = idx
+			end
+		end
+
+		local bestKey, bestMult, bestOrder, bestMutRank = nil, -1, -1, -1
 		for key in pairs(coachData.Owned) do
 			if cu.GetCount(coachData, key) > 0 then
 				local entry, mut = cu.Get(key)
 				if entry then
 					local mult = cu.GetEntryMultiplier(entry, mut)
 					local ord = entry.Order or 0
-					if mult > bestMult or (mult == bestMult and ord > bestOrder) then
-						bestKey, bestMult, bestOrder = key, mult, ord
+					local mutRank = mut and mutOrderMap[mut] or 0
+
+					local isBetter = false
+					if mult > bestMult then
+						isBetter = true
+					elseif mult == bestMult then
+						if ord > bestOrder then
+							isBetter = true
+						elseif ord == bestOrder then
+							if mutRank > bestMutRank then
+								isBetter = true
+							elseif mutRank == bestMutRank and (bestKey == nil or key > bestKey) then
+								isBetter = true
+							end
+						end
+					end
+
+					if isBetter then
+						bestKey, bestMult, bestOrder, bestMutRank = key, mult, ord, mutRank
 					end
 				end
 			end
@@ -2359,18 +2386,33 @@ local function main()
 		local attrName = (cc and cc.Attributes and cc.Attributes.Equipped) or "EquippedCoach"
 		local curEquipped = coachData.Equipped
 		local curAttr = LocalPlayer:GetAttribute(attrName)
-		if curEquipped == bestKey or (curEquipped == nil and curAttr == bestKey) then return end
+
+		-- หากโค้ชที่ดีที่สุดสวมใส่อยู่แล้ว (ทั้งใน PlayerData หรือใน Character Attribute) ให้บันทึกและจบการทำงานทันที
+		if curEquipped == bestKey or curAttr == bestKey then
+			lastEquippedCoachKey = bestKey
+			return
+		end
 
 		local now = os.clock()
-		local rateLimit = math.max((cc and cc.RateLimit) or 0.3, 1.0)
+		-- หากเพิ่งยิงคำสั่งสวมใส่ bestKey นี้ไปแล้ว และอยู่ในช่วง Debounce (5 วินาที) ไม่ยิงซ้ำระหว่างรอเซิร์ฟเวอร์ตอบสนอง
+		if lastEquippedCoachKey == bestKey and now < coachEquipDebounceUntil then
+			return
+		end
+
+		local rateLimit = math.max((cc and cc.RateLimit) or 0.3, 1.5)
 		if now - lastCoachEquip < rateLimit then return end
 		lastCoachEquip = now
+		coachEquipDebounceUntil = now + 5.0
+		lastEquippedCoachKey = bestKey
 
 		local ok, res = Net.Invoke(Net.Paths.CoachesEquip, bestKey)
 		local success, reason = isRemoteOk(res)
 		if ok and success then
 			logAction("โค้ช", "สวมใส่: " .. tostring(cu.GetDisplayName(bestKey)), true)
 		elseif ok and reason then
+			-- หากล้มเหลว ให้เคลียร์ debounce เพื่อให้สามารถลองใหม่ได้เมื่อพร้อม
+			lastEquippedCoachKey = ""
+			coachEquipDebounceUntil = 0
 			logAction("โค้ช", "ใส่พลาด: " .. tostring(reason), false)
 		end
 	end
@@ -2406,6 +2448,13 @@ local function main()
 					local success, reason = isRemoteOk(res)
 					if ok and success then
 						logAction("โค้ช", "ซื้อสำเร็จ: " .. tostring(entry.Name or entry.Id), true)
+						-- เซิร์ฟเวอร์มีระบบ AutoEquipOnPurchase = true ซึ่งอาจสลับใส่โค้ชที่เพิ่งซื้ออัตโนมัติ
+						-- ให้เรียก equipBestCoach เพื่อสวมใส่โค้ชที่ดีที่สุดกลับมาทันที
+						task.spawn(function()
+							task.wait(0.2)
+							lastEquippedCoachKey = ""
+							equipBestCoach()
+						end)
 					elseif ok and reason then
 						logAction("โค้ช", "ซื้อพลาด: " .. tostring(reason), false)
 					end
@@ -2492,7 +2541,20 @@ local function main()
 	end
 
 	local function startAutoEquipCoachLoop()
-		Core:Loop("equipCoach", "AutoEquipCoach", 1.2, equipBestCoach)
+		task.spawn(equipBestCoach)
+		Core:Loop("equipCoach", "AutoEquipCoach", 4.0, equipBestCoach)
+
+		-- เชื่อมต่อ Event เมื่อข้อมูลโค้ชมีการเปลี่ยนแปลง เพื่อให้สวมใส่ทันทีเมื่อพร้อม
+		local pd = getPlayerData()
+		if pd and pd.Subscribe then
+			pcall(function()
+				pd.Subscribe("Coaches", function()
+					if Core._alive and Core.Flags.AutoEquipCoach then
+						equipBestCoach()
+					end
+				end)
+			end)
+		end
 	end
 
 	local function startAutoBuyAuraLoop()
