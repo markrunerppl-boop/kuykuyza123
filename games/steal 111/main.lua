@@ -691,8 +691,8 @@ local function main()
 		return Vector3.new(d.X, 0, d.Z).Magnitude <= 10 and math.abs(d.Y) <= 8
 	end
 
-	function Helpers.VisitMutateMachine(actionFn)
-		if not Helpers.IsAlive() or Helpers.IsCarrying() or Core.Busy then
+	function Helpers.VisitMutateMachine(actionFn, ignoreBusy)
+		if not Helpers.IsAlive() or Helpers.IsCarrying() or (not ignoreBusy and Core.Busy) then
 			return false, "BUSY_OR_DEAD"
 		end
 		local pad = Helpers.GetMutateMachinePad()
@@ -702,22 +702,38 @@ local function main()
 		local hrp = Helpers.GetRoot()
 		if not hrp then return false, "NO_HRP" end
 
+		local prevBusy = Core.Busy
 		Core.Busy = true
 		local wasAtMachine = Helpers.IsAtMutateMachine()
 		local origCF = hrp.CFrame
 		local padCF = CFrame.new(pad.Position + Vector3.new(0, 3, 0))
 
+		local wasTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 		if not wasAtMachine then
+			if wasTraining and Helpers.LeaveTreadmill then
+				pcall(Helpers.LeaveTreadmill)
+				task.wait(0.15)
+			end
 			Helpers.Teleport(padCF)
-			task.wait(0.22)
+			task.wait(0.4)
 		end
 
 		local ok, res, extra = pcall(actionFn)
 
 		if not wasAtMachine and Helpers.IsAlive() and not Helpers.IsCarrying() then
 			Helpers.Teleport(origCF)
+			task.wait(0.2)
+			if wasTraining and Core.Flags.AutoEnter and enterTreadmill then
+				task.spawn(function()
+					task.wait(0.5)
+					pcall(enterTreadmill)
+				end)
+			end
 		end
-		Core.Busy = false
+
+		if not prevBusy then
+			Core.Busy = false
+		end
 
 		if not ok then
 			return false, tostring(res)
@@ -1789,6 +1805,7 @@ local function main()
 			pcall(function() hNow.WalkSpeed = Helpers.GetMoveSpeed() end)
 		end
 	end
+	Helpers.LeaveTreadmill = leaveTreadmill
 
 	local function moveToCenterLane(abortFn)
 		local hrp = Helpers.GetRoot()
@@ -2259,10 +2276,8 @@ local function main()
 			pcall(openReadyPlacedPacks)
 		end
 
-		local count = (getPacksToPlace and #getPacksToPlace()) or 0
-
-		-- Priority 2: หากมีแพ็คที่รวมได้ (ต้องมีในกระเป๋าอย่างน้อย 2 ใบ) ให้รวมให้เรียบร้อยก่อนนำไปวาง
-		if count >= 2 and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
+		-- Priority 2: รวมแพ็คซ้ำทั้งหมดอัตโนมัติ (สแกนทั้งในกระเป๋าและบนฐาน)
+		if (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
 			pcall(function() autoMergeStep(true) end)
 		end
 
@@ -2894,7 +2909,7 @@ local function main()
 		local inv = pd and pd.Get and pd.Get("Inventory")
 		local packsData = inv and inv.Packs or {}
 		local pc = getPacksConfig()
-		local maxMerges = (pc and pc.MaxMergesPerPack) or 2
+		local maxMerges = (pc and pc.MaxMergesPerPack) or math.huge
 		local seenIds = {}
 		local candidates = {}
 
@@ -2950,58 +2965,33 @@ local function main()
 			end
 		end
 
-		-- 2. สแกนจาก Inventory.Packs.Backpack (PlayerData) เผื่อ Tool ยังไม่โหลด
-		local bpList = (type(packsData.Backpack) == "table" and packsData.Backpack) or {}
-		for _, item in pairs(bpList) do
-			if type(item) == "table" and type(item.Id) == "string" and not seenIds[item.Id] then
-				local packId = item.Id
-				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
-				if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
-					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
-					local mut = normMutation(item.Mutation)
-
-					if mode == "merge" and not isChar and not isPath then
-						local name = item.PackName or item.Name
-						local mergeCount = (pc and pc.GetMergeCount and pc.GetMergeCount(item)) or tonumber(item.MergeCount) or 0
-						if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
-							seenIds[packId] = true
-							table.insert(candidates, {
-								Id = packId,
-								Name = name,
-								Mutation = mut,
-								MergeCount = mergeCount,
-								Raw = item,
-							})
-						end
-					elseif mode == "fuse" and isChar then
-						local name = item.CharacterName or item.PackName or item.Name
-						if type(name) == "string" and name ~= "" then
-							seenIds[packId] = true
-							table.insert(candidates, {
-								Id = packId,
-								Name = name,
-								Mutation = mut,
-								Raw = item,
-							})
-						end
-					end
-				end
-			end
-		end
-
-		-- 3. สแกนจาก Inventory.Packs.Placed (เฉพาะ mode == "fuse" สำหรับยูนิตที่กำลังใช้งานอยู่)
-		-- หมายเหตุ: สำหรับ mode == "merge" แพ็คที่วางบนแท่นฟักฐานไม่สามารถรวมที่ MutateMachine ได้ จึงไม่ดึงมาเพื่อป้องกันเซิร์ฟเวอร์ปฏิเสธ
-		if mode == "fuse" then
-			local placedList = (type(packsData.Placed) == "table" and packsData.Placed) or {}
-			for _, item in pairs(placedList) do
+		-- 2. สแกนจาก Inventory.Packs.Backpack และ Inventory.Packs.Placed (PlayerData)
+		for _, containerName in ipairs({ "Backpack", "Placed" }) do
+			local list = (type(packsData[containerName]) == "table" and packsData[containerName]) or {}
+			for _, item in pairs(list) do
 				if type(item) == "table" and type(item.Id) == "string" and not seenIds[item.Id] then
 					local packId = item.Id
 					local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 					if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
 						local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
+						local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
 						local mut = normMutation(item.Mutation)
-						if isChar then
+
+						if mode == "merge" and not isChar and not isPath then
+							local name = item.PackName or item.Name
+							local mergeCount = (pc and pc.GetMergeCount and pc.GetMergeCount(item)) or tonumber(item.MergeCount) or 0
+							if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
+								seenIds[packId] = true
+								table.insert(candidates, {
+									Id = packId,
+									Name = name,
+									Mutation = mut,
+									MergeCount = mergeCount,
+									Raw = item,
+									InBase = (containerName == "Placed"),
+								})
+							end
+						elseif mode == "fuse" and isChar then
 							local name = item.CharacterName or item.PackName or item.Name
 							if type(name) == "string" and name ~= "" then
 								seenIds[packId] = true
@@ -3010,6 +3000,7 @@ local function main()
 									Name = name,
 									Mutation = mut,
 									Raw = item,
+									InBase = (containerName == "Placed"),
 								})
 							end
 						end
@@ -3165,8 +3156,8 @@ local function main()
 		if (not forceMulti and Core.Busy) or Helpers.IsCarrying() then return end
 		local now = os.clock()
 		local mc = getMutateConfig()
-		local rl = math.max((mc and mc.RateLimit) or 0.35, 0.35)
-		if not forceMulti and (now - lastMerge < 2.0) then return end
+		local rl = math.max((mc and mc.RateLimit) or 1.0, 1.05)
+		if not forceMulti and (now - lastMerge < 3.0) then return end
 
 		-- ตรวจสอบสถานะตัวละคร: ต้องมีชีวิต ไม่ติดล้ม (Ragdolled) และไม่กำลังถือของ
 		local char = LocalPlayer.Character
@@ -3177,7 +3168,7 @@ local function main()
 		local totalMergedOverall = 0
 		local passCount = 0
 
-		-- ลูป Exhaustive Multi-Pass: รวมแพ็คที่ซ้ำทั้งหมดจนกว่าจะไม่เหลือคู่ซ้ำในกระเป๋า (จำกัดสูงสุด 10 รอบเพื่อความปลอดภัย)
+		-- ลูป Exhaustive Multi-Pass: รวมแพ็คที่ซ้ำทั้งหมดจนกว่าจะไม่เหลือคู่ซ้ำในกระเป๋าและบนฐาน (จำกัดสูงสุด 10 รอบเพื่อความปลอดภัย)
 		while Core._alive and passCount < 10 do
 			passCount = passCount + 1
 
@@ -3200,7 +3191,7 @@ local function main()
 				end
 			end
 
-			-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่ในกระเป๋าแล้ว ให้หยุดทันที
+			-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่แล้ว ให้หยุดทันที
 			if totalPairs == 0 then
 				break
 			end
@@ -3216,7 +3207,7 @@ local function main()
 					local pName = g.name
 					local firstId = list[1] and list[1].Id
 
-					-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่มในกระเป๋า)
+					-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่ม)
 					local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
 					local sAll, rAll = isRemoteOk(resAll)
 					if okAll and sAll then
@@ -3224,8 +3215,8 @@ local function main()
 						count = count + math.max(pairsInGroup, 1)
 						task.wait(rl)
 					else
-						local failAllReason = rAll or ""
-						if failAllReason == "USE_MACHINE" then
+						local failAllReason = string.upper(tostring(rAll or ""))
+						if failAllReason:find("MACHINE") then
 							return count, "NEED_MACHINE"
 						end
 						-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
@@ -3241,10 +3232,10 @@ local function main()
 								count = count + 1
 								task.wait(rl)
 							else
-								local failReason = rPair or rAll or "REJECTED"
-								if failReason == "USE_MACHINE" then
+								local failReason = string.upper(tostring(rPair or rAll or "REJECTED"))
+								if failReason:find("MACHINE") then
 									return count, "NEED_MACHINE"
-								elseif failReason == "MERGE_LIMIT" then
+								elseif failReason:find("LIMIT") then
 									permSkipItems["merge:" .. idA] = true
 									permSkipItems["merge:" .. idB] = true
 									logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
@@ -3271,7 +3262,7 @@ local function main()
 				local okVisit, visitCount = Helpers.VisitMutateMachine(function()
 					local c, _ = executeMergeRoutine()
 					return c or 0
-				end)
+				end, true)
 				if okVisit and type(visitCount) == "number" then
 					passMerged = passMerged + visitCount
 				end
@@ -3285,7 +3276,7 @@ local function main()
 			end
 
 			-- รอให้อินเวนทอรีอัปเดตสั้นๆ ก่อนสแกนรอบถัดไป
-			task.wait(0.25)
+			task.wait(0.35)
 		end
 
 		if totalMergedOverall > 0 then
@@ -3742,7 +3733,7 @@ local function main()
 	end
 
 	function Loops.Merge()
-		task.spawn(autoMergeStep)
+		task.spawn(function() autoMergeStep(true) end)
 		Core:Loop("mergePacks", "AutoMerge", 4.0, autoMergeStep)
 	end
 
