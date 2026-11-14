@@ -1522,12 +1522,25 @@ local function main()
 
 	local function isBetterCandidate(a, b)
 		if not b then return true end
-		if a.rank ~= b.rank then return (a.rank or 0) > (b.rank or 0) end
-		if a.mult ~= b.mult then return a.mult > b.mult end
-		if a.odd ~= b.odd then return a.odd > b.odd end
-		if a.weight ~= b.weight then return a.weight > b.weight end
-		if a.enemyDist ~= b.enemyDist then return a.enemyDist > b.enemyDist end
-		return a.dist < b.dist
+		local aRank, bRank = a.rank or 0, b.rank or 0
+		if aRank ~= bRank then return aRank > bRank end
+
+		local aMult, bMult = a.mult or 1, b.mult or 1
+		if aMult ~= bMult then return aMult > bMult end
+
+		local aOdd, bOdd = a.odd or 0, b.odd or 0
+		if aOdd ~= bOdd then return aOdd > bOdd end
+
+		local aWeight, bWeight = a.weight or 0, b.weight or 0
+		if aWeight ~= bWeight then return aWeight > bWeight end
+
+		-- ถ้าคุณภาพเท่ากันทุกด้าน ให้เลือกอันที่อยู่ห่างศัตรูมากกว่า
+		local aEnemyDist, bEnemyDist = a.enemyDist or 0, b.enemyDist or 0
+		if aEnemyDist ~= bEnemyDist then return aEnemyDist > bEnemyDist end
+
+		-- และสุดท้ายเลือกอันที่ใกล้ตัวละครมากกว่า
+		local aDist, bDist = a.dist or 0, b.dist or 0
+		return aDist < bDist
 	end
 
 	local function findStealPrompt(stageFolder)
@@ -1536,7 +1549,7 @@ local function main()
 		if not root then return nil end
 		local hrp = Helpers.GetRoot()
 		local enemies = getStageEnemyPositions(stageFolder)
-		local bestSafe, bestAny = nil, nil
+		local best = nil
 		for _, model in ipairs(root:GetChildren()) do
 			if isPackRarityAllowed(model) then
 				local p = model:FindFirstChild("StealPrompt", true)
@@ -1552,23 +1565,22 @@ local function main()
 						local _, rank = getModelRarity(model)
 						local cand = {
 							prompt = p,
+							model = model,
 							rank = rank or 1,
-							mult = mult,
-							odd = odd,
-							weight = weight,
+							mult = mult or 1,
+							odd = odd or 0,
+							weight = weight or 0,
 							enemyDist = minEnemyDist,
 							dist = hrp and (pos - hrp.Position).Magnitude or 0,
 						}
-						if minEnemyDist >= 25 then
-							if isBetterCandidate(cand, bestSafe) then bestSafe = cand end
-						else
-							if isBetterCandidate(cand, bestAny) then bestAny = cand end
+						if isBetterCandidate(cand, best) then
+							best = cand
 						end
 					end
 				end
 			end
 		end
-		return (bestSafe and bestSafe.prompt) or (bestAny and bestAny.prompt) or nil
+		return best and best.prompt or nil
 	end
 
 	-- กดค้างตาม HoldDuration จริงภายในระยะปลอดภัยรอบแพ็ค (ไม่วิ่งเหวี่ยงหรือกระโดดหลุดระยะ Prompt)
@@ -2242,12 +2254,16 @@ local function main()
 						packModel = packModel.Parent
 					end
 					local rName = packModel and getModelRarity(packModel) or "Pack"
+					local pName = packModel and (packModel:GetAttribute("PackName") or packModel.Name) or ""
 					local ok, res, why = pcall(stealFromStage, i, prompt)
 					stopPin()
 					Core.Busy = false
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
-						logAction("ขโมย", string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName)), true)
+						local info = (pName ~= "" and pName ~= rName)
+							and string.format("ด่าน %d [%s - %s]: สำเร็จ", i, tostring(rName), tostring(pName))
+							or string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName))
+						logAction("ขโมย", info, true)
 						-- หากผู้ใช้เปิด AutoPlacePacks หรือ AutoOpenPacks ให้จัดการวงรอบบำรุงรักษาฐาน
 						if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
 							local waitSyncEnd = os.clock() + 2.0
