@@ -1,0 +1,17 @@
+{
+  "GameplayData": {
+    "ClickDetectors": [],
+    "ProximityPrompts": [
+      {
+        "ActionText": "Upgrade",
+        "Name": "ProximityPrompt",
+        "Path": "Workspace.LocalPlotProps.TrainingArea.TrainingSpot.UpgradeButton.ProximityPrompt"
+      }
+    ],
+    "Tools_And_Items": []
+  },
+  "Metadata": {
+    "FileRole": "Gameplay POIs (Workspace Only)",
+    "PlaceId": 120219252362013
+  }
+}

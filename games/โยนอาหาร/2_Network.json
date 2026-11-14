@@ -1,0 +1,814 @@
+{
+  "LiveNetworkTraffic": {
+    "ReplicatedStorage.Remotes.Throw_MeterStarted": {
+      "CallCount": 1,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": [],
+          "Time": 182.77
+        }
+      ]
+    },
+    "ReplicatedStorage.Remotes.Throw_Revealed": {
+      "CallCount": 1,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": [],
+          "Time": 192.9
+        }
+      ]
+    },
+    "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Accept": {
+      "CallCount": 2,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": {
+              "CurrentCamera": {
+                "ViewportSize": "1920, 1009"
+              },
+              "Game": {
+                "LoadingDuration": 2.66
+              },
+              "GuiService": {
+                "AutoSelectGuiEnabled": false,
+                "CoreGuiNavigationEnabled": true,
+                "GuiInsetBotRight": "0, 0",
+                "GuiInsetTopLeft": "0, 58",
+                "GuiNavigationEnabled": true,
+                "IsModalDialog": false,
+                "IsTenFootInterface": false,
+                "MenuIsOpen": false,
+                "PreferredTransparency": 1,
+                "ReducedMotionEnabled": true,
+                "TouchControlsEnabled": false
+              },
+              "LocalPlayer": {
+                "JoinData": [],
+                "NetworkPing": 38.03
+              },
+              "LocalizationService": {
+                "RobloxLocaleId": "th-th",
+                "SystemLocaleId": "th-th"
+              },
+              "System": {
+                "Clock": 194.9,
+                "ElapsedTime": 196.43,
+                "HeapSize": 57677,
+                "RobloxVersion": "0.747.0.7471481",
+                "Time": 1794669813,
+                "Timezone": "%E0%C7%C5%D2%C1%D2%B5%C3%B0%D2%B9%E0%CD%E0%AA%D5%C2%CD%D2%A4%E0%B9%C2%EC",
+                "TimezoneDST": false,
+                "TimezoneOffset": "+0700",
+                "UWP": false,
+                "Windows": true
+              },
+              "TeleportService": [],
+              "UserInputService": {
+                "DeviceForm": "Enum.DeviceForm.Desktop",
+                "Platform": "Enum.Platform.Windows"
+              },
+              "UserSettings": {
+                "GameSettings": {
+                  "ComputerCameraMovementMode": "Enum.ComputerCameraMovementMode.Default",
+                  "ComputerMovementMode": "Enum.ComputerMovementMode.Default",
+                  "ControlMode": "Enum.ControlMode.Classic",
+                  "GamepadCameraSensitivity": 0.52,
+                  "InFullScreen": false,
+                  "InStudioMode": false,
+                  "MouseSensitivity": 0.52,
+                  "RotationType": "Enum.RotationType.MovementRelative",
+                  "SavedQualityLevel": "Enum.SavedQualitySetting.QualityLevel1",
+                  "TouchCameraMovementMode": "Enum.TouchCameraMovementMode.Default",
+                  "TouchMovementMode": "Enum.TouchMovementMode.Default",
+                  "VignetteEnabled": true
+                }
+              },
+              "VoiceChatService": {
+                "VoiceEnabled": true
+              },
+              "Workspace": {
+                "DistributedGameTime": 190.65,
+                "NumAwakeParts": 0,
+                "PhysicsThrottling": 100,
+                "RealPhysicsFPS": 60,
+                "ServerTimeNow": 1794669813.51
+              }
+            }
+          },
+          "Time": 194.9
+        },
+        {
+          "Args": {
+            "1": {
+              "CurrentCamera": {
+                "ViewportSize": "1920, 1009"
+              },
+              "Game": {
+                "LoadingDuration": 2.66
+              },
+              "GuiService": {
+                "AutoSelectGuiEnabled": false,
+                "CoreGuiNavigationEnabled": true,
+                "GuiInsetBotRight": "0, 0",
+                "GuiInsetTopLeft": "0, 58",
+                "GuiNavigationEnabled": true,
+                "IsModalDialog": false,
+                "IsTenFootInterface": false,
+                "MenuIsOpen": false,
+                "PreferredTransparency": 1,
+                "ReducedMotionEnabled": true,
+                "TouchControlsEnabled": true
+              },
+              "LocalPlayer": {
+                "JoinData": [],
+                "NetworkPing": 36.45
+              },
+              "LocalizationService": {
+                "RobloxLocaleId": "th-th",
+                "SystemLocaleId": "th-th"
+              },
+              "System": {
+                "Clock": 210.65,
+                "ElapsedTime": 212.18,
+                "HeapSize": 52270,
+                "RobloxVersion": "0.747.0.7471481",
+                "Time": 1794669829,
+                "Timezone": "%E0%C7%C5%D2%C1%D2%B5%C3%B0%D2%B9%E0%CD%E0%AA%D5%C2%CD%D2%A4%E0%B9%C2%EC",
+                "TimezoneDST": false,
+                "TimezoneOffset": "+0700",
+                "UWP": false,
+                "Windows": true
+              },
+              "TeleportService": [],
+              "UserInputService": {
+                "DeviceForm": "Enum.DeviceForm.Desktop",
+                "Platform": "Enum.Platform.Windows"
+              },
+              "UserSettings": {
+                "GameSettings": {
+                  "ComputerCameraMovementMode": "Enum.ComputerCameraMovementMode.Default",
+                  "ComputerMovementMode": "Enum.ComputerMovementMode.Default",
+                  "ControlMode": "Enum.ControlMode.Classic",
+                  "GamepadCameraSensitivity": 0.52,
+                  "InFullScreen": false,
+                  "InStudioMode": false,
+                  "MouseSensitivity": 0.52,
+                  "RotationType": "Enum.RotationType.MovementRelative",
+                  "SavedQualityLevel": "Enum.SavedQualitySetting.QualityLevel1",
+                  "TouchCameraMovementMode": "Enum.TouchCameraMovementMode.Default",
+                  "TouchMovementMode": "Enum.TouchMovementMode.Default",
+                  "VignetteEnabled": true
+                }
+              },
+              "VoiceChatService": {
+                "VoiceEnabled": true
+              },
+              "Workspace": {
+                "DistributedGameTime": 206.37,
+                "NumAwakeParts": 18,
+                "PhysicsThrottling": 100,
+                "RealPhysicsFPS": 60,
+                "ServerTimeNow": 1794669829.26
+              }
+            }
+          },
+          "Time": 210.65
+        }
+      ]
+    },
+    "ReplicatedStorage.UserGenerated.Analytics.ClientKit.FocusState": {
+      "CallCount": 5,
+      "ClassName": "UnreliableRemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": false
+          },
+          "Time": 194.9
+        },
+        {
+          "Args": {
+            "1": true
+          },
+          "Time": 196.3
+        },
+        {
+          "Args": {
+            "1": false
+          },
+          "Time": 196.43
+        },
+        {
+          "Args": {
+            "1": true
+          },
+          "Time": 196.7
+        },
+        {
+          "Args": {
+            "1": false
+          },
+          "Time": 210.65
+        }
+      ]
+    },
+    "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Fps": {
+      "CallCount": 8,
+      "ClassName": "RemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": 1,
+            "2": 15,
+            "3": 0
+          },
+          "Time": 122.57
+        },
+        {
+          "Args": {
+            "1": 2,
+            "2": 15,
+            "3": 0
+          },
+          "Time": 137.5
+        },
+        {
+          "Args": {
+            "1": 2,
+            "2": 15,
+            "3": 0
+          },
+          "Time": 152.56
+        },
+        {
+          "Args": {
+            "1": 2,
+            "2": 15,
+            "3": 0
+          },
+          "Time": 167.56
+        },
+        {
+          "Args": {
+            "1": 2,
+            "2": 15,
+            "3": 0
+          },
+          "Time": 182.57
+        }
+      ]
+    },
+    "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Ping": {
+      "CallCount": 96,
+      "ClassName": "UnreliableRemoteEvent",
+      "Method": "FireServer",
+      "SampleCalls": [
+        {
+          "Args": {
+            "1": 116,
+            "2": 1794669736.24
+          },
+          "Time": 117.63
+        },
+        {
+          "Args": {
+            "1": 117,
+            "2": 1794669737.24
+          },
+          "Time": 118.63
+        },
+        {
+          "Args": {
+            "1": 118,
+            "2": 1794669738.24
+          },
+          "Time": 119.63
+        },
+        {
+          "Args": {
+            "1": 119,
+            "2": 1794669739.24
+          },
+          "Time": 120.63
+        },
+        {
+          "Args": {
+            "1": 120,
+            "2": 1794669740.24
+          },
+          "Time": 121.63
+        }
+      ]
+    }
+  },
+  "Metadata": {
+    "FileRole": "Network (Filtered)",
+    "PlaceId": 120219252362013
+  },
+  "RemoteEndpoints": [
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Update",
+      "Path": "ReplicatedStorage.UserGenerated.ABTests.SharedABTests.Update"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Accept",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Accept"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "FocusState",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.FocusState"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Fps",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Fps"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LibMPDevice",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LibMPDevice"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LibMPFrame",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LibMPFrame"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LibMPRequired",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LibMPRequired"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LibMPRequiring",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LibMPRequiring"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LiveRequest",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LiveRequest"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LiveResponse",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.LiveResponse"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "MenuState",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.MenuState"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "Ping",
+      "Path": "ReplicatedStorage.UserGenerated.Analytics.ClientKit.Ping"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Update",
+      "Path": "ReplicatedStorage.UserGenerated.FastFlags.SharedFastFlags.Update"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Data",
+      "Path": "ReplicatedStorage.UserGenerated.Observability.Data"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Emit",
+      "Path": "ReplicatedStorage.UserGenerated.Observability.Emit"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Start",
+      "Path": "ReplicatedStorage.UserGenerated.Observability.Start"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Stop",
+      "Path": "ReplicatedStorage.UserGenerated.Observability.Stop"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Teleport",
+      "Path": "ReplicatedStorage.UserGenerated.Observability.Teleport"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "CmdrFunction",
+      "Path": "ReplicatedStorage.CmdrClient.CmdrFunction"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "CmdrEvent",
+      "Path": "ReplicatedStorage.CmdrClient.CmdrEvent"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaRequestData",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaRequestData"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaSet",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaSet"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaSetValues",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaSetValues"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaTableInsert",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaTableInsert"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaTableRemove",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaTableRemove"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaWrite",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaWrite"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaSignal",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaSignal"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaParent",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaParent"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaCreate",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaCreate"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaBind",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaBind"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ReplicaDestroy",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaDestroy"
+    },
+    {
+      "ClassName": "UnreliableRemoteEvent",
+      "Name": "ReplicaSignalUnreliable",
+      "Path": "ReplicatedStorage.RemoteEvents.ReplicaSignalUnreliable"
+    },
+    {
+      "ClassName": "BindableEvent",
+      "Name": "RequestServer",
+      "Path": "ReplicatedStorage.StudioMutations.RequestServer"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Request",
+      "Path": "ReplicatedStorage.StudioMutations.Request"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "ShowAd",
+      "Path": "ReplicatedStorage.SingleAdReward_Remotes.ShowAd"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "AdResult",
+      "Path": "ReplicatedStorage.SingleAdReward_Remotes.AdResult"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "LogTelemetry",
+      "Path": "ReplicatedStorage.SingleAdReward_Remotes.LogTelemetry"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "GetPlacementInfo",
+      "Path": "ReplicatedStorage.SingleAdReward_Remotes.GetPlacementInfo"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Dreamland_Event",
+      "Path": "ReplicatedStorage.Remotes.Dreamland_Event"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "RingRush_Reward",
+      "Path": "ReplicatedStorage.Remotes.RingRush_Reward"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Announce",
+      "Path": "ReplicatedStorage.Remotes.Announce"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Throw_Revealed",
+      "Path": "ReplicatedStorage.Remotes.Throw_Revealed"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Throw_MeterStarted",
+      "Path": "ReplicatedStorage.Remotes.Throw_MeterStarted"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "AFK_Rejoin",
+      "Path": "ReplicatedStorage.Remotes.AFK_Rejoin"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "AdminAbuse_Gift",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse_Gift"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "AdminAbuse_VoteState",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse_VoteState"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "AdminAbuse_Vote",
+      "Path": "ReplicatedStorage.Remotes.AdminAbuse_Vote"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Event_Asked",
+      "Path": "ReplicatedStorage.Remotes.Event_Asked"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Release_Seen",
+      "Path": "ReplicatedStorage.Remotes.Release_Seen"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Shop_PackOffer",
+      "Path": "ReplicatedStorage.Remotes.Shop_PackOffer"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Shop_DevPromptCancelled",
+      "Path": "ReplicatedStorage.Remotes.Shop_DevPromptCancelled"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Shop_PromptClosed",
+      "Path": "ReplicatedStorage.Remotes.Shop_PromptClosed"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Throw_SuperGranted",
+      "Path": "ReplicatedStorage.Remotes.Throw_SuperGranted"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Training_Bonus",
+      "Path": "ReplicatedStorage.Remotes.Training_Bonus"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Gift_Update",
+      "Path": "ReplicatedStorage.Remotes.Gift_Update"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Shop_Announce",
+      "Path": "ReplicatedStorage.Remotes.Shop_Announce"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Shop_Reward",
+      "Path": "ReplicatedStorage.Remotes.Shop_Reward"
+    },
+    {
+      "ClassName": "RemoteEvent",
+      "Name": "Notify",
+      "Path": "ReplicatedStorage.Remotes.Notify"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "IndexRewards_Equip",
+      "Path": "ReplicatedStorage.Remotes.IndexRewards_Equip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "IndexRewards_Claim",
+      "Path": "ReplicatedStorage.Remotes.IndexRewards_Claim"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "BensDream_Learned",
+      "Path": "ReplicatedStorage.Remotes.BensDream_Learned"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "BensDream_Hit",
+      "Path": "ReplicatedStorage.Remotes.BensDream_Hit"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "BensDream_Join",
+      "Path": "ReplicatedStorage.Remotes.BensDream_Join"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Dreamland_Action",
+      "Path": "ReplicatedStorage.Remotes.Dreamland_Action"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "RingRush_Learned",
+      "Path": "ReplicatedStorage.Remotes.RingRush_Learned"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "RingRush_End",
+      "Path": "ReplicatedStorage.Remotes.RingRush_End"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "RingRush_Begin",
+      "Path": "ReplicatedStorage.Remotes.RingRush_Begin"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Dev_Action",
+      "Path": "ReplicatedStorage.Remotes.Dev_Action"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Sell_Protected",
+      "Path": "ReplicatedStorage.Remotes.Sell_Protected"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_SellAll",
+      "Path": "ReplicatedStorage.Remotes.Plot_SellAll"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Offline_Claim",
+      "Path": "ReplicatedStorage.Remotes.Offline_Claim"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Gift_Cancel",
+      "Path": "ReplicatedStorage.Remotes.Gift_Cancel"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Gift_Respond",
+      "Path": "ReplicatedStorage.Remotes.Gift_Respond"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Gift_Request",
+      "Path": "ReplicatedStorage.Remotes.Gift_Request"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Egg_Place",
+      "Path": "ReplicatedStorage.Remotes.Egg_Place"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Shop_ClaimFree",
+      "Path": "ReplicatedStorage.Remotes.Shop_ClaimFree"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Shop_Prompt",
+      "Path": "ReplicatedStorage.Remotes.Shop_Prompt"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Animations_Get",
+      "Path": "ReplicatedStorage.Remotes.Animations_Get"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Player_SetSetting",
+      "Path": "ReplicatedStorage.Remotes.Player_SetSetting"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_EquipBest",
+      "Path": "ReplicatedStorage.Remotes.Plot_EquipBest"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_ReleaseTool",
+      "Path": "ReplicatedStorage.Remotes.Plot_ReleaseTool"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_HoldAnimal",
+      "Path": "ReplicatedStorage.Remotes.Plot_HoldAnimal"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_EquipAnimal",
+      "Path": "ReplicatedStorage.Remotes.Plot_EquipAnimal"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_UpgradeFence",
+      "Path": "ReplicatedStorage.Remotes.Plot_UpgradeFence"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Player_SetThrowPower",
+      "Path": "ReplicatedStorage.Remotes.Player_SetThrowPower"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_SellAnimal",
+      "Path": "ReplicatedStorage.Remotes.Plot_SellAnimal"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_PickUpAnimal",
+      "Path": "ReplicatedStorage.Remotes.Plot_PickUpAnimal"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Plot_PlaceAnimal",
+      "Path": "ReplicatedStorage.Remotes.Plot_PlaceAnimal"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Stand_Upgrade",
+      "Path": "ReplicatedStorage.Remotes.Stand_Upgrade"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Shop_Equip",
+      "Path": "ReplicatedStorage.Remotes.Shop_Equip"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Shop_Buy",
+      "Path": "ReplicatedStorage.Remotes.Shop_Buy"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Training_TapBonus",
+      "Path": "ReplicatedStorage.Remotes.Training_TapBonus"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Training_Stop",
+      "Path": "ReplicatedStorage.Remotes.Training_Stop"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Training_Start",
+      "Path": "ReplicatedStorage.Remotes.Training_Start"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Throw_UseSuper",
+      "Path": "ReplicatedStorage.Remotes.Throw_UseSuper"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Throw_Cancel",
+      "Path": "ReplicatedStorage.Remotes.Throw_Cancel"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Throw_Complete",
+      "Path": "ReplicatedStorage.Remotes.Throw_Complete"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Throw_Resolve",
+      "Path": "ReplicatedStorage.Remotes.Throw_Resolve"
+    },
+    {
+      "ClassName": "RemoteFunction",
+      "Name": "Throw_Start",
+      "Path": "ReplicatedStorage.Remotes.Throw_Start"
+    }
+  ]
+}

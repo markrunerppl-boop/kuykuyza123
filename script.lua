@@ -112,6 +112,15 @@ local SupportedGames = {
         Category = "Steal / Simulator",
         Path = "steal 111/main.lua"
     },
+
+    -- --------------------------------------------------------------------
+    -- 🍖 9. โยนอาหารให้สัตว์ (Feed Animals Simulator)
+    -- --------------------------------------------------------------------
+    [120219252362013] = {
+        Name = "โยนอาหารให้สัตว์ (Feed Animals)",
+        Category = "Simulator / Throwing",
+        Path = "โยนอาหาร/main.lua"
+    },
 }
 
 -- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/ดันเจี้ยน/วาป
@@ -135,6 +144,11 @@ local SupportedUniverses = {
         Name = "[🐟] จับปลา! (Catch Fish)",
         Category = "Fishing / Simulator",
         Path = "fishing/main.lua"
+    },
+    [10766972131] = {
+        Name = "โยนอาหารให้สัตว์ (Feed Animals)",
+        Category = "Simulator / Throwing",
+        Path = "โยนอาหาร/main.lua"
     }
 }
 
@@ -216,6 +230,8 @@ task.spawn(function()
             gameInfo = SupportedGames[79389059854988]
         elseif (rep:FindFirstChild("Remotes") and rep.Remotes:FindFirstChild("ThrowNet")) or workspace:FindFirstChild("FishingDocks") then
             gameInfo = SupportedGames[93898234979111]
+        elseif (rep:FindFirstChild("Remotes") and rep.Remotes:FindFirstChild("Throw_Start")) or workspace:FindFirstChild("StarterArea") then
+            gameInfo = SupportedGames[120219252362013]
         end
     end
 
@@ -227,13 +243,20 @@ task.spawn(function()
 
     Log("KuyKuy Hub", string.format("ตรวจพบ: %s [%s]", gameInfo.Name, gameInfo.Category), 3)
 
-    -- 3. ฟังก์ชันดาวน์โหลดโค้ดสคริปต์ (Dual-Method Fetch with Cache-Buster)
+    -- 3. ฟังก์ชันดาวน์โหลดโค้ดสคริปต์ (Dual-Method Fetch with Cache-Buster & URL Encoding)
+    local function urlEncodePath(str)
+        return (str:gsub("[^%w-_.~/]", function(c)
+            return string.format("%%%02X", string.byte(c))
+        end))
+    end
+
     local function FetchScript(path)
-        local safePath = path:gsub(" ", "%%20")
+        local safePath = urlEncodePath(path)
+        local rawPath = path:gsub(" ", "%%20")
         local fullUrl = BaseUrl .. safePath
         local saltUrl = fullUrl .. "?v=" .. tostring(os.time()) .. "&salt=" .. tostring(math.random(100000, 999999))
 
-        -- ลองโหลดด้วย Salt URL ป้องกันแคช
+        -- ลองโหลดด้วย Salt URL ป้องกันแคช (URL Encoded)
         local okSalt, srcSalt = pcall(function()
             return game:HttpGet(saltUrl)
         end)
@@ -247,6 +270,15 @@ task.spawn(function()
         end)
         if okClean and type(srcClean) == "string" and #srcClean > 100 then
             return srcClean
+        end
+
+        -- Fallback ลองโหลดด้วย Raw Path (สำหรับ Executor ที่อ่าน UTF-8 ตรง)
+        local rawUrl = BaseUrl .. rawPath .. "?v=" .. tostring(os.time())
+        local okRaw, srcRaw = pcall(function()
+            return game:HttpGet(rawUrl)
+        end)
+        if okRaw and type(srcRaw) == "string" and #srcRaw > 100 then
+            return srcRaw
         end
 
         -- Fallback ผ่าน request / http_request
