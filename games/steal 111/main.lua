@@ -2449,14 +2449,11 @@ local function main()
 		end
 
 		-- ตรวจสอบโควต้าการขโมย:
-		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว หรือกำลังรอเวลากลางคืน (waitingForNightReset)
-		-- 2) มีแพ็คค้างในกระเป๋ารอวาง: จะพักเพื่อนำไปวางเฉพาะเมื่อเปิด AutoPlacePacks และฐานยังไม่เต็มเท่านั้น
+		-- หากเปิดระบบจำกัดโควต้า (MaxStageStealPacks < 999) และขโมยในรอบนี้ครบจำนวนแล้ว (stageStealCount >= maxPacks) หรือรอเวลากลางคืน
 		local quotaActive = (Core.Flags.MaxStageStealPacks ~= nil and Core.Flags.MaxStageStealPacks < 999)
 		local quotaReached = quotaActive and (StealState.waitingForNightReset or (StealState.stageStealCount >= maxPacks))
-		local canPlacePacks = Core.Flags.AutoPlacePacks and not isBaseFull()
-		local pendingFull = quotaActive and canPlacePacks and (currentPending >= maxPacks)
 
-		if quotaReached or pendingFull then
+		if quotaReached then
 			-- หากถึงเวลากลางคืนแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
 			if isNight then
 				StealState.waitingForNightReset = false
@@ -2470,9 +2467,7 @@ local function main()
 						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 							or string.format("เหลืออีก %d วิ", secUntilNight))
 
-					local reason = pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (กำลังนำไปวางที่ฐาน)", currentPending)
-						or (quotaReached and string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", StealState.stageStealCount, maxPacks, timeStr))
-						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", StealState.stageStealCount, maxPacks)
+					local reason = string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", StealState.stageStealCount, maxPacks, timeStr)
 					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
 				end
 
@@ -2549,15 +2544,14 @@ local function main()
 				runBaseMaintenance()
 			end
 
-			-- หากขโมยครบโควต้า หรือมีแพ็คค้างในกระเป๋าครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งและรอการรีเซ็ตตอนกลางคืน
-			local afterPending = (getPacksToPlace and #getPacksToPlace()) or 0
-			if StealState.stageStealCount >= maxPacks or afterPending >= maxPacks then
+			-- หากขโมยในรอบนี้ครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งและรอการรีเซ็ตตอนกลางคืน
+			if quotaActive and StealState.stageStealCount >= maxPacks then
 				StealState.waitingForNightReset = true
 				local secUntilNight = getTimeUntilNight()
 				local timeStr = secUntilNight > 60
 					and string.format("%d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 					or string.format("%d วิ", secUntilNight)
-				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ตทุกด่านตอนกลางคืน (เหลืออีก %s)", StealState.stageStealCount, i, timeStr), true)
+				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d/%d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ตทุกด่านตอนกลางคืน (เหลืออีก %s)", StealState.stageStealCount, maxPacks, i, timeStr), true)
 				if runBaseMaintenance then pcall(runBaseMaintenance) end
 				returnToSafeRest(true)
 			end
