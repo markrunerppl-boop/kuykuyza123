@@ -1539,6 +1539,18 @@ local function main()
 			return true
 		end
 
+		-- 3. ตรวจสอบว่าผู้ใช้เปิดเกรดใดไว้บ้างหรือไม่ หากปิดทุกเกรดให้ยอมรับทั้งหมด (Safety Fallback)
+		local anyRarityActive = false
+		for _, k in ipairs(STEAL_RARITY_KEYS) do
+			if Core.Flags["Rarity_" .. k] == true then
+				anyRarityActive = true
+				break
+			end
+		end
+		if not anyRarityActive then
+			return true
+		end
+
 		return false
 	end
 
@@ -2055,7 +2067,7 @@ local function main()
 
 		-- 2. ค้นหาแพ็คในด่าน
 		local prompt = findStealPrompt(folder)
-		if prompt then return prompt end
+		if prompt then return prompt, nil end
 
 		-- 3. ตรวจหาแพ็คที่หลุดตกค้างในด่าน (เช่น โดนตีตกแต่ยังไม่ถูกเก็บ)
 		if basePos then
@@ -2083,10 +2095,33 @@ local function main()
 					end
 				end
 			end
-			if bestDropped then return bestDropped end
+			if bestDropped then return bestDropped, nil end
 		end
 
-		return nil
+		-- 4. หากไม่พบแพ็คที่ตรงตามเกรด ให้รวบรวมข้อมูลเกรดที่พบในด่านเพื่อแจ้งเตือน
+		local diagReason = "ยังไม่มีแพ็คเกิดในด่าน"
+		local root = folder and folder:FindFirstChild("SpawnedPacks")
+		if root then
+			local count = 0
+			local rarityCounts = {}
+			for _, model in ipairs(root:GetChildren()) do
+				local p = model:FindFirstChild("StealPrompt", true)
+				if p and p:IsA("ProximityPrompt") and p.Enabled then
+					count = count + 1
+					local rName = getModelRarity(model)
+					rarityCounts[rName] = (rarityCounts[rName] or 0) + 1
+				end
+			end
+			if count > 0 then
+				local parts = {}
+				for r, c in pairs(rarityCounts) do
+					table.insert(parts, string.format("%dx %s", c, r))
+				end
+				diagReason = string.format("พบแพ็ค %d ใบแต่เกรดไม่ตรงเมนู (%s)", count, table.concat(parts, ", "))
+			end
+		end
+
+		return nil, diagReason
 	end
 
 	local function safeStandPos(p0, stageFolder, radius)
@@ -2294,7 +2329,7 @@ local function main()
 			if Core.Flags["Stage" .. i] then
 				local bSpd = getStageBossSpeed(i)
 				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
-				local canOutrun = (i == 1) or (mySpeed >= (bSpd * margin))
+				local canOutrun = (not Core.Flags.OutrunOnly) or (i == 1) or (mySpeed >= (bSpd * margin))
 				if canOutrun then
 					table.insert(candidates, {
 						stage = i,
@@ -2314,11 +2349,19 @@ local function main()
 					break
 				end
 			end
-			local minSpd = lowestSelected and getStageBossSpeed(lowestSelected) or 16
-			local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
-			if sig ~= StealState.lastOrderSig then
-				StealState.lastOrderSig = sig
-				logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) กำลังวิ่งลู่วิ่งเพื่อปั๊ม Speed...", mySpeed, lowestSelected or 1, minSpd), true)
+			if lowestSelected then
+				local minSpd = getStageBossSpeed(lowestSelected) or 16
+				local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
+				if sig ~= StealState.lastOrderSig then
+					StealState.lastOrderSig = sig
+					logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) กำลังวิ่งลู่วิ่งเพื่อปั๊ม Speed...", mySpeed, lowestSelected, minSpd), true)
+				end
+			else
+				local sig = "NO_STAGE_SELECTED"
+				if sig ~= StealState.lastOrderSig then
+					StealState.lastOrderSig = sig
+					logAction("ด่านเป้าหมาย", "ยังไม่ได้เลือกด่านที่ต้องการขโมยในเมนู (กรุณาติ๊กเลือกอย่างน้อย 1 ด่าน)", false)
+				end
 			end
 			return {}
 		end
@@ -2333,8 +2376,8 @@ local function main()
 
 		local best = candidates[1]
 		local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
-		if sig ~= lastOrderSig then
-			lastOrderSig = sig
+		if sig ~= StealState.lastOrderSig then
+			StealState.lastOrderSig = sig
 			local info = (best.stage == 1 and mySpeed < best.bossSpeed)
 				and string.format("เลือกด่าน 1 (ด่านเริ่มต้น/เควสต์สอนเล่น | เราเร็ว %.0f)", mySpeed)
 				or string.format("เลือกด่าน %d (บอสเร็วที่สุดที่วิ่งทัน %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed)
@@ -2407,13 +2450,15 @@ local function main()
 
 		-- ตรวจสอบโควต้าการขโมย:
 		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว หรือกำลังรอเวลากลางคืน (waitingForNightReset)
-		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋ารอวางครบ 4 ใบขึ้นไป (currentPending >= maxPacks)
-		local quotaReached = StealState.waitingForNightReset or (StealState.stageStealCount >= maxPacks)
-		local pendingFull = currentPending >= maxPacks
+		-- 2) มีแพ็คค้างในกระเป๋ารอวาง: จะพักเพื่อนำไปวางเฉพาะเมื่อเปิด AutoPlacePacks และฐานยังไม่เต็มเท่านั้น
+		local quotaActive = (Core.Flags.MaxStageStealPacks ~= nil and Core.Flags.MaxStageStealPacks < 999)
+		local quotaReached = quotaActive and (StealState.waitingForNightReset or (StealState.stageStealCount >= maxPacks))
+		local canPlacePacks = Core.Flags.AutoPlacePacks and not isBaseFull()
+		local pendingFull = quotaActive and canPlacePacks and (currentPending >= maxPacks)
 
 		if quotaReached or pendingFull then
-			-- หากถึงเวลากลางคืนแล้ว และเคลียร์แพ็คในกระเป๋าหมดแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
-			if isNight and not pendingFull and currentPending == 0 then
+			-- หากถึงเวลากลางคืนแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
+			if isNight then
 				StealState.waitingForNightReset = false
 				StealState.stageStealCount = 0
 			else
@@ -2425,7 +2470,7 @@ local function main()
 						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 							or string.format("เหลืออีก %d วิ", secUntilNight))
 
-					local reason = pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (ครบโควต้า %d)", currentPending, maxPacks)
+					local reason = pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (กำลังนำไปวางที่ฐาน)", currentPending)
 						or (quotaReached and string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", StealState.stageStealCount, maxPacks, timeStr))
 						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", StealState.stageStealCount, maxPacks)
 					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
@@ -2448,18 +2493,24 @@ local function main()
 			return
 		end
 
-		local prompt = checkStageHasPacks(i)
+		local prompt, diagReason = checkStageHasPacks(i)
 		if not prompt then
 			-- ลอง Stream ซ้ำอีกครั้งก่อนตัดสินใจพัก
 			local basePos = STAGE_CENTERS[i]
 			if basePos then
 				Helpers.StreamAround(basePos, 1.5)
-				prompt = checkStageHasPacks(i)
+				prompt, diagReason = checkStageHasPacks(i)
 			end
 		end
 
 		if not prompt then
 			-- ในด่านยังไม่มีแพ็คตามเกรดที่เลือกเกิดใหม่ ให้กลับขึ้นลู่วิ่งรอ
+			local now = os.clock()
+			if now - StealState.lastQuotaLogTime > 15 then
+				StealState.lastQuotaLogTime = now
+				local reason = diagReason or "ยังไม่มีแพ็คเกิดในด่าน"
+				logAction("ขโมย", string.format("ด่าน %d: %s -> พักบนลู่วิ่งรอเกรดที่เลือกเกิดใหม่", i, reason), false)
+			end
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
@@ -3298,8 +3349,9 @@ local function main()
 			for _, rec in pairs(placed) do
 				if not Core._alive then return end
 				if type(rec) == "table" and type(rec.Id) == "string" then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character"
-					if not isChar and (rec.GrowthEndsAt == nil or rec.GrowthEndsAt <= sTime) then
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(rec)) or rec.Kind == "Character" or rec.CharacterName ~= nil or rec.ItemCategory == "Units"
+					local isGrowingPack = type(rec.GrowthEndsAt) == "number" and rec.GrowthEndsAt > 0
+					if not isChar and isGrowingPack and rec.GrowthEndsAt <= sTime then
 						if (itemSkipUntil[rec.Id] or 0) <= now then
 							local ok, res = Net.Invoke(Net.Paths.OpenOwned, rec.Id)
 							local success, reason = isRemoteOk(res)
