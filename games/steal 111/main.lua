@@ -2,25 +2,26 @@
 -- โครงสร้าง: Core(State/Cleanup) -> Helpers(Plot/POI) -> Net -> Features(Treadmill, StealPacks) -> UI
 -- ไม่ใช้ไวยากรณ์ type/strict เพื่อให้เข้ากับ executor ทุกตัว; error ทั้งหมดจะ warn ขึ้น console ด้วยคำนำหน้า [Kuy]
 
-local function main()
-	local Players = game:GetService("Players")
-	local Workspace = game:GetService("Workspace")
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local RunService = game:GetService("RunService")
-	local UserInputService = game:GetService("UserInputService")
-	local ProximityPromptService = game:GetService("ProximityPromptService")
-	local ContextActionService = game:GetService("ContextActionService")
-	local HttpService = game:GetService("HttpService")
-	local TweenService = game:GetService("TweenService")
-	local CollectionService = game:GetService("CollectionService")
-	local CoreGui = game:GetService("CoreGui")
-	local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
-	local VirtualInputManager = vimOk and vimSvc or nil
-	local vuOk, vuSvc = pcall(function() return game:GetService("VirtualUser") end)
-	local VirtualUser = vuOk and vuSvc or nil
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local ContextActionService = game:GetService("ContextActionService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local CollectionService = game:GetService("CollectionService")
+local CoreGui = game:GetService("CoreGui")
+local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
+local VirtualInputManager = vimOk and vimSvc or nil
+local vuOk, vuSvc = pcall(function() return game:GetService("VirtualUser") end)
+local VirtualUser = vuOk and vuSvc or nil
 
-	local LocalPlayer = Players.LocalPlayer
-	local ENV = (getgenv and getgenv()) or _G
+local LocalPlayer = Players.LocalPlayer
+local ENV = (getgenv and getgenv()) or _G
+
+local function main()
 
 	-----------------------------------------------------------------
 	-- 1. CORE: State & Cleanup (รันซ้ำ = ล้างของเก่าอัตโนมัติ)
@@ -39,6 +40,7 @@ local function main()
 		_cleanups = {},
 		_alive = true,
 	}
+	local Loops = {}
 
 	function Core:Connect(signal, fn)
 		local c = signal:Connect(fn)
@@ -153,9 +155,9 @@ local function main()
 	-----------------------------------------------------------------
 	-- 1.1. CONFIG MANAGER (ระบบจดจำฟังก์ชันและการตั้งค่าอัตโนมัติ)
 	-----------------------------------------------------------------
-	local CONFIG_FILE = "kuykuy_steal111_config.json"
+	Config.FILE = "kuykuy_steal111_config.json"
 
-	local function getEnvVar(name)
+	function Config._getEnvVar(name)
 		if type(getgenv) == "function" then
 			local g = getgenv()
 			if g and g[name] ~= nil then return g[name] end
@@ -168,14 +170,14 @@ local function main()
 		return nil
 	end
 
-	local function getFS()
-		local w = getEnvVar("writefile") or (syn and syn.write_file) or (fluxus and fluxus.write_file) or writefile
-		local r = getEnvVar("readfile") or (syn and syn.read_file) or (fluxus and fluxus.read_file) or readfile
-		local i = getEnvVar("isfile") or (syn and syn.is_file) or (fluxus and fluxus.is_file) or isfile
+	function Config._getFS()
+		local w = Config._getEnvVar("writefile") or (syn and syn.write_file) or (fluxus and fluxus.write_file) or writefile
+		local r = Config._getEnvVar("readfile") or (syn and syn.read_file) or (fluxus and fluxus.read_file) or readfile
+		local i = Config._getEnvVar("isfile") or (syn and syn.is_file) or (fluxus and fluxus.is_file) or isfile
 		return w, r, i
 	end
 
-	local function serializeFallback(data)
+	function Config._serializeFallback(data)
 		local lines = { "--KUY_CFG_V1--" }
 		for k, v in pairs(data) do
 			local tv = type(v)
@@ -190,7 +192,7 @@ local function main()
 		return table.concat(lines, "\n")
 	end
 
-	local function deserializeFallback(str)
+	function Config._deserializeFallback(str)
 		local data = {}
 		for line in string.gmatch(str, "[^\r\n]+") do
 			local k, t, val = string.match(line, "^([^=]+)=([bns]):(.+)$")
@@ -208,17 +210,17 @@ local function main()
 		return data
 	end
 
-	local function encodeConfig(data)
+	function Config._encode(data)
 		local okJson, json = pcall(function()
 			return HttpService:JSONEncode(data)
 		end)
 		if okJson and type(json) == "string" and #json > 2 then
 			return json
 		end
-		return serializeFallback(data)
+		return Config._serializeFallback(data)
 	end
 
-	local function decodeConfig(str)
+	function Config._decode(str)
 		if not str or type(str) ~= "string" or #str < 2 then return nil end
 		local okJson, parsed = pcall(function()
 			return HttpService:JSONDecode(str)
@@ -226,15 +228,15 @@ local function main()
 		if okJson and type(parsed) == "table" then
 			return parsed
 		end
-		local fallbackData = deserializeFallback(str)
+		local fallbackData = Config._deserializeFallback(str)
 		if next(fallbackData) ~= nil then
 			return fallbackData
 		end
 		return nil
 	end
 
-	local function safeWriteFile(path, content)
-		local w = getFS()
+	function Config._safeWriteFile(path, content)
+		local w = Config._getFS()
 		local diskOk, diskErr = false, "no_writefile"
 		if type(w) == "function" then
 			local ok, err = pcall(w, path, content)
@@ -248,8 +250,8 @@ local function main()
 		return diskOk, diskErr
 	end
 
-	local function safeReadFile(path)
-		local _, r, i = getFS()
+	function Config._safeReadFile(path)
+		local _, r, i = Config._getFS()
 		if type(i) == "function" and type(r) == "function" then
 			local existsOk, exists = pcall(i, path)
 			if existsOk and exists then
@@ -281,8 +283,8 @@ local function main()
 				end
 			end
 		end
-		local encoded = encodeConfig(dataToSave)
-		local diskOk, diskErr = safeWriteFile(CONFIG_FILE, encoded)
+		local encoded = Config._encode(dataToSave)
+		local diskOk, diskErr = Config._safeWriteFile(Config.FILE, encoded)
 		if diskOk then
 			return true, "disk"
 		elseif ENV.__KUY_CONFIG_CACHE then
@@ -292,12 +294,12 @@ local function main()
 	end
 
 	function Config.Load()
-		local okRead, content, source = safeReadFile(CONFIG_FILE)
+		local okRead, content, source = Config._safeReadFile(Config.FILE)
 		if not okRead or not content then
 			return false, "not_found"
 		end
 
-		local parsed = decodeConfig(content)
+		local parsed = Config._decode(content)
 		if not parsed or type(parsed) ~= "table" then
 			return false, "decode_failed"
 		end
@@ -339,10 +341,12 @@ local function main()
 	-----------------------------------------------------------------
 	-- 2. HELPERS: Plot / POI / Teleport
 	-----------------------------------------------------------------
-	local Helpers = {}
-	local plotCache = nil
-	local plotSpawnPosCache = nil
-	local PlotUtil, ServerData, PlayerData, SpeedConfig, PacksConfig, MutationConfig, RagdollMod, CoachConfig, CoachUtil, AurasConfig, RebirthUtil, DailyRewardsUtil, MutateConfig, SafeZoneUtil = nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil
+	local Helpers = {
+		plotCache = nil,
+		plotSpawnPosCache = nil,
+		mutatePadCache = nil,
+	}
+	local M = {} -- Module & Config caches
 
 	local function safeRequire(getter)
 		local ok, mod = pcall(function() return require(getter()) end)
@@ -351,149 +355,143 @@ local function main()
 	end
 
 	local function getSafeZoneUtil()
-		if not SafeZoneUtil then
-			SafeZoneUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.SafeZoneUtil end)
+		if not M.SafeZoneUtil then
+			M.SafeZoneUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.SafeZoneUtil end)
 		end
-		return SafeZoneUtil
+		return M.SafeZoneUtil
 	end
 
 	local function getPlotUtil()
-		if not PlotUtil then
-			PlotUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlotUtil end)
+		if not M.PlotUtil then
+			M.PlotUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlotUtil end)
 		end
-		return PlotUtil
+		return M.PlotUtil
 	end
 
 	local function getServerData()
-		if not ServerData then
-			ServerData = safeRequire(function() return ReplicatedStorage.Shared.Modules.DataReceiver.ServerData end)
+		if not M.ServerData then
+			M.ServerData = safeRequire(function() return ReplicatedStorage.Shared.Modules.DataReceiver.ServerData end)
 		end
-		return ServerData
+		return M.ServerData
 	end
 
 	local function getPlayerData()
-		if not PlayerData then
-			PlayerData = safeRequire(function() return ReplicatedStorage.Shared.Modules.DataReceiver.PlayerData end)
+		if not M.PlayerData then
+			M.PlayerData = safeRequire(function() return ReplicatedStorage.Shared.Modules.DataReceiver.PlayerData end)
 		end
-		return PlayerData
+		return M.PlayerData
 	end
 
 	local function getSpeedConfig()
-		if not SpeedConfig then
-			SpeedConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.SpeedConfig end)
+		if not M.SpeedConfig then
+			M.SpeedConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.SpeedConfig end)
 		end
-		return SpeedConfig
+		return M.SpeedConfig
 	end
 
 	local function getPacksConfig()
-		if not PacksConfig then
-			PacksConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.PacksConfig end)
+		if not M.PacksConfig then
+			M.PacksConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.PacksConfig end)
 		end
-		return PacksConfig
+		return M.PacksConfig
 	end
 
-	local CharacterConfig = nil
 	local function getCharacterConfig()
-		if not CharacterConfig then
-			CharacterConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.CharacterConfig end)
+		if not M.CharacterConfig then
+			M.CharacterConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.CharacterConfig end)
 		end
-		return CharacterConfig
+		return M.CharacterConfig
 	end
 
 	local function getMutationConfig()
-		if not MutationConfig then
-			MutationConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.MutationConfig end)
+		if not M.MutationConfig then
+			M.MutationConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.MutationConfig end)
 		end
-		return MutationConfig
+		return M.MutationConfig
 	end
 
 	local function getRagdollModule()
-		if not RagdollMod then
-			RagdollMod = safeRequire(function() return ReplicatedStorage.Shared.Modules.Ragdoll end)
+		if not M.RagdollMod then
+			M.RagdollMod = safeRequire(function() return ReplicatedStorage.Shared.Modules.Ragdoll end)
 		end
-		return RagdollMod
+		return M.RagdollMod
 	end
 
 	local function getCoachConfig()
-		if not CoachConfig then
-			CoachConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.CoachConfig end)
+		if not M.CoachConfig then
+			M.CoachConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.CoachConfig end)
 		end
-		return CoachConfig
+		return M.CoachConfig
 	end
 
 	local function getCoachUtil()
-		if not CoachUtil then
-			CoachUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.CoachUtil end)
+		if not M.CoachUtil then
+			M.CoachUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.CoachUtil end)
 		end
-		return CoachUtil
+		return M.CoachUtil
 	end
 
 	local function getAurasConfig()
-		if not AurasConfig then
-			AurasConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.AurasConfig end)
+		if not M.AurasConfig then
+			M.AurasConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.AurasConfig end)
 		end
-		return AurasConfig
+		return M.AurasConfig
 	end
 
 	local function getRebirthUtil()
-		if not RebirthUtil then
-			RebirthUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.RebirthUtil end)
+		if not M.RebirthUtil then
+			M.RebirthUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.RebirthUtil end)
 		end
-		return RebirthUtil
+		return M.RebirthUtil
 	end
 
 	local function getDailyRewardsUtil()
-		if not DailyRewardsUtil then
-			DailyRewardsUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.DailyRewardsUtil end)
+		if not M.DailyRewardsUtil then
+			M.DailyRewardsUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.DailyRewardsUtil end)
 		end
-		return DailyRewardsUtil
+		return M.DailyRewardsUtil
 	end
 
 	local function getMutateConfig()
-		if not MutateConfig then
-			MutateConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.MutateConfig end)
+		if not M.MutateConfig then
+			M.MutateConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.MutateConfig end)
 		end
-		return MutateConfig
+		return M.MutateConfig
 	end
 
-	local StageConfig = nil
 	local function getStageConfig()
-		if not StageConfig then
-			StageConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.StageConfig end)
+		if not M.StageConfig then
+			M.StageConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.StageConfig end)
 		end
-		return StageConfig
+		return M.StageConfig
 	end
 
-	local TreadmillConfig = nil
 	local function getTreadmillConfig()
-		if not TreadmillConfig then
-			TreadmillConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.TreadmillConfig end)
+		if not M.TreadmillConfig then
+			M.TreadmillConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.TreadmillConfig end)
 		end
-		return TreadmillConfig
+		return M.TreadmillConfig
 	end
 
-	local BaseUpgradeConfig = nil
 	local function getBaseUpgradeConfig()
-		if not BaseUpgradeConfig then
-			BaseUpgradeConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.BaseUpgradeConfig end)
+		if not M.BaseUpgradeConfig then
+			M.BaseUpgradeConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.BaseUpgradeConfig end)
 		end
-		return BaseUpgradeConfig
+		return M.BaseUpgradeConfig
 	end
 
-	local LuckMachineConfig = nil
 	local function getLuckMachineConfig()
-		if not LuckMachineConfig then
-			LuckMachineConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.LuckMachineConfig end)
+		if not M.LuckMachineConfig then
+			M.LuckMachineConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.LuckMachineConfig end)
 		end
-		return LuckMachineConfig
+		return M.LuckMachineConfig
 	end
 
-	local IndexConfig = nil
 	local function getIndexConfig()
-		if not IndexConfig then
-			IndexConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.IndexConfig end)
+		if not M.IndexConfig then
+			M.IndexConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.IndexConfig end)
 		end
-		return IndexConfig
+		return M.IndexConfig
 	end
 
 	function Helpers.GetSafeZoneBounds()
@@ -537,17 +535,17 @@ local function main()
 
 	-- Plot ของผู้เล่น: ใช้ PlotUtil.GetPlotByUserId ของเกม (ไม่ Hardcode เลข Plot)
 	function Helpers.GetPlot(force)
-		if not force and plotCache and plotCache.Parent then
-			return plotCache
+		if not force and Helpers.plotCache and Helpers.plotCache.Parent then
+			return Helpers.plotCache
 		end
-		plotCache = nil
+		Helpers.plotCache = nil
 		local util = getPlotUtil()
 		if not util then return nil end
 		local ok, entry = pcall(util.GetPlotByUserId, LocalPlayer.UserId)
 		if not ok or type(entry) ~= "table" or entry.Name == nil then return nil end
 		local plots = Workspace:FindFirstChild("Plots")
 		local slot = plots and plots:FindFirstChild(tostring(entry.Name))
-		plotCache = slot
+		Helpers.plotCache = slot
 		return slot
 	end
 
@@ -574,11 +572,11 @@ local function main()
 		local spawnInst = Helpers.GetPlotSpawn()
 		local pos = spawnInst and Helpers.GetPosition(spawnInst)
 		if pos then
-			plotSpawnPosCache = pos
+			Helpers.plotSpawnPosCache = pos
 			return pos
 		end
-		if plotSpawnPosCache then
-			return plotSpawnPosCache
+		if Helpers.plotSpawnPosCache then
+			return Helpers.plotSpawnPosCache
 		end
 		local game_ = Workspace:FindFirstChild("Game")
 		local sz = game_ and game_:FindFirstChild("SafeZone")
@@ -652,15 +650,14 @@ local function main()
 		return cond()
 	end
 
-	local mutatePadCache = nil
 	function Helpers.GetMutateMachinePad()
-		if mutatePadCache and mutatePadCache.Parent then
-			return mutatePadCache
+		if Helpers.mutatePadCache and Helpers.mutatePadCache.Parent then
+			return Helpers.mutatePadCache
 		end
 		local m2 = Workspace:FindFirstChild("Machine2")
 		local pad = m2 and m2:FindFirstChild("MutationMachine")
 		if pad and pad:IsA("BasePart") then
-			mutatePadCache = pad
+			Helpers.mutatePadCache = pad
 			return pad
 		end
 		return nil
@@ -708,12 +705,12 @@ local function main()
 		return true, res, extra
 	end
 
-	local SUFFIX_MAP = {
+	Helpers.SUFFIX_MAP = {
 		k = 1e3, m = 1e6, b = 1e9, t = 1e12,
 		qa = 1e15, qi = 1e18, sx = 1e21, sp = 1e24,
 		oc = 1e27, no = 1e30, dc = 1e33,
 	}
-	local function parseSuffixNumber(str)
+	function Helpers.ParseSuffixNumber(str)
 		if type(str) == "number" then return str end
 		if type(str) ~= "string" then return nil end
 		local clean = str:gsub(",", ""):gsub("%s+", "")
@@ -722,7 +719,7 @@ local function main()
 		local nPart, sPart = clean:match("^([%d%.]+)%s*([%a]+)$")
 		if nPart and sPart then
 			local n = tonumber(nPart)
-			local mul = SUFFIX_MAP[sPart:lower()]
+			local mul = Helpers.SUFFIX_MAP[sPart:lower()]
 			if n and mul then
 				return n * mul
 			end
@@ -739,14 +736,14 @@ local function main()
 		if pd and pd.Get then
 			local ok, val = pcall(pd.Get, "Speed")
 			if ok and val ~= nil then
-				spdStat = tonumber(val) or parseSuffixNumber(val)
+				spdStat = tonumber(val) or Helpers.ParseSuffixNumber(val)
 			end
 		end
 		if not spdStat then
 			local ls = LocalPlayer:FindFirstChild("leaderstats")
 			local sv = ls and ls:FindFirstChild("Speed")
 			if sv then
-				spdStat = tonumber(sv.Value) or parseSuffixNumber(sv.Value)
+				spdStat = tonumber(sv.Value) or Helpers.ParseSuffixNumber(sv.Value)
 			end
 		end
 		if sc and sc.ToWalkSpeed and spdStat then
@@ -1380,7 +1377,7 @@ local function main()
 		end, 1.2)
 	end
 
-	local function startEnterLoop()
+	function Loops.Enter()
 		Core:Loop("enter", "AutoEnter", 1, function()
 			-- ถ้าเปิดระบบ AutoSteal ให้ระบบขโมยเป็นผู้ควบคุมการขึ้น-ลงลู่วิ่งทั้งหมดเพียงผู้เดียว เพื่อไม่ให้แย่งสิทธิ์กัน
 			if Core.Flags.AutoSteal then return end
@@ -2242,11 +2239,18 @@ local function main()
 		end
 	end
 
-	local bossSpeedCache = {}
-	local lastOrderSig = ""
+	local StealState = {
+		bossSpeedCache = {},
+		lastOrderSig = "",
+		stageStealCount = 0,
+		currentTargetStage = nil,
+		waitingForNightReset = false,
+		lastResetNightCycle = 0,
+		lastQuotaLogTime = 0,
+	}
 
 	local function getStageBossSpeed(i)
-		if bossSpeedCache[i] then return bossSpeedCache[i] end
+		if StealState.bossSpeedCache[i] then return StealState.bossSpeedCache[i] end
 
 		local sc = getStageConfig()
 		local spdCfg = getSpeedConfig()
@@ -2256,7 +2260,7 @@ local function main()
 			-- ด่าน 1 มีระบุ WalkSpeed ชัดเจนใน Enemy (16)
 			local enemyWalkSpeed = stageData.Enemy and stageData.Enemy.WalkSpeed
 			if enemyWalkSpeed and enemyWalkSpeed > 0 then
-				bossSpeedCache[i] = enemyWalkSpeed
+				StealState.bossSpeedCache[i] = enemyWalkSpeed
 				return enemyWalkSpeed
 			end
 			-- ด่านอื่นๆ คำนวณความเร็ววิ่งจริงจาก RecommendedSpeed ผ่าน SpeedConfig.ToWalkSpeed
@@ -2264,7 +2268,7 @@ local function main()
 			if rec and spdCfg and spdCfg.ToWalkSpeed then
 				local ok, ws = pcall(spdCfg.ToWalkSpeed, rec, false)
 				if ok and type(ws) == "number" and ws > 0 then
-					bossSpeedCache[i] = ws
+					StealState.bossSpeedCache[i] = ws
 					return ws
 				end
 			end
@@ -2277,7 +2281,7 @@ local function main()
 			[9] = 207, [10] = 215, [11] = 226, [12] = 241
 		}
 		local spd = fallbackSpeeds[i] or (16 + i * 18)
-		bossSpeedCache[i] = spd
+		StealState.bossSpeedCache[i] = spd
 		return spd
 	end
 
@@ -2312,8 +2316,8 @@ local function main()
 			end
 			local minSpd = lowestSelected and getStageBossSpeed(lowestSelected) or 16
 			local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
-			if sig ~= lastOrderSig then
-				lastOrderSig = sig
+			if sig ~= StealState.lastOrderSig then
+				StealState.lastOrderSig = sig
 				logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) กำลังวิ่งลู่วิ่งเพื่อปั๊ม Speed...", mySpeed, lowestSelected or 1, minSpd), true)
 			end
 			return {}
@@ -2366,12 +2370,6 @@ local function main()
 		return math.max(0, math.ceil(endsAt - now))
 	end
 
-	local stageStealCount = 0
-	local currentTargetStage = nil
-	local waitingForNightReset = false
-	local lastResetNightCycle = 0
-	local lastQuotaLogTime = 0
-
 	local function stealCycle()
 		-- 1. ตรวจสอบด่านเป้าหมายเพียงด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
 		local targetStages = buildStageOrder()
@@ -2388,21 +2386,21 @@ local function main()
 		local currentPending = (getPacksToPlace and #getPacksToPlace()) or 0
 
 		-- หากสลับด่านเป้าหมาย ให้รีเซ็ตตัวนับรอบ
-		if currentTargetStage ~= i then
-			currentTargetStage = i
-			stageStealCount = 0
-			waitingForNightReset = false
+		if StealState.currentTargetStage ~= i then
+			StealState.currentTargetStage = i
+			StealState.stageStealCount = 0
+			StealState.waitingForNightReset = false
 		end
 
 		local isNight = isNightActive()
 		local currentPhaseEndsAt = getNightPhaseEndsAt()
 
 		-- ตรวจจับการรีเซ็ตแพ็คการ์ดทุกด่านเมื่อเข้าสู่ช่วงเวลากลางคืน (Night Active)
-		if isNight and lastResetNightCycle ~= currentPhaseEndsAt then
-			lastResetNightCycle = currentPhaseEndsAt
-			if waitingForNightReset or stageStealCount > 0 then
-				waitingForNightReset = false
-				stageStealCount = 0
+		if isNight and StealState.lastResetNightCycle ~= currentPhaseEndsAt then
+			StealState.lastResetNightCycle = currentPhaseEndsAt
+			if StealState.waitingForNightReset or StealState.stageStealCount > 0 then
+				StealState.waitingForNightReset = false
+				StealState.stageStealCount = 0
 				logAction("ขโมย", string.format("🌙 ด่าน %d: กลางคืนมาถึงแล้ว! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ทั้งหมด -> เริ่มรอบขโมยการ์ด 4 ใบใหม่", i), true)
 			end
 		end
@@ -2410,26 +2408,26 @@ local function main()
 		-- ตรวจสอบโควต้าการขโมย:
 		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว หรือกำลังรอเวลากลางคืน (waitingForNightReset)
 		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋ารอวางครบ 4 ใบขึ้นไป (currentPending >= maxPacks)
-		local quotaReached = waitingForNightReset or (stageStealCount >= maxPacks)
+		local quotaReached = StealState.waitingForNightReset or (StealState.stageStealCount >= maxPacks)
 		local pendingFull = currentPending >= maxPacks
 
 		if quotaReached or pendingFull then
 			-- หากถึงเวลากลางคืนแล้ว และเคลียร์แพ็คในกระเป๋าหมดแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
 			if isNight and not pendingFull and currentPending == 0 then
-				waitingForNightReset = false
-				stageStealCount = 0
+				StealState.waitingForNightReset = false
+				StealState.stageStealCount = 0
 			else
 				local now = os.clock()
-				if now - lastQuotaLogTime > 15 then
-					lastQuotaLogTime = now
+				if now - StealState.lastQuotaLogTime > 15 then
+					StealState.lastQuotaLogTime = now
 					local secUntilNight = getTimeUntilNight()
 					local timeStr = isNight and "กำลังอยู่ในช่วงกลางคืน (แพ็ครีเซ็ตแล้ว)"
 						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 							or string.format("เหลืออีก %d วิ", secUntilNight))
 
 					local reason = pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (ครบโควต้า %d)", currentPending, maxPacks)
-						or (quotaReached and string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", stageStealCount, maxPacks, timeStr))
-						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", stageStealCount, maxPacks)
+						or (quotaReached and string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", StealState.stageStealCount, maxPacks, timeStr))
+						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", StealState.stageStealCount, maxPacks)
 					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
 				end
 
@@ -2482,11 +2480,11 @@ local function main()
 		Core.Busy = false
 
 		if ok and res then
-			stageStealCount = stageStealCount + 1
+			StealState.stageStealCount = StealState.stageStealCount + 1
 			Stats.stealOk = Stats.stealOk + 1
 			local info = (pName ~= "" and pName ~= rName)
-				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), stageStealCount, maxPacks)
-				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), stageStealCount, maxPacks)
+				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), StealState.stageStealCount, maxPacks)
+				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), StealState.stageStealCount, maxPacks)
 			logAction("ขโมย", info, true)
 
 			-- จัดการนำแพ็คไปรวม/วางที่ฐาน
@@ -2502,13 +2500,13 @@ local function main()
 
 			-- หากขโมยครบโควต้า หรือมีแพ็คค้างในกระเป๋าครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งและรอการรีเซ็ตตอนกลางคืน
 			local afterPending = (getPacksToPlace and #getPacksToPlace()) or 0
-			if stageStealCount >= maxPacks or afterPending >= maxPacks then
-				waitingForNightReset = true
+			if StealState.stageStealCount >= maxPacks or afterPending >= maxPacks then
+				StealState.waitingForNightReset = true
 				local secUntilNight = getTimeUntilNight()
 				local timeStr = secUntilNight > 60
 					and string.format("%d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 					or string.format("%d วิ", secUntilNight)
-				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ตทุกด่านตอนกลางคืน (เหลืออีก %s)", stageStealCount, i, timeStr), true)
+				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ตทุกด่านตอนกลางคืน (เหลืออีก %s)", StealState.stageStealCount, i, timeStr), true)
 				if runBaseMaintenance then pcall(runBaseMaintenance) end
 				returnToSafeRest(true)
 			end
@@ -2529,7 +2527,7 @@ local function main()
 		task.wait(Core.Flags.StealDelay)
 	end
 
-	local function startStealLoop()
+	function Loops.Steal()
 		Core:Loop("steal", "AutoSteal", 0.5, stealCycle)
 	end
 
@@ -2538,10 +2536,14 @@ local function main()
 	-----------------------------------------------------------------
 	-- 5.5. FEATURE: COACHES & AURAS (Auto Buy / Auto Equip Best)
 	-----------------------------------------------------------------
-	local lastCoachBuy, lastCoachEquip = 0, 0
-	local lastEquippedCoachKey = ""
-	local coachEquipDebounceUntil = 0
-	local lastAuraBuy, lastAuraEquip = 0, 0
+	local CoachState = {
+		lastCoachBuy = 0,
+		lastCoachEquip = 0,
+		lastEquippedCoachKey = "",
+		coachEquipDebounceUntil = 0,
+		lastAuraBuy = 0,
+		lastAuraEquip = 0,
+	}
 
 	local function getPlayerDataKey(key)
 		local pd = getPlayerData()
@@ -2622,21 +2624,21 @@ local function main()
 
 		-- หากโค้ชที่ดีที่สุดสวมใส่อยู่แล้ว (ทั้งใน PlayerData หรือใน Character Attribute) ให้บันทึกและจบการทำงานทันที
 		if curEquipped == bestKey or curAttr == bestKey then
-			lastEquippedCoachKey = bestKey
+			CoachState.lastEquippedCoachKey = bestKey
 			return
 		end
 
 		local now = os.clock()
 		-- หากเพิ่งยิงคำสั่งสวมใส่ bestKey นี้ไปแล้ว และอยู่ในช่วง Debounce (5 วินาที) ไม่ยิงซ้ำระหว่างรอเซิร์ฟเวอร์ตอบสนอง
-		if lastEquippedCoachKey == bestKey and now < coachEquipDebounceUntil then
+		if CoachState.lastEquippedCoachKey == bestKey and now < CoachState.coachEquipDebounceUntil then
 			return
 		end
 
 		local rateLimit = math.max((cc and cc.RateLimit) or 0.3, 1.5)
-		if now - lastCoachEquip < rateLimit then return end
-		lastCoachEquip = now
-		coachEquipDebounceUntil = now + 5.0
-		lastEquippedCoachKey = bestKey
+		if now - CoachState.lastCoachEquip < rateLimit then return end
+		CoachState.lastCoachEquip = now
+		CoachState.coachEquipDebounceUntil = now + 5.0
+		CoachState.lastEquippedCoachKey = bestKey
 
 		local ok, res = Net.Invoke(Net.Paths.CoachesEquip, bestKey)
 		local success, reason = isRemoteOk(res)
@@ -2644,8 +2646,8 @@ local function main()
 			logAction("โค้ช", "สวมใส่: " .. tostring(cu.GetDisplayName(bestKey)), true)
 		elseif ok and reason then
 			-- หากล้มเหลว ให้เคลียร์ debounce เพื่อให้สามารถลองใหม่ได้เมื่อพร้อม
-			lastEquippedCoachKey = ""
-			coachEquipDebounceUntil = 0
+			CoachState.lastEquippedCoachKey = ""
+			CoachState.coachEquipDebounceUntil = 0
 			logAction("โค้ช", "ใส่พลาด: " .. tostring(reason), false)
 		end
 	end
@@ -2658,7 +2660,7 @@ local function main()
 
 		local now = os.clock()
 		local rateLimit = math.max((cc and cc.RateLimit) or 0.3, 0.4)
-		if now - lastCoachBuy < rateLimit then return end
+		if now - CoachState.lastCoachBuy < rateLimit then return end
 
 		local all = cu.GetAll()
 		if type(all) ~= "table" then return end
@@ -2676,7 +2678,7 @@ local function main()
 		for _, entry in ipairs(all) do
 			if not entry.Featured and type(entry.Price) == "number" and entry.Price > 0 and cash >= entry.Price then
 				if cu.GetRemaining(coachData, entry, window) > 0 then
-					lastCoachBuy = now
+					CoachState.lastCoachBuy = now
 					local ok, res = Net.Invoke(Net.Paths.CoachesPurchase, entry.Id)
 					local success, reason = isRemoteOk(res)
 					if ok and success then
@@ -2685,7 +2687,7 @@ local function main()
 						-- ให้เรียก equipBestCoach เพื่อสวมใส่โค้ชที่ดีที่สุดกลับมาทันที
 						task.spawn(function()
 							task.wait(0.2)
-							lastEquippedCoachKey = ""
+							CoachState.lastEquippedCoachKey = ""
 							equipBestCoach()
 						end)
 					elseif ok and reason then
@@ -2715,8 +2717,8 @@ local function main()
 		if not bestId or auraData.Equipped == bestId then return end
 
 		local now = os.clock()
-		if now - lastAuraEquip < 1.0 then return end
-		lastAuraEquip = now
+		if now - CoachState.lastAuraEquip < 1.0 then return end
+		CoachState.lastAuraEquip = now
 
 		local ok, res = Net.Invoke(Net.Paths.AurasEquip, bestId)
 		local success, reason = isRemoteOk(res)
@@ -2733,7 +2735,7 @@ local function main()
 		if not (ac and type(ac.Ordered) == "table" and type(auraData) == "table") then return end
 
 		local now = os.clock()
-		if now - lastAuraBuy < 0.6 then return end
+		if now - CoachState.lastAuraBuy < 0.6 then return end
 
 		local owned = type(auraData.Owned) == "table" and auraData.Owned or {}
 		local candidates = {}
@@ -2756,7 +2758,7 @@ local function main()
 		for _, aura in ipairs(candidates) do
 			local price = tonumber(aura.CashPrice)
 			if price and price > 0 and cash >= price then
-				lastAuraBuy = now
+				CoachState.lastAuraBuy = now
 				local ok, res = Net.Invoke(Net.Paths.AurasPurchase, aura.Id)
 				local success, reason = isRemoteOk(res)
 				if ok and success then
@@ -2769,11 +2771,11 @@ local function main()
 		end
 	end
 
-	local function startAutoBuyCoachLoop()
+	function Loops.BuyCoach()
 		Core:Loop("buyCoach", "AutoBuyCoach", 1, buyBestCoach)
 	end
 
-	local function startAutoEquipCoachLoop()
+	function Loops.EquipCoach()
 		task.spawn(equipBestCoach)
 		Core:Loop("equipCoach", "AutoEquipCoach", 4.0, equipBestCoach)
 
@@ -2790,11 +2792,11 @@ local function main()
 		end
 	end
 
-	local function startAutoBuyAuraLoop()
+	function Loops.BuyAura()
 		Core:Loop("buyAura", "AutoBuyAura", 1, buyBestAura)
 	end
 
-	local function startAutoEquipAuraLoop()
+	function Loops.EquipAura()
 		Core:Loop("equipAura", "AutoEquipAura", 1.2, equipBestAura)
 	end
 
@@ -3642,7 +3644,7 @@ local function main()
 		end
 	end
 
-	local function startAutoPlacePacksLoop()
+	function Loops.PlacePacks()
 		Core:Loop("placePacks", "AutoPlacePacks", 1.5, function()
 			if not Core.Busy and not Helpers.IsCarrying() then
 				if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
@@ -3652,27 +3654,27 @@ local function main()
 		end)
 	end
 
-	local function startAutoOpenPacksLoop()
+	function Loops.OpenPacks()
 		task.spawn(autoOpenPacksStep)
 		Core:Loop("openPacks", "AutoOpenPacks", 0.6, autoOpenPacksStep)
 	end
 
-	local function startAutoEquipBestLoop()
+	function Loops.EquipBest()
 		task.spawn(function() autoEquipBestStep(true) end)
 		Core:Loop("equipBest", "AutoEquipBest", 3, autoEquipBestStep)
 	end
 
-	local function startAutoSellLoop()
+	function Loops.Sell()
 		task.spawn(autoSellUnitsStep)
 		Core:Loop("sellUnits", "AutoSellUnits", 0.8, autoSellUnitsStep)
 	end
 
-	local function startAutoMergeLoop()
+	function Loops.Merge()
 		task.spawn(autoMergeStep)
 		Core:Loop("mergePacks", "AutoMerge", 4.0, autoMergeStep)
 	end
 
-	local function startAutoFuseLoop()
+	function Loops.Fuse()
 		task.spawn(autoFuseStep)
 		Core:Loop("fuseUnits", "AutoFuse", 1.8, autoFuseStep)
 	end
@@ -3680,12 +3682,19 @@ local function main()
 	-----------------------------------------------------------------
 	-- 5.7. FEATURE: UPGRADES, REBIRTH, CLAIMS & ANTI-AFK
 	-----------------------------------------------------------------
-	local nextTmUpgrade, nextBaseUpgrade, lastRebirthTry = 0, 0, 0
-	local nextOfflineClaim, nextDailyClaim, nextIndexClaim = 0, 0, 0
+	local UpgState = {
+		nextTmUpgrade = 0,
+		nextBaseUpgrade = 0,
+		lastRebirthTry = 0,
+		nextOfflineClaim = 0,
+		nextDailyClaim = 0,
+		nextIndexClaim = 0,
+		nextLuckUpgrade = 0,
+	}
 
 	local function autoUpgradeTreadmillStep()
 		local now = os.clock()
-		if now < nextTmUpgrade then return end
+		if now < UpgState.nextTmUpgrade then return end
 
 		local tc = getTreadmillConfig()
 		local pd = getPlayerData()
@@ -3695,24 +3704,24 @@ local function main()
 
 		if nextPrice == nil then
 			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
-			nextTmUpgrade = now + 60
+			UpgState.nextTmUpgrade = now + 60
 			return
 		end
 
 		local cash = getPlayerCash()
 		if cash < nextPrice then
 			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
-			nextTmUpgrade = now + 4
+			UpgState.nextTmUpgrade = now + 4
 			return
 		end
 
 		local ok, res = Net.Invoke(Net.Paths.TreadmillUpgrade, {})
 		local success, reason = isRemoteOk(res)
 		if ok and success then
-			nextTmUpgrade = now + 1.0
+			UpgState.nextTmUpgrade = now + 1.0
 			logAction("อัปเกรด", "อัปเกรดลู่วิ่งสำเร็จ (Level: " .. tostring(res and res.LevelName or "Next") .. ")", true)
 		else
-			nextTmUpgrade = now + 5
+			UpgState.nextTmUpgrade = now + 5
 			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
 				logAction("อัปเกรด", "ลู่วิ่ง: " .. tostring(reason), false)
 			end
@@ -3721,7 +3730,7 @@ local function main()
 
 	local function autoUpgradeBaseStep()
 		local now = os.clock()
-		if now < nextBaseUpgrade then return end
+		if now < UpgState.nextBaseUpgrade then return end
 
 		local bc = getBaseUpgradeConfig()
 		local pd = getPlayerData()
@@ -3731,35 +3740,33 @@ local function main()
 
 		if nextPrice == nil then
 			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
-			nextBaseUpgrade = now + 60
+			UpgState.nextBaseUpgrade = now + 60
 			return
 		end
 
 		local cash = getPlayerCash()
 		if cash < nextPrice then
 			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
-			nextBaseUpgrade = now + 4
+			UpgState.nextBaseUpgrade = now + 4
 			return
 		end
 
 		local ok, res = Net.Invoke(Net.Paths.BaseUpgradePurchase, {})
 		local success, reason = isRemoteOk(res)
 		if ok and success then
-			nextBaseUpgrade = now + 1.0
+			UpgState.nextBaseUpgrade = now + 1.0
 			logAction("อัปเกรด", "อัปเกรดฐานสำเร็จ (Level: " .. tostring(res and res.Level or "Next") .. ")", true)
 		else
-			nextBaseUpgrade = now + 5
+			UpgState.nextBaseUpgrade = now + 5
 			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
 				logAction("อัปเกรด", "ฐาน: " .. tostring(reason), false)
 			end
 		end
 	end
 
-	local nextLuckUpgrade = 0
-
 	local function autoUpgradeLuckStep()
 		local now = os.clock()
-		if now < nextLuckUpgrade then return end
+		if now < UpgState.nextLuckUpgrade then return end
 
 		local lmc = getLuckMachineConfig()
 		local curLvl = tonumber(LocalPlayer:GetAttribute("HatchLuckLevel")) or 0
@@ -3767,25 +3774,25 @@ local function main()
 
 		if nextPrice == nil then
 			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
-			nextLuckUpgrade = now + 60
+			UpgState.nextLuckUpgrade = now + 60
 			return
 		end
 
 		local cash = getPlayerCash()
 		if cash < nextPrice then
 			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
-			nextLuckUpgrade = now + 4
+			UpgState.nextLuckUpgrade = now + 4
 			return
 		end
 
 		local ok, res = Net.Invoke(Net.Paths.LuckMachineUpgrade, "Max")
 		local success, reason = isRemoteOk(res)
 		if ok and success then
-			nextLuckUpgrade = now + 1.0
+			UpgState.nextLuckUpgrade = now + 1.0
 			local newLvl = tonumber(LocalPlayer:GetAttribute("HatchLuckLevel")) or (curLvl + 1)
 			logAction("อัปเกรด", "อัปเกรดเครื่องโชคสำเร็จ (Level: " .. tostring(newLvl) .. ")", true)
 		else
-			nextLuckUpgrade = now + 5
+			UpgState.nextLuckUpgrade = now + 5
 			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
 				logAction("อัปเกรด", "เครื่องโชค: " .. tostring(reason), false)
 			end
@@ -3794,7 +3801,7 @@ local function main()
 
 	local function autoRebirthStep()
 		local now = os.clock()
-		if now - lastRebirthTry < 3 then return end
+		if now - UpgState.lastRebirthTry < 3 then return end
 		local ru = getRebirthUtil()
 		if not (ru and ru.GetCount and ru.GetRequirement) then return end
 
@@ -3802,7 +3809,7 @@ local function main()
 		local spd = tonumber(getPlayerDataKey("Speed")) or 0
 		local needed = ru.GetRequirement(count)
 		if needed and spd >= needed then
-			lastRebirthTry = now
+			UpgState.lastRebirthTry = now
 			local ok, res = Net.Invoke(Net.Paths.RebirthRequest)
 			local success, reason = isRemoteOk(res)
 			if ok and success then
@@ -3815,29 +3822,29 @@ local function main()
 
 	local function autoClaimStep()
 		local now = os.clock()
-		if now >= nextOfflineClaim then
+		if now >= UpgState.nextOfflineClaim then
 			local pending = getPlayerDataKey("PendingEarnings")
 			local lastOff = getPlayerDataKey("LastOfflineReward")
 			local hasOffline = (type(pending) == "table" and ((tonumber(pending.Cash) or 0) > 0 or (tonumber(pending.Diamonds) or 0) > 0))
 				or (type(lastOff) == "table" and (tonumber(lastOff.Cash) or 0) > 0)
 			if hasOffline then
-				nextOfflineClaim = now + 15
+				UpgState.nextOfflineClaim = now + 15
 				local ok, res = Net.Invoke(Net.Paths.OfflineClaim)
 				if ok and isRemoteOk(res) then
 					logAction("เคลม", "เคลม Offline สำเร็จ", true)
 				end
 				return
 			end
-			nextOfflineClaim = now + 10
+			UpgState.nextOfflineClaim = now + 10
 		end
 
-		if now >= nextDailyClaim then
+		if now >= UpgState.nextDailyClaim then
 			local dru = getDailyRewardsUtil()
 			local dailyData = getPlayerDataKey("DailyRewards")
 			if dru and dru.GetState and type(dailyData) == "table" then
 				local okSt, st = pcall(dru.GetState, dailyData, Workspace:GetServerTimeNow())
 				if okSt and type(st) == "table" and st.CanClaim then
-					nextDailyClaim = now + 20
+					UpgState.nextDailyClaim = now + 20
 					local ok, res = Net.Invoke(Net.Paths.DailyClaim)
 					if ok and isRemoteOk(res) then
 						logAction("เคลม", "เคลม Daily สำเร็จ", true)
@@ -3845,10 +3852,10 @@ local function main()
 					return
 				end
 			end
-			nextDailyClaim = now + 15
+			UpgState.nextDailyClaim = now + 15
 		end
 
-		if now >= nextIndexClaim then
+		if now >= UpgState.nextIndexClaim then
 			local idx = getPlayerDataKey("Index")
 			local hasUnclaimed = false
 			if type(idx) == "table" and type(idx.Unlocked) == "table" then
@@ -3861,7 +3868,7 @@ local function main()
 				end
 			end
 			if hasUnclaimed then
-				nextIndexClaim = now + 25
+				UpgState.nextIndexClaim = now + 25
 				local mutationKeys = { "", "Gold", "Emerald", "Diamond", "Cursed", "Transcendent", "Glitched" }
 				local totalClaimed = 0
 
@@ -3907,23 +3914,23 @@ local function main()
 		end
 	end
 
-	local function startAutoUpgradeTreadmillLoop()
+	function Loops.UpgradeTreadmill()
 		Core:Loop("upgTreadmill", "AutoUpgradeTreadmill", 0.5, autoUpgradeTreadmillStep)
 	end
 
-	local function startAutoUpgradeBaseLoop()
+	function Loops.UpgradeBase()
 		Core:Loop("upgBase", "AutoUpgradeBase", 0.5, autoUpgradeBaseStep)
 	end
 
-	local function startAutoUpgradeLuckLoop()
+	function Loops.UpgradeLuck()
 		Core:Loop("upgLuck", "AutoUpgradeLuck", 0.5, autoUpgradeLuckStep)
 	end
 
-	local function startAutoRebirthLoop()
+	function Loops.Rebirth()
 		Core:Loop("autoRebirth", "AutoRebirth", 1.5, autoRebirthStep)
 	end
 
-	local function startAutoClaimLoop()
+	function Loops.Claim()
 		Core:Loop("autoClaim", "AutoClaim", 2, autoClaimStep)
 	end
 
@@ -3974,25 +3981,25 @@ local function main()
 	-----------------------------------------------------------------
 	-- 6. UI CREATION (KUYKUY HUB UI FRAMEWORK - DARK PURPLE BLUEPRINT)
 	-----------------------------------------------------------------
-	local UIColors = {
-		Background    = Color3.fromRGB(18, 15, 26),
-		Sidebar       = Color3.fromRGB(13, 11, 20),
-		Content       = Color3.fromRGB(24, 20, 36),
-		Card          = Color3.fromRGB(32, 27, 48),
-		CardHover     = Color3.fromRGB(42, 36, 62),
-		Accent        = Color3.fromRGB(155, 89, 230), -- #9B59E6
-		AccentLight   = Color3.fromRGB(180, 120, 255), -- #B478FF
-		TextPrimary   = Color3.fromRGB(245, 240, 255), -- #F5F0FF
-		TextSecondary = Color3.fromRGB(160, 150, 180), -- #A096B4
-		Border        = Color3.fromRGB(48, 40, 70),   -- #302846
-		Success       = Color3.fromRGB(46, 204, 113),  -- #2ECC71
-		Danger        = Color3.fromRGB(231, 76, 60),   -- #E74C3C
-		Warning       = Color3.fromRGB(241, 196, 15),  -- #F1C40F
-		Gold          = Color3.fromRGB(255, 205, 70),  -- #FFCD46
-		Cyan          = Color3.fromRGB(0, 210, 255),   -- #00D2FF
-	}
-
 	local function buildUI()
+		local UIColors = {
+			Background    = Color3.fromRGB(18, 15, 26),
+			Sidebar       = Color3.fromRGB(13, 11, 20),
+			Content       = Color3.fromRGB(24, 20, 36),
+			Card          = Color3.fromRGB(32, 27, 48),
+			CardHover     = Color3.fromRGB(42, 36, 62),
+			Accent        = Color3.fromRGB(155, 89, 230), -- #9B59E6
+			AccentLight   = Color3.fromRGB(180, 120, 255), -- #B478FF
+			TextPrimary   = Color3.fromRGB(245, 240, 255), -- #F5F0FF
+			TextSecondary = Color3.fromRGB(160, 150, 180), -- #A096B4
+			Border        = Color3.fromRGB(48, 40, 70),   -- #302846
+			Success       = Color3.fromRGB(46, 204, 113),  -- #2ECC71
+			Danger        = Color3.fromRGB(231, 76, 60),   -- #E74C3C
+			Warning       = Color3.fromRGB(241, 196, 15),  -- #F1C40F
+			Gold          = Color3.fromRGB(255, 205, 70),  -- #FFCD46
+			Cyan          = Color3.fromRGB(0, 210, 255),   -- #00D2FF
+		}
+
 		-- ล้าง UI เก่าถ้ามีอยู่
 		local oldUI = (CoreGui and CoreGui:FindFirstChild("KUYKUY_ScreenGui"))
 			or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("KUYKUY_ScreenGui"))
@@ -4733,17 +4740,17 @@ local function main()
 
 		CreateToggle(pFarm, "เดินเข้าลู่วิ่งอัตโนมัติ (Auto Treadmill)", Core.Flags.AutoEnter, function(v)
 			Core.Flags.AutoEnter = v
-			if v then startEnterLoop() end
+			if v then Loops.Enter() end
 		end)
 
 		CreateToggle(pFarm, "ขโมยแพ็คอัตโนมัติ (Auto Steal Packs)", Core.Flags.AutoSteal, function(v)
 			Core.Flags.AutoSteal = v
-			if v then startStealLoop() end
+			if v then Loops.Steal() end
 		end)
 
 		CreateToggle(pFarm, "ขโมยเฉพาะด่านบอสเร็วสุดที่วิ่งทัน (Target Fastest Boss Only)", Core.Flags.TargetFastestOnly, function(v)
 			Core.Flags.TargetFastestOnly = v
-			lastOrderSig = ""
+			StealState.lastOrderSig = ""
 		end)
 
 		CreateToggle(pFarm, "จำกัดรอบละ 4 ใบที่ดีที่สุด (Quota 4 Best Packs/Round)", Core.Flags.MaxStageStealPacks == 4, function(v)
@@ -4752,7 +4759,7 @@ local function main()
 
 		CreateToggle(pFarm, "ขโมยเฉพาะด่านที่วิ่งหนีบอสทัน (Outrun Boss Only)", Core.Flags.OutrunOnly, function(v)
 			Core.Flags.OutrunOnly = v
-			lastOrderSig = ""
+			StealState.lastOrderSig = ""
 		end)
 
 		CreateToggle(pFarm, "ลบอนิเมชชั่นโดนตี/ไม่ล้ม (Anti-Ragdoll)", Core.Flags.AntiRagdollMode, function(v)
@@ -4804,32 +4811,32 @@ local function main()
 
 		CreateToggle(pPack, "เปิดแพ็กในกระเป๋าอัตโนมัติ (Auto Open)", Core.Flags.AutoOpenPacks, function(v)
 			Core.Flags.AutoOpenPacks = v
-			if v then startAutoOpenPacksLoop() end
+			if v then Loops.OpenPacks() end
 		end)
 
 		CreateToggle(pPack, "วางแพ็คในฐานอัตโนมัติ (Auto Place Packs)", Core.Flags.AutoPlacePacks, function(v)
 			Core.Flags.AutoPlacePacks = v
-			if v then startAutoPlacePacksLoop() end
+			if v then Loops.PlacePacks() end
 		end)
 
 		CreateToggle(pPack, "วางตัวดีสุดลงฐานอัตโนมัติ (EquipBest)", Core.Flags.AutoEquipBest, function(v)
 			Core.Flags.AutoEquipBest = v
-			if v then startAutoEquipBestLoop() end
+			if v then Loops.EquipBest() end
 		end)
 
 		CreateToggle(pPack, "รวมแพ็กซ้ำ 2 ชิ้น (Auto Merge Packs)", Core.Flags.AutoMerge, function(v)
 			Core.Flags.AutoMerge = v
-			if v then startAutoMergeLoop() end
+			if v then Loops.Merge() end
 		end)
 
 		CreateToggle(pPack, "กลายพันธุ์ยูนิต 3 ตัว (Auto Fuse Units)", Core.Flags.AutoFuse, function(v)
 			Core.Flags.AutoFuse = v
-			if v then startAutoFuseLoop() end
+			if v then Loops.Fuse() end
 		end)
 
 		CreateToggle(pPack, "ขายยูนิตอัตโนมัติ (Auto Sell Units)", Core.Flags.AutoSellUnits, function(v)
 			Core.Flags.AutoSellUnits = v
-			if v then startAutoSellLoop() end
+			if v then Loops.Sell() end
 		end)
 
 		CreateToggle(pPack, "เก็บตัวกลายพันธุ์ (Keep Mutated - ไม่ขาย)", Core.Flags.KeepMutated, function(v)
@@ -4877,47 +4884,47 @@ local function main()
 
 		CreateToggle(pUpg, "ซื้อโค้ชที่ดีกว่าอัตโนมัติ (Auto Buy Coach)", Core.Flags.AutoBuyCoach, function(v)
 			Core.Flags.AutoBuyCoach = v
-			if v then startAutoBuyCoachLoop() end
+			if v then Loops.BuyCoach() end
 		end)
 
 		CreateToggle(pUpg, "สวมใส่โค้ชตัวคูณสูงสุด (Equip Best Coach)", Core.Flags.AutoEquipCoach, function(v)
 			Core.Flags.AutoEquipCoach = v
-			if v then startAutoEquipCoachLoop() end
+			if v then Loops.EquipCoach() end
 		end)
 
 		CreateToggle(pUpg, "ซื้อออร่าที่ดีกว่าอัตโนมัติ (Auto Buy Aura)", Core.Flags.AutoBuyAura, function(v)
 			Core.Flags.AutoBuyAura = v
-			if v then startAutoBuyAuraLoop() end
+			if v then Loops.BuyAura() end
 		end)
 
 		CreateToggle(pUpg, "สวมใส่ออร่าตัวคูณสูงสุด (Equip Best Aura)", Core.Flags.AutoEquipAura, function(v)
 			Core.Flags.AutoEquipAura = v
-			if v then startAutoEquipAuraLoop() end
+			if v then Loops.EquipAura() end
 		end)
 
 		CreateToggle(pUpg, "อัปเกรดลู่วิ่งอัตโนมัติ (Upgrade Treadmill)", Core.Flags.AutoUpgradeTreadmill, function(v)
 			Core.Flags.AutoUpgradeTreadmill = v
-			if v then startAutoUpgradeTreadmillLoop() end
+			if v then Loops.UpgradeTreadmill() end
 		end)
 
 		CreateToggle(pUpg, "อัปเกรดฐานอัตโนมัติ (Upgrade Base)", Core.Flags.AutoUpgradeBase, function(v)
 			Core.Flags.AutoUpgradeBase = v
-			if v then startAutoUpgradeBaseLoop() end
+			if v then Loops.UpgradeBase() end
 		end)
 
 		CreateToggle(pUpg, "อัปเกรดโชคในบ้านอัตโนมัติ (Upgrade Luck Machine)", Core.Flags.AutoUpgradeLuck, function(v)
 			Core.Flags.AutoUpgradeLuck = v
-			if v then startAutoUpgradeLuckLoop() end
+			if v then Loops.UpgradeLuck() end
 		end)
 
 		CreateToggle(pUpg, "เกิดใหม่อัตโนมัติเมื่อครบเกณฑ์ (Auto Rebirth)", Core.Flags.AutoRebirth, function(v)
 			Core.Flags.AutoRebirth = v
-			if v then startAutoRebirthLoop() end
+			if v then Loops.Rebirth() end
 		end)
 
 		CreateToggle(pUpg, "เคลม Offline / Daily / Index อัตโนมัติ", Core.Flags.AutoClaim, function(v)
 			Core.Flags.AutoClaim = v
-			if v then startAutoClaimLoop() end
+			if v then Loops.Claim() end
 		end)
 
 		CreateToggle(pUpg, "ระบบกันเตะ AFK (Anti-AFK 20 นาที)", Core.Flags.AntiAfk, function(v)
@@ -5009,23 +5016,23 @@ local function main()
 		end
 
 		-- Startup Loop Initialization
-		if Core.Flags.AutoEnter then task.spawn(startEnterLoop) end
-		if Core.Flags.AutoSteal then task.spawn(startStealLoop) end
-		if Core.Flags.AutoPlacePacks then task.spawn(startAutoPlacePacksLoop) end
-		if Core.Flags.AutoOpenPacks then task.spawn(startAutoOpenPacksLoop) end
-		if Core.Flags.AutoEquipBest then task.spawn(startAutoEquipBestLoop) end
-		if Core.Flags.AutoMerge then task.spawn(startAutoMergeLoop) end
-		if Core.Flags.AutoFuse then task.spawn(startAutoFuseLoop) end
-		if Core.Flags.AutoSellUnits then task.spawn(startAutoSellLoop) end
-		if Core.Flags.AutoBuyCoach then task.spawn(startAutoBuyCoachLoop) end
-		if Core.Flags.AutoEquipCoach then task.spawn(startAutoEquipCoachLoop) end
-		if Core.Flags.AutoBuyAura then task.spawn(startAutoBuyAuraLoop) end
-		if Core.Flags.AutoEquipAura then task.spawn(startAutoEquipAuraLoop) end
-		if Core.Flags.AutoUpgradeTreadmill then task.spawn(startAutoUpgradeTreadmillLoop) end
-		if Core.Flags.AutoUpgradeBase then task.spawn(startAutoUpgradeBaseLoop) end
-		if Core.Flags.AutoUpgradeLuck then task.spawn(startAutoUpgradeLuckLoop) end
-		if Core.Flags.AutoRebirth then task.spawn(startAutoRebirthLoop) end
-		if Core.Flags.AutoClaim then task.spawn(startAutoClaimLoop) end
+		if Core.Flags.AutoEnter then task.spawn(Loops.Enter) end
+		if Core.Flags.AutoSteal then task.spawn(Loops.Steal) end
+		if Core.Flags.AutoPlacePacks then task.spawn(Loops.PlacePacks) end
+		if Core.Flags.AutoOpenPacks then task.spawn(Loops.OpenPacks) end
+		if Core.Flags.AutoEquipBest then task.spawn(Loops.EquipBest) end
+		if Core.Flags.AutoMerge then task.spawn(Loops.Merge) end
+		if Core.Flags.AutoFuse then task.spawn(Loops.Fuse) end
+		if Core.Flags.AutoSellUnits then task.spawn(Loops.Sell) end
+		if Core.Flags.AutoBuyCoach then task.spawn(Loops.BuyCoach) end
+		if Core.Flags.AutoEquipCoach then task.spawn(Loops.EquipCoach) end
+		if Core.Flags.AutoBuyAura then task.spawn(Loops.BuyAura) end
+		if Core.Flags.AutoEquipAura then task.spawn(Loops.EquipAura) end
+		if Core.Flags.AutoUpgradeTreadmill then task.spawn(Loops.UpgradeTreadmill) end
+		if Core.Flags.AutoUpgradeBase then task.spawn(Loops.UpgradeBase) end
+		if Core.Flags.AutoUpgradeLuck then task.spawn(Loops.UpgradeLuck) end
+		if Core.Flags.AutoRebirth then task.spawn(Loops.Rebirth) end
+		if Core.Flags.AutoClaim then task.spawn(Loops.Claim) end
 
 		Core.Flags.UI = true
 		Core:Loop("autoSaveConfig", "UI", 30, function()
