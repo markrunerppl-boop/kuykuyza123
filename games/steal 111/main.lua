@@ -118,6 +118,9 @@ local function main()
 	Core.Flags.AutoClaim = false            -- เคลม Offline / Daily / Index อัตโนมัติ
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
+	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
+	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
+	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
 	end
@@ -2019,10 +2022,108 @@ local function main()
 		end
 	end
 
-	local function stealCycle()
-		-- 1. ลูปตรวจสอบด่าน 1-12 เพื่อหาแพ็คที่ตรงกับเกรดที่เลือก
-		local anyFound = false
+	local bossSpeedCache = {}
+	local lastOrderSig = ""
+
+	local function getStageBossSpeed(i)
+		local folder = getStageFolder(i)
+		local maxSpd = nil
+		if folder then
+			for _, ch in ipairs(folder:GetChildren()) do
+				if ch.Name == "Enemy" and ch:IsA("Model") then
+					local hum = ch:FindFirstChildOfClass("Humanoid")
+					local spd = hum and hum.WalkSpeed
+					if not spd or spd <= 0 then
+						local attrSpd = ch:GetAttribute("WalkSpeed") or ch:GetAttribute("Speed") or ch:GetAttribute("MoveSpeed")
+						spd = tonumber(attrSpd)
+					end
+					if not spd or spd <= 0 then
+						local val = ch:FindFirstChild("WalkSpeed") or ch:FindFirstChild("Speed")
+						if val and (val:IsA("NumberValue") or val:IsA("IntValue")) then
+							spd = tonumber(val.Value)
+						end
+					end
+					if spd and spd > 0 and (not maxSpd or spd > maxSpd) then
+						maxSpd = spd
+					end
+				end
+			end
+		end
+
+		if maxSpd then
+			bossSpeedCache[i] = maxSpd
+			return maxSpd
+		end
+
+		if bossSpeedCache[i] then
+			return bossSpeedCache[i]
+		end
+
+		-- ค่าความเร็วบอสประมาณการมาตรฐานตามด่าน (หากบอสยังไม่ spawn หรือยังไม่ stream เข้ามา)
+		local fallbackSpeeds = {
+			[1] = 20, [2] = 26, [3] = 34, [4] = 45,
+			[5] = 60, [6] = 80, [7] = 110, [8] = 150,
+			[9] = 195, [10] = 240, [11] = 285, [12] = 330
+		}
+		return fallbackSpeeds[i] or (16 + i * 25)
+	end
+
+	local function buildStageOrder()
+		local mySpeed = Helpers.GetMoveSpeed()
+		local margin = Core.Flags.OutrunMargin or 1.0
+		local outrunOnly = Core.Flags.OutrunOnly ~= false
+		local fastestOnly = Core.Flags.TargetFastestOnly ~= false
+
+		local candidates = {}
 		for i = 1, 12 do
+			if Core.Flags["Stage" .. i] then
+				local bSpd = getStageBossSpeed(i)
+				local canOutrun = mySpeed >= (bSpd * margin)
+				if canOutrun or not outrunOnly then
+					table.insert(candidates, {
+						stage = i,
+						bossSpeed = bSpd,
+						canOutrun = canOutrun
+					})
+				end
+			end
+		end
+
+		-- เรียงลำดับ: ด่านที่วิ่งหนีทันมาก่อน -> ในกลุ่มที่วิ่งหนีทัน ให้ด่านที่บอสเร็วที่สุด (bossSpeed สูงสุด) มาก่อน
+		table.sort(candidates, function(a, b)
+			if a.canOutrun ~= b.canOutrun then
+				return a.canOutrun == true
+			end
+			if a.bossSpeed ~= b.bossSpeed then
+				return a.bossSpeed > b.bossSpeed
+			end
+			return a.stage > b.stage
+		end)
+
+		-- หากเปิดโหมดเลือกเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
+		if fastestOnly and #candidates > 0 then
+			local best = candidates[1]
+			local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
+			if sig ~= lastOrderSig then
+				lastOrderSig = sig
+				logAction("ด่านเป้าหมาย", string.format("เลือกด่าน %d (บอสเร็ว %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed), true)
+			end
+			return { best.stage }
+		end
+
+		local stages = {}
+		for _, c in ipairs(candidates) do
+			table.insert(stages, c.stage)
+		end
+		return stages
+	end
+
+	local function stealCycle()
+		-- 1. สร้างลำดับด่านที่เลือก โดยอ้างอิงจากความเร็วตัวละครเทียบกับความเร็วบอส
+		local anyFound = false
+		local targetStages = buildStageOrder()
+
+		for _, i in ipairs(targetStages) do
 			if not Core._alive or not Core.Flags.AutoSteal then break end
 
 			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
@@ -2061,6 +2162,7 @@ local function main()
 						task.wait(math.max(Core.Flags.StealDelay or 0.2, 0.4))
 					end
 					task.wait(Core.Flags.StealDelay)
+					break
 				end
 			end
 		end
@@ -3998,6 +4100,16 @@ local function main()
 		CreateToggle(pFarm, "ขโมยแพ็คอัตโนมัติ (Auto Steal Packs)", Core.Flags.AutoSteal, function(v)
 			Core.Flags.AutoSteal = v
 			if v then startStealLoop() end
+		end)
+
+		CreateToggle(pFarm, "ขโมยเฉพาะด่านบอสเร็วสุดที่วิ่งทัน (Target Fastest Boss Only)", Core.Flags.TargetFastestOnly, function(v)
+			Core.Flags.TargetFastestOnly = v
+			lastOrderSig = ""
+		end)
+
+		CreateToggle(pFarm, "ขโมยเฉพาะด่านที่วิ่งหนีบอสทัน (Outrun Boss Only)", Core.Flags.OutrunOnly, function(v)
+			Core.Flags.OutrunOnly = v
+			lastOrderSig = ""
 		end)
 
 		CreateToggle(pFarm, "ลบอนิเมชชั่นโดนตี/ไม่ล้ม (Anti-Ragdoll)", Core.Flags.AntiRagdollMode, function(v)
