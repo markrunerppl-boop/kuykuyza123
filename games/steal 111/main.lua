@@ -1884,42 +1884,44 @@ local function main()
 		return false, "เก็บแพ็คที่ตกไม่สำเร็จ"
 	end
 
-	local function isSafelyDelivered(livePos, bounds, carriedIntoSafeZone)
-		if Helpers.IsCarrying() then return false end
-		-- ต้องถือแพ็คเข้ามาใน SafeZone สำเร็จจริงก่อนแพ็คจะถูกระบบหักเข้ากระเป๋า (ป้องกันการตาย/กระเด็นเกิดใหม่ที่ฐานแล้วเข้าใจผิดว่าส่งสำเร็จ)
-		if not carriedIntoSafeZone then return false end
-		local char = LocalPlayer.Character
-		if not (char and Helpers.IsAlive()) then return false end
-		local hrp = Helpers.GetRoot()
-		if not hrp then return false end
-		if Helpers.IsInSafeZone(char) then return true end
-		if livePos and (hrp.Position - livePos).Magnitude <= 25 then return true end
-		return hrp.Position.X <= (bounds.maxX - 8)
-	end
-
 	local function deliver(stageFolder)
+		local origChar = LocalPlayer.Character
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return false, "ไม่พบจุดเกิดของฐาน" end
 		local bounds = Helpers.GetSafeZoneBounds()
-		local carriedIntoSafeZone = false
+
+		local function isSafelyDelivered(livePos)
+			if Helpers.IsCarrying() then return false end
+			local char = LocalPlayer.Character
+			-- หากตัวละครเปลี่ยน instance หรือตาย/เลือดหมด = เกิดใหม่จากการโดนตีตาย ไม่ใช่การส่งสำเร็จ
+			if not char or char ~= origChar or not Helpers.IsAlive() then return false end
+			local hrp = Helpers.GetRoot()
+			if not hrp then return false end
+
+			-- 1) ถึงพื้นที่ฐานตัวเอง (ระยะห่างจากจุดเกิดฐาน <= 35 studs)
+			if livePos and (hrp.Position - livePos).Magnitude <= 35 then return true end
+			if pos and (hrp.Position - pos).Magnitude <= 35 then return true end
+
+			-- 2) หรือตัวละครอยู่ใน SafeZone หรือข้ามฝั่ง SafeZone เข้ามาแล้ว
+			if Helpers.IsInSafeZone(char) then return true end
+			if hrp.Position.X <= (bounds.maxX + 5) then return true end
+
+			return false
+		end
 
 		local stopWhenDelivered = function()
 			if not Core.Flags.AutoSteal then return true end
 			if Helpers.IsCarrying() then
-				local char = LocalPlayer.Character
-				if char and Helpers.IsInSafeZone(char) then
-					carriedIntoSafeZone = true
-				end
 				return false
 			end
 			return true
 		end
 
 		local function checkDeliveryOrRecover(livePos)
-			if isSafelyDelivered(livePos, bounds, carriedIntoSafeZone) then
+			if isSafelyDelivered(livePos) then
 				return true, "DELIVERED"
 			end
-			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then
 				return false, "ยกเลิก/ตัวละครตายขณะเดินกลับ"
 			end
 			local recovered, err = recoverDroppedPack(stageFolder)
@@ -1940,7 +1942,7 @@ local function main()
 					if okDeliv then return true end
 					if state ~= "RECOVERED" then return false, state end
 				end
-				if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
+				if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then break end
 			end
 
 			Helpers.MoveTo(livePos + Vector3.new(0, 3, 0), stopWhenDelivered, { evadeEnemies = true })
@@ -1952,23 +1954,16 @@ local function main()
 
 			Helpers.StreamAround(livePos, 3)
 			if waitUntil(function()
-				if Helpers.IsCarrying() then
-					local char = LocalPlayer.Character
-					if char and Helpers.IsInSafeZone(char) then
-						carriedIntoSafeZone = true
-					end
-					return false
-				end
-				return true
+				return not Helpers.IsCarrying()
 			end, 2.5) then
-				if isSafelyDelivered(livePos, bounds, carriedIntoSafeZone) then return true end
+				if isSafelyDelivered(livePos) then return true end
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
 				if state ~= "RECOVERED" then return false, state end
 			end
 		end
 
-		if isSafelyDelivered(pos, bounds, carriedIntoSafeZone) then return true end
+		if isSafelyDelivered(pos) then return true end
 		return false, "ส่งแพ็คที่ฐานไม่สำเร็จ"
 	end
 
@@ -2258,6 +2253,7 @@ local function main()
 
 	local stageStealCount = 0
 	local currentTargetStage = nil
+	local nextStealBatchTime = 0
 	local lastQuotaLogTime = 0
 
 	local function stealCycle()
@@ -2273,40 +2269,43 @@ local function main()
 
 		local i = targetStages[1]
 		local maxPacks = Core.Flags.MaxStageStealPacks or 4
-
 		local currentPending = (getPacksToPlace and #getPacksToPlace()) or 0
-		local currentPlaced = (getActivePlacedPacksCount and getActivePlacedPacksCount()) or 0
-		local activeTotal = currentPending + currentPlaced
 
-		-- หากมีการสลับด่านเป้าหมาย (เช่น Speed เพิ่มขึ้นจนวิ่งทันด่านที่สูงกว่า) 
-		-- จะรีเซ็ตโควต้าเริ่มใหม่ได้ก็ต่อเมื่อไม่มีแพ็คค้างในระบบแล้วเท่านั้น
+		-- หากสลับด่านเป้าหมาย ให้รีเซ็ตตัวนับรอบ
 		if currentTargetStage ~= i then
 			currentTargetStage = i
-			if activeTotal == 0 then
-				stageStealCount = 0
-			end
+			stageStealCount = 0
+			nextStealBatchTime = 0
 		end
 
 		-- ตรวจสอบโควต้าการขโมย:
 		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว (stageStealCount >= maxPacks)
-		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋า+บนฐานครบ 4 ใบขึ้นไป (activeTotal >= maxPacks)
+		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋ารอวางครบ 4 ใบขึ้นไป (currentPending >= maxPacks)
 		-- 3) หรือฐานเต็มแล้ว (isBaseFull())
-		-- ให้กลับฐาน ขึ้นลู่วิ่งฝึกซ้อมอย่างต่อเนื่อง และรันการฟัก/รวม/วาง ห้ามวิ่งออกไปขโมยเพิ่มเด็ดขาด!
-		if stageStealCount >= maxPacks or activeTotal >= maxPacks or isBaseFull() then
-			-- ถ้าแพ็คเดิมได้รับการฟักจนหมดแล้ว และไม่มีแพ็คค้างในกระเป๋า (activeTotal == 0) จึงจะเริ่มรอบใหม่ได้
-			if activeTotal == 0 and not isBaseFull() then
-				if stageStealCount >= maxPacks then
+		-- 4) หรือยังอยู่ในช่วงพักซ้อมหลังขโมยครบ (os.clock() < nextStealBatchTime)
+		local now = os.clock()
+		local isResting = now < nextStealBatchTime
+		local quotaReached = stageStealCount >= maxPacks
+		local pendingFull = currentPending >= maxPacks
+		local baseFull = isBaseFull()
+
+		if quotaReached or pendingFull or baseFull or isResting then
+			-- ตรวจสอบเงื่อนไขการเริ่มรอบใหม่:
+			-- หมดเวลาพักซ้อมแล้ว และไม่มีแพ็คค้างในกระเป๋า และฐานไม่เต็ม
+			if not isResting and currentPending == 0 and not baseFull then
+				if stageStealCount > 0 then
 					stageStealCount = 0
-					logAction("ขโมย", string.format("ด่าน %d: แพ็คชุดเดิมฟักสำเร็จทั้งหมดแล้ว -> เริ่มรอบขโมยการ์ดใหม่ (โควต้า %d ใบ)", i, maxPacks), true)
+					logAction("ขโมย", string.format("ด่าน %d: พักซ้อมและเคลียร์แพ็คเสร็จสิ้น -> เริ่มรอบขโมยการ์ดใหม่ (โควต้า %d ใบ)", i, maxPacks), true)
 				end
 			else
-				local now = os.clock()
+				local waitSec = math.max(0, math.ceil(nextStealBatchTime - now))
 				if now - lastQuotaLogTime > 15 then
 					lastQuotaLogTime = now
-					local reason = isBaseFull() and "ฐานเต็ม"
-						or (activeTotal >= maxPacks and string.format("มีแพ็ครอดำเนินการครบโควต้า %d ใบ (กระเป๋า %d, ฐาน %d)", maxPacks, currentPending, currentPlaced))
-						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (กำลังฟักบนฐาน %d ใบ)", stageStealCount, maxPacks, currentPlaced)
-					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งรอแพ็คฟัก", false)
+					local reason = baseFull and "ฐานเต็ม"
+						or (pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (ครบโควต้า %d)", currentPending, maxPacks))
+						or (isResting and string.format("ขโมยครบโควต้า %d/%d ใบ -> พักซ้อมบนลู่วิ่ง (เหลืออีก %d วิ)", stageStealCount, maxPacks, waitSec))
+						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", stageStealCount, maxPacks)
+					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
 				end
 
 				if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
@@ -2367,13 +2366,11 @@ local function main()
 				runBaseMaintenance()
 			end
 
-			-- หากขโมยครบโควต้า หรือมีแพ็คค้างในระบบครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งทันที
+			-- หากขโมยครบโควต้า หรือมีแพ็คค้างในกระเป๋าครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งและเริ่มนับเวลาพักซ้อม 45 วินาที
 			local afterPending = (getPacksToPlace and #getPacksToPlace()) or 0
-			local afterPlaced = (getActivePlacedPacksCount and getActivePlacedPacksCount()) or 0
-			local afterTotal = afterPending + afterPlaced
-
-			if stageStealCount >= maxPacks or afterTotal >= maxPacks then
-				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งฝึกซ้อม (รอแพ็คฟัก)", maxPacks, i), true)
+			if stageStealCount >= maxPacks or afterPending >= maxPacks then
+				nextStealBatchTime = os.clock() + 45
+				logAction("ขโมย", string.format("ขโมยการ์ดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งฝึกซ้อม 45 วิ (รอเคลียร์แพ็ค)", stageStealCount, i), true)
 				if runBaseMaintenance then pcall(runBaseMaintenance) end
 				returnToSafeRest(true)
 			end
