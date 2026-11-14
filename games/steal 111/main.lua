@@ -1884,12 +1884,15 @@ local function main()
 		return false, "เก็บแพ็คที่ตกไม่สำเร็จ"
 	end
 
-	local function isSafelyDelivered(livePos, bounds)
+	local function isSafelyDelivered(livePos, bounds, carriedIntoSafeZone)
 		if Helpers.IsCarrying() then return false end
+		-- ต้องถือแพ็คเข้ามาใน SafeZone สำเร็จจริงก่อนแพ็คจะถูกระบบหักเข้ากระเป๋า (ป้องกันการตาย/กระเด็นเกิดใหม่ที่ฐานแล้วเข้าใจผิดว่าส่งสำเร็จ)
+		if not carriedIntoSafeZone then return false end
 		local char = LocalPlayer.Character
-		if Helpers.IsInSafeZone(char) then return true end
+		if not (char and Helpers.IsAlive()) then return false end
 		local hrp = Helpers.GetRoot()
 		if not hrp then return false end
+		if Helpers.IsInSafeZone(char) then return true end
 		if livePos and (hrp.Position - livePos).Magnitude <= 25 then return true end
 		return hrp.Position.X <= (bounds.maxX - 8)
 	end
@@ -1898,12 +1901,22 @@ local function main()
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return false, "ไม่พบจุดเกิดของฐาน" end
 		local bounds = Helpers.GetSafeZoneBounds()
+		local carriedIntoSafeZone = false
+
 		local stopWhenDelivered = function()
-			return not Core.Flags.AutoSteal or not Helpers.IsCarrying()
+			if not Core.Flags.AutoSteal then return true end
+			if Helpers.IsCarrying() then
+				local char = LocalPlayer.Character
+				if char and Helpers.IsInSafeZone(char) then
+					carriedIntoSafeZone = true
+				end
+				return false
+			end
+			return true
 		end
 
 		local function checkDeliveryOrRecover(livePos)
-			if isSafelyDelivered(livePos, bounds) then
+			if isSafelyDelivered(livePos, bounds, carriedIntoSafeZone) then
 				return true, "DELIVERED"
 			end
 			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
@@ -1938,15 +1951,24 @@ local function main()
 			end
 
 			Helpers.StreamAround(livePos, 3)
-			if waitUntil(function() return not Helpers.IsCarrying() end, 2.5) then
-				if isSafelyDelivered(livePos, bounds) then return true end
+			if waitUntil(function()
+				if Helpers.IsCarrying() then
+					local char = LocalPlayer.Character
+					if char and Helpers.IsInSafeZone(char) then
+						carriedIntoSafeZone = true
+					end
+					return false
+				end
+				return true
+			end, 2.5) then
+				if isSafelyDelivered(livePos, bounds, carriedIntoSafeZone) then return true end
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
 				if state ~= "RECOVERED" then return false, state end
 			end
 		end
 
-		if isSafelyDelivered(pos, bounds) then return true end
+		if isSafelyDelivered(pos, bounds, carriedIntoSafeZone) then return true end
 		return false, "ส่งแพ็คที่ฐานไม่สำเร็จ"
 	end
 
@@ -2118,14 +2140,15 @@ local function main()
 			pcall(openReadyPlacedPacks)
 		end
 
-		-- Priority 2: หากมีแพ็คที่รวมได้ ให้รวมให้เรียบร้อยก่อนนำไปวาง
-		if (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
+		local count = (getPacksToPlace and #getPacksToPlace()) or 0
+
+		-- Priority 2: หากมีแพ็คที่รวมได้ (ต้องมีในกระเป๋าอย่างน้อย 2 ใบ) ให้รวมให้เรียบร้อยก่อนนำไปวาง
+		if count >= 2 and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
 			pcall(autoMergeStep)
 		end
 
 		-- Priority 3: นำแพ็คในกระเป๋าไปวางลงฐาน (เฉพาะเมื่อผู้ใช้เปิด AutoPlacePacks และฐานยังไม่เต็ม)
 		if Core.Flags.AutoPlacePacks and placePacksInBase then
-			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
 				local okPlace, resWhy = placePacksInBase()
 				if isFullReason(resWhy) then
@@ -2402,8 +2425,9 @@ local function main()
 			if res.Success ~= nil then return res.Success == true, reason end
 			if res.Ok ~= nil then return res.Ok == true, reason end
 			if res.success ~= nil then return res.success == true, reason end
+			return true, nil
 		end
-		return res ~= false, nil
+		return res == true, nil
 	end
 
 	local function equipBestCoach()
@@ -2698,8 +2722,8 @@ local function main()
 			if type(packId) == "string" and packId ~= "" and not seenIds[packId] then
 				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 				if not isSkip and not isFav(packId, tool) then
-					local isPack = tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs"
-					local isUnit = tool:GetAttribute("CardIsPack") == false or tool:GetAttribute("ItemCategory") == "Units"
+					local isUnit = tool:GetAttribute("CardIsPack") == false or tool:GetAttribute("ItemCategory") == "Units" or tool:GetAttribute("CharacterName") ~= nil
+					local isPack = not isUnit and (tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs")
 					local mut = normMutation(getToolMutation(tool))
 
 					if mode == "merge" and isPack then
@@ -2738,7 +2762,7 @@ local function main()
 				local packId = item.Id
 				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 				if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
-					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
+					local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
 					local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
 					local mut = normMutation(item.Mutation)
 
@@ -2780,7 +2804,7 @@ local function main()
 					local packId = item.Id
 					local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 					if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
-						local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character"
+						local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
 						local mut = normMutation(item.Mutation)
 						if isChar then
 							local name = item.CharacterName or item.PackName or item.Name
@@ -2947,7 +2971,11 @@ local function main()
 		local now = os.clock()
 		local mc = getMutateConfig()
 		local rl = math.max((mc and mc.RateLimit) or 0.35, 0.35)
-		if now - lastMerge < 2.5 then return end
+		if now - lastMerge < 3.0 then return end
+
+		-- 1. ตรวจสอบจำนวนแพ็คจริงในตัวก่อน: ต้องมีแพ็คในกระเป๋าอย่างน้อย 2 ชิ้นจึงจะเริ่มตรวจสอบคู่
+		local pendingPacks = (getPacksToPlace and getPacksToPlace()) or {}
+		if #pendingPacks < 2 then return end
 
 		local candidates = getBackpackCandidates("merge")
 		local groups = {}
@@ -2969,6 +2997,13 @@ local function main()
 
 		-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่ในกระเป๋าเลย ให้หยุดทันที (ไม่เดิน ไม่วาร์ป และไม่ยิงรีโมท)
 		if totalPairs == 0 then return end
+
+		-- ตรวจสอบสถานะตัวละคร: ต้องมีชีวิต ไม่ติดล้ม (Ragdolled) และไม่กำลังถือของ
+		local char = LocalPlayer.Character
+		if not Helpers.IsAlive() or Helpers.IsCarrying() or (char and char:GetAttribute("Ragdolled") == true) then
+			return
+		end
+
 		lastMerge = now
 
 		local okVisit, mergedTotal = Helpers.VisitMutateMachine(function()
@@ -3218,17 +3253,25 @@ local function main()
 			-- รอให้แพ็กที่เพิ่งได้รับซิงก์เข้ากระเป๋าสักครู่
 			task.wait(0.15)
 
+			-- 1. ตรวจสอบจำนวนแพ็คจริงในกระเป๋าก่อน หากไม่มีแพ็คให้จบฟังก์ชันทันที (ไม่เดิน ไม่รวม ไม่วาง)
+			local packs = getPacksToPlace()
+			if #packs == 0 then
+				return true
+			end
+
 			-- ถ้าเปิด AutoOpenPacks ให้ฟักแพ็กที่โตเต็มวัยก่อนเพื่อเคลียร์พื้นที่ว่าง
 			if Core.Flags.AutoOpenPacks then
 				openReadyPlacedPacks()
 			end
 
-			-- หากมีแพ็คซ้ำที่สามารถรวมได้ ให้รวมแบบ Multi-Pass จนกว่าจะหมดคู่ก่อนนำไปวางที่ฐาน
-			if (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
-				lastMerge = 0
+			-- หากมีแพ็คในกระเป๋าตั้งแต่ 2 ชิ้นขึ้นไป ให้รวมแบบ Multi-Pass จนกว่าจะหมดคู่ก่อนนำไปวางที่ฐาน
+			if #packs >= 2 and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
 				local maxPasses = 4
 				while maxPasses > 0 and Core._alive do
 					maxPasses = maxPasses - 1
+					local currentPacks = getPacksToPlace()
+					if #currentPacks < 2 then break end
+
 					local mergeCandidates = getBackpackCandidates and getBackpackCandidates("merge") or {}
 					local counts = {}
 					local hasPairs = false
@@ -3241,16 +3284,14 @@ local function main()
 						end
 					end
 					if not hasPairs then break end
-					lastMerge = 0
 					local okMerge = pcall(autoMergeStep)
 					if not okMerge then break end
-					task.wait(0.25)
+					task.wait(0.35)
 				end
-			end
-
-			local packs = getPacksToPlace()
-			if #packs == 0 then
-				return true
+				packs = getPacksToPlace()
+				if #packs == 0 then
+					return true
+				end
 			end
 
 			local plot = Helpers.GetPlot()
