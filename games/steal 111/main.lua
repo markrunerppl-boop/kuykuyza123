@@ -1934,7 +1934,10 @@ local function main()
 		for pass = 1, 3 do
 			local livePos = Helpers.GetPlotSpawnPos() or pos
 			local hrp = Helpers.GetRoot()
-			if hrp and hrp.Position.X > bounds.maxX - 15 then
+			local atBase = hrp and livePos and (hrp.Position - livePos).Magnitude <= 35
+
+			-- เฉพาะเมื่อตัวละครยังอยู่นอกฐาน (X > bounds.maxX - 15) และยังไม่ถึงฐาน จึงจะเดินผ่านประตูทางเข้า SafeZone
+			if not atBase and hrp and hrp.Position.X > bounds.maxX - 15 then
 				local entryZ = math.abs(livePos.Z - bounds.center.Z) > 35 and bounds.center.Z or livePos.Z
 				Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, evadeEnemies = true })
 				if not Helpers.IsCarrying() then
@@ -1955,7 +1958,7 @@ local function main()
 			Helpers.StreamAround(livePos, 3)
 			if waitUntil(function()
 				return not Helpers.IsCarrying()
-			end, 2.5) then
+			end, 3.0) then
 				if isSafelyDelivered(livePos) then return true end
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
@@ -1993,14 +1996,50 @@ local function main()
 
 	local function checkStageHasPacks(i)
 		local folder = getStageFolder(i)
-		if not folder or not folder:FindFirstChild("SpawnedPacks") then
-			local basePos = STAGE_CENTERS[i]
+		local basePos = STAGE_CENTERS[i]
+
+		-- 1. ตรวจสอบโฟลเดอร์ของด่าน ถ้ายังไม่โหลด (StreamingEnabled) ให้เรียก StreamAround อย่างทั่วถึง
+		if not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0 then
 			if basePos then
-				Helpers.StreamAround(basePos, 0.8)
+				Helpers.StreamAround(basePos, 2.0)
 			end
 			folder = getStageFolder(i)
 		end
-		return findStealPrompt(folder)
+
+		-- 2. ค้นหาแพ็คในด่าน
+		local prompt = findStealPrompt(folder)
+		if prompt then return prompt end
+
+		-- 3. ตรวจหาแพ็คที่หลุดตกค้างในด่าน (เช่น โดนตีตกแต่ยังไม่ถูกเก็บ)
+		if basePos then
+			local bestDropped = nil
+			local okTagged, taggedPacks = pcall(function()
+				return CollectionService:GetTagged("SpawnedPack")
+			end)
+			if okTagged and type(taggedPacks) == "table" then
+				local bestScore = -1
+				for _, packModel in ipairs(taggedPacks) do
+					if packModel and packModel.Parent and isPackRarityAllowed(packModel) then
+						local p = packModel:FindFirstChild("StealPrompt", true)
+						if p and p:IsA("ProximityPrompt") and p.Enabled then
+							local pPos = promptPos(p) or packAnchorPos(p)
+							if pPos and (pPos - basePos).Magnitude <= 120 then
+								local mult, odd, weight = getPackScore(packModel)
+								local _, rank = getModelRarity(packModel)
+								local score = (rank or 1) * 10000 + (mult or 1) * 100 + (weight or 0)
+								if score > bestScore then
+									bestScore = score
+									bestDropped = p
+								end
+							end
+						end
+					end
+				end
+			end
+			if bestDropped then return bestDropped end
+		end
+
+		return nil
 	end
 
 	local function safeStandPos(p0, stageFolder, radius)
@@ -2321,14 +2360,12 @@ local function main()
 		-- ตรวจสอบโควต้าการขโมย:
 		-- 1) หากขโมยในรอบนี้ครบ 4 ใบแล้ว หรือกำลังรอเวลากลางคืน (waitingForNightReset)
 		-- 2) หรือมีแพ็คค้างอยู่ในกระเป๋ารอวางครบ 4 ใบขึ้นไป (currentPending >= maxPacks)
-		-- 3) หรือฐานเต็มแล้ว (isBaseFull())
 		local quotaReached = waitingForNightReset or (stageStealCount >= maxPacks)
 		local pendingFull = currentPending >= maxPacks
-		local baseFull = isBaseFull()
 
-		if quotaReached or pendingFull or baseFull then
-			-- หากถึงเวลากลางคืนแล้ว และเคลียร์แพ็คในกระเป๋าหมดแล้ว และฐานไม่เต็ม ให้ปลดสถานะรอเริ่มรอบใหม่
-			if isNight and not pendingFull and not baseFull and currentPending == 0 then
+		if quotaReached or pendingFull then
+			-- หากถึงเวลากลางคืนแล้ว และเคลียร์แพ็คในกระเป๋าหมดแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
+			if isNight and not pendingFull and currentPending == 0 then
 				waitingForNightReset = false
 				stageStealCount = 0
 			else
@@ -2340,8 +2377,7 @@ local function main()
 						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 							or string.format("เหลืออีก %d วิ", secUntilNight))
 
-					local reason = baseFull and "ฐานเต็ม"
-						or (pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (ครบโควต้า %d)", currentPending, maxPacks))
+					local reason = pendingFull and string.format("มีแพ็คในกระเป๋ารอวาง %d ใบ (ครบโควต้า %d)", currentPending, maxPacks)
 						or (quotaReached and string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", stageStealCount, maxPacks, timeStr))
 						or string.format("ขโมยครบโควต้า %d/%d ใบแล้ว (รอนำแพ็คไปรวม/วาง)", stageStealCount, maxPacks)
 					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
@@ -2366,11 +2402,20 @@ local function main()
 
 		local prompt = checkStageHasPacks(i)
 		if not prompt then
+			-- ลอง Stream ซ้ำอีกครั้งก่อนตัดสินใจพัก
+			local basePos = STAGE_CENTERS[i]
+			if basePos then
+				Helpers.StreamAround(basePos, 1.5)
+				prompt = checkStageHasPacks(i)
+			end
+		end
+
+		if not prompt then
 			-- ในด่านยังไม่มีแพ็คตามเกรดที่เลือกเกิดใหม่ ให้กลับขึ้นลู่วิ่งรอ
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			task.wait(1.0)
+			task.wait(1.5)
 			return
 		end
 
@@ -2422,8 +2467,13 @@ local function main()
 			local reason = res
 			if ok then reason = why or "ไม่ทราบสาเหตุ" end
 			logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
-			returnToSafeRest(false)
-			task.wait(math.max(Core.Flags.StealDelay or 0.2, 0.4))
+			-- รอให้ตัวละครฟื้นตัว/เกิดใหม่สมบูรณ์ก่อนเริ่มรอบถัดไป
+			task.wait(1.2)
+			waitUntil(function()
+				local char = LocalPlayer.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				return char and hum and hum.Health > 0
+			end, 3.0)
 		end
 
 		task.wait(Core.Flags.StealDelay)
@@ -3343,20 +3393,14 @@ local function main()
 				return false, "ไม่พบพื้นที่ฐาน"
 			end
 
-			-- ตรวจสอบตำแหน่งตัวละคร: ต้องยืนอยู่ภายใน AnimeArea ของฐานตัวเองเพื่อให้เซิร์ฟเวอร์ยอมรับการวาง
+			-- ตรวจสอบตำแหน่งตัวละคร: หากอยู่นอกเขตฐานไกลเกิน 55 studs จึงจะเดินกลับเข้ามาที่ฐาน
+			-- หากยืนอยู่บนฐานของตนเองอยู่แล้ว (รวมถึงบนลู่วิ่ง) ไม่ต้องเดิน MoveTo ไปกลาง AnimeArea ซ้ำซ้อน
 			local hrp = Helpers.GetRoot()
-			if hrp and area and area:IsA("BasePart") then
-				local offset = area.CFrame:PointToObjectSpace(hrp.Position)
-				local half = area.Size * 0.5
-				if math.abs(offset.X) > half.X or math.abs(offset.Z) > half.Z then
-					Helpers.MoveTo(area.Position + Vector3.new(0, 2.5, 0), function()
-						return not Core._alive or not Core.Flags.AutoPlacePacks
-					end, { precise = true, arriveDist = 4 })
-				end
-			elseif hrp and basePos and (hrp.Position - basePos).Magnitude > 15 then
+			local isTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
+			if not isTraining and hrp and basePos and (hrp.Position - basePos).Magnitude > 55 then
 				Helpers.MoveTo(basePos + Vector3.new(0, 2.5, 0), function()
 					return not Core._alive or not Core.Flags.AutoPlacePacks
-				end, { precise = true, arriveDist = 5 })
+				end, { precise = true, arriveDist = 8 })
 			end
 
 			local placementUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.PlacementUtil end)
