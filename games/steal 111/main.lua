@@ -487,6 +487,14 @@ local function main()
 		return LuckMachineConfig
 	end
 
+	local IndexConfig = nil
+	local function getIndexConfig()
+		if not IndexConfig then
+			IndexConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.IndexConfig end)
+		end
+		return IndexConfig
+	end
+
 	function Helpers.GetSafeZoneBounds()
 		local game_ = Workspace:FindFirstChild("Game")
 		local sz = game_ and game_:FindFirstChild("SafeZone")
@@ -1167,11 +1175,11 @@ local function main()
 		if not r or not r:IsA("RemoteFunction") then return false, nil end
 		local args = table.pack(...)
 		local done = false
-		local ok, res = false, nil
+		local results = {}
 		task.spawn(function()
-			ok, res = pcall(function()
+			results = table.pack(pcall(function()
 				return r:InvokeServer(table.unpack(args, 1, args.n))
-			end)
+			end))
 			done = true
 		end)
 		local t0 = os.clock()
@@ -1181,7 +1189,10 @@ local function main()
 		if not done then
 			return false, "TIMEOUT"
 		end
-		return ok, res
+		if not results[1] then
+			return false, results[2]
+		end
+		return true, table.unpack(results, 2, results.n)
 	end
 
 	-----------------------------------------------------------------
@@ -3480,17 +3491,44 @@ local function main()
 			end
 			if hasUnclaimed then
 				nextIndexClaim = now + 25
-				local mutationsToClaim = { nil, "Gold", "Emerald", "Diamond", "Cursed", "Transcendent", "Glitched" }
-				local claimedAny = false
-				for _, mut in ipairs(mutationsToClaim) do
-					local ok, res = Net.Invoke(Net.Paths.IndexClaimReward, nil, nil, mut)
-					if ok and isRemoteOk(res) then
-						claimedAny = true
+				local mutationKeys = { "", "Gold", "Emerald", "Diamond", "Cursed", "Transcendent", "Glitched" }
+				local totalClaimed = 0
+
+				-- 1. เคลมแบบรวมทั้งหมด (Batch ClaimAll)
+				for _, mKey in ipairs(mutationKeys) do
+					local mutArg = (mKey ~= "" and mKey) or nil
+					local ok, success, reason, count = Net.Invoke(Net.Paths.IndexClaimReward, nil, nil, mutArg)
+					if ok and (success == true or isRemoteOk(success)) then
+						local num = tonumber(count) or 1
+						totalClaimed = totalClaimed + num
 					end
 					task.wait(0.1)
 				end
-				if claimedAny then
-					logAction("เคลม", "เคลม Index Rewards สำเร็จ", true)
+
+				-- 2. เคลมรายตัวที่เหลือตกค้างผ่าน IndexConfig.IsClaimable (Precision Fallback)
+				local ic = getIndexConfig()
+				idx = getPlayerDataKey("Index") or idx
+				if ic and ic.GetStages and ic.IsClaimable and type(idx) == "table" then
+					local stages = ic.GetStages()
+					for _, st in ipairs(stages) do
+						for _, entry in ipairs(st.Characters or {}) do
+							for _, mKey in ipairs(mutationKeys) do
+								local mutArg = (mKey ~= "" and mKey) or nil
+								if ic.IsClaimable(idx, entry, mutArg) then
+									local ok, success = Net.Invoke(Net.Paths.IndexClaimReward, entry.StageName, entry.Name, mutArg)
+									if ok and (success == true or isRemoteOk(success)) then
+										totalClaimed = totalClaimed + 1
+										idx = getPlayerDataKey("Index") or idx
+									end
+									task.wait(0.08)
+								end
+							end
+						end
+					end
+				end
+
+				if totalClaimed > 0 then
+					logAction("เคลม", string.format("เคลม Index Rewards สำเร็จ (+%d รายการ)", totalClaimed), true)
 				end
 			else
 				nextIndexClaim = now + 20
