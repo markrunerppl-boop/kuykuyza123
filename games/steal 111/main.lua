@@ -21,6 +21,31 @@ local VirtualUser = vuOk and vuSvc or nil
 local LocalPlayer = Players.LocalPlayer
 local ENV = (getgenv and getgenv()) or _G
 
+local TRAINING_ATTR = "TrainingOnTreadmill"
+local COMBO_ATTR = "TreadmillCombo"
+local RP = "ReplicatedStorage.Remotes."
+
+local STEAL_RARITY_KEYS = {
+	"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
+	"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
+	"Exclusive", "Godlike", "Secret"
+}
+
+local STAGE_CENTERS = {
+	[1] = Vector3.new(1257, 68, -365),
+	[2] = Vector3.new(1373, 68, -366),
+	[3] = Vector3.new(1555, 68, -366),
+	[4] = Vector3.new(1777, 68, -366),
+	[5] = Vector3.new(2055, 68, -366),
+	[6] = Vector3.new(2432, 68, -366),
+	[7] = Vector3.new(2961, 68, -366),
+	[8] = Vector3.new(3589, 68, -366),
+	[9] = Vector3.new(4178, 68, -366),
+	[10] = Vector3.new(4820, 68, -366),
+	[11] = Vector3.new(5490, 68, -365),
+	[12] = Vector3.new(6135, 68, -364),
+}
+
 local function main()
 
 	-----------------------------------------------------------------
@@ -128,11 +153,6 @@ local function main()
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
 	end
-	local STEAL_RARITY_KEYS = {
-		"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
-		"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
-		"Exclusive", "Godlike", "Secret"
-	}
 	for _, r in ipairs(STEAL_RARITY_KEYS) do
 		Core.Flags["Rarity_" .. r] = true
 	end
@@ -1143,7 +1163,6 @@ local function main()
 	-- 3. NETWORK WRAPPER
 	-----------------------------------------------------------------
 	local Net = { _last = {} }
-	local RP = "ReplicatedStorage.Remotes."
 	Net.Paths = {
 		Boost = RP .. "Treadmill.Boost",             -- RE: FireServer(token:string)
 		ExitRequest = RP .. "Treadmill.ExitRequest", -- RE: FireServer()
@@ -1223,9 +1242,6 @@ local function main()
 	-- เซิร์ฟเวอร์ส่ง token มาที่ Treadmill.Boost -> ไคลเอนต์ยิงกลับด้วยอาร์กิวเมนต์เดิมทั้งหมด
 	-- ปุ่มคูณโชว์ 2 วินาที; ถ้ากดทันทุกครั้งคอมโบจะต่อเนื่อง (x2 -> x3 -> x4 -> x5)
 	-----------------------------------------------------------------
-	local TRAINING_ATTR = "TrainingOnTreadmill"
-	local COMBO_ATTR = "TreadmillCombo"
-
 	local function tryClickBoostPopup()
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local tap = pg and pg:FindFirstChild("TAPTreadmillBoost", true)
@@ -1395,21 +1411,6 @@ local function main()
 	-- ลำดับ: (ออกจากลู่วิ่ง) -> วาร์ปไปที่แพ็ค (ตรึงตำแหน่ง) -> กด StealPrompt -> ตรวจว่าแบก -> วาร์ปกลับฐาน -> ตรวจว่าส่งสำเร็จ
 	-----------------------------------------------------------------
 	-- พิกัดกลางด่าน 1-12 (ใช้สำหรับ RequestStreamAroundAsync/วาร์ป เมื่อ Area ยังไม่ stream เข้ามา)
-	local STAGE_CENTERS = {
-		[1] = Vector3.new(1257, 68, -365),
-		[2] = Vector3.new(1373, 68, -366),
-		[3] = Vector3.new(1555, 68, -366),
-		[4] = Vector3.new(1777, 68, -366),
-		[5] = Vector3.new(2055, 68, -366),
-		[6] = Vector3.new(2432, 68, -366),
-		[7] = Vector3.new(2961, 68, -366),
-		[8] = Vector3.new(3589, 68, -366),
-		[9] = Vector3.new(4178, 68, -366),
-		[10] = Vector3.new(4820, 68, -366),
-		[11] = Vector3.new(5490, 68, -365),
-		[12] = Vector3.new(6135, 68, -364),
-	}
-
 	local function promptPos(prompt)
 		return Helpers.GetPosition(prompt)
 	end
@@ -1637,107 +1638,87 @@ local function main()
 		return best and best.prompt or nil
 	end
 
-	-- กดค้างตาม HoldDuration จริงภายในระยะปลอดภัยรอบแพ็ค (ไม่วิ่งเหวี่ยงหรือกระโดดหลุดระยะ Prompt)
+	-- ยืนนิ่งสนิทและกดค้างตาม HoldDuration จริง (ล็อกตำแหน่ง ไม่สั่ง MoveTo ป้องกัน Roblox ยกเลิกการกดค้าง)
 	-- method "hold" = InputHoldBegin/End + KeyCode, method "fire" = fireproximityprompt
-	-- คืนตาราง diag บอกว่าเหตุการณ์ของ prompt เกิดขึ้นครบหรือไม่ (ใช้ดูว่าพลาดที่ขั้นไหน)
-	local function holdAndOrbit(prompt, duration, stageFolder, diag)
+	-- คืนตาราง diag บอกว่าเหตุการณ์ของ prompt เกิดขึ้นครบหรือไม่
+	local function holdStationary(prompt, duration, diag)
 		local anchor0 = packAnchorPos(prompt) or promptPos(prompt)
-		local maxDist = math.max(5, prompt.MaxActivationDistance or 10)
-		local safeRadius = 2.8
-
-		-- รอจน Prompt พร้อมใช้งานและตัวละครอยู่ในระยะเปิดใช้งานจริงก่อนเริ่มกดค้าง
-		local readyDeadline = os.clock() + 0.35
-		while os.clock() < readyDeadline and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
-			local hrp = Helpers.GetRoot()
-			local char = LocalPlayer.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			local pPos = promptPos(prompt) or anchor0
-			local aPos = packAnchorPos(prompt) or pPos
-			if hrp and pPos and aPos then
-				local dPrompt = (hrp.Position - pPos).Magnitude
-				local dAnchor = (hrp.Position - aPos).Magnitude
-				if dPrompt <= maxDist - 2.5 and dAnchor <= maxDist - 2.5 and prompt.Enabled and ProximityPromptService.Enabled then
-					break
-				elseif hum and dAnchor > 3.2 then
-					hum.WalkSpeed = 32
-					pcall(function() hum:MoveTo(Vector3.new(aPos.X, hrp.Position.Y, aPos.Z)) end)
-				end
-			end
-			RunService.Heartbeat:Wait()
-		end
 
 		local function triggerHoldStart()
 			pcall(function() prompt:InputHoldBegin() end)
 			pressPromptKey(prompt, true)
 		end
 
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hrp = Helpers.GetRoot()
+		local pPos = promptPos(prompt) or anchor0
+		local aPos = packAnchorPos(prompt) or pPos
+
+		-- ล็อกตำแหน่งและเวกเตอร์ความเร็วให้อยู่นิ่งสนิท
+		if hrp and aPos then
+			local dAnchor = (hrp.Position - aPos).Magnitude
+			if dAnchor > 3.5 then
+				local flat = Vector3.new(hrp.Position.X - aPos.X, 0, hrp.Position.Z - aPos.Z)
+				local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.new(-1, 0, 0)
+				hrp.CFrame = CFrame.new(Vector3.new(aPos.X + dir.X * 2.0, math.max(hrp.Position.Y, 69), aPos.Z + dir.Z * 2.0))
+			end
+			-- หันหน้าตรงเข้าหาแกนการ์ด
+			local lookTarget = Vector3.new(aPos.X, hrp.Position.Y, aPos.Z)
+			pcall(function()
+				hrp.CFrame = CFrame.lookAt(hrp.Position, lookTarget)
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+			end)
+		end
+		if hum then
+			pcall(function()
+				hum:Move(Vector3.zero)
+			end)
+		end
+
 		local t0 = os.clock()
 		local deadline = t0 + duration
-		local maxDeadline = t0 + duration + 1.0
+		local maxDeadline = t0 + duration + 1.2
 		local lastRetryAt = t0
 		triggerHoldStart()
 
 		while os.clock() < deadline and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
 			if diag.trig or Helpers.IsCarrying() then break end
-			local char = LocalPlayer.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			local hrp = Helpers.GetRoot()
-			local pPos = promptPos(prompt)
-			local aPos = packAnchorPos(prompt) or pPos
-			if not (char and hum and hrp and aPos) then break end
-			if Core.Flags.AntiRagdollMode and (char:GetAttribute("Ragdolled") == true or hum.PlatformStand) then
-				Helpers.RecoverFromHit(char)
+			local curChar = LocalPlayer.Character
+			local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
+			local curHrp = Helpers.GetRoot()
+			if not (curChar and curHum and curHrp) then break end
+
+			if Core.Flags.AntiRagdollMode and (curChar:GetAttribute("Ragdolled") == true or curHum.PlatformStand) then
+				Helpers.RecoverFromHit(curChar)
 			end
-			local locked = char:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true)
+			local locked = curChar:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and curChar:GetAttribute("Ragdolled") == true)
 			if locked then break end
 
-			local now = os.clock()
-			local dAnchor = Vector3.new(hrp.Position.X - aPos.X, 0, hrp.Position.Z - aPos.Z).Magnitude
-			local dPrompt = pPos and (hrp.Position - pPos).Magnitude or dAnchor
+			-- ยืนนิ่งสนิท 100% ไม่สั่ง MoveTo ใดๆ ป้องกัน Roblox ยกเลิกการกดค้าง
+			pcall(function()
+				curHum:Move(Vector3.zero)
+				curHrp.AssemblyLinearVelocity = Vector3.zero
+			end)
 
-			-- หาก InputHold ยังไม่เริ่มหรือถูกยกเลิกกลางคัน ให้เข้าใกล้และกดค้างใหม่อัตโนมัติ
-			if not diag.began and now - t0 >= 0.55 and fireproximityprompt then
-				break
-			end
-			if (not diag.began or diag.ended) and now - lastRetryAt >= 0.16 then
+			local now = os.clock()
+			if (not diag.began or diag.ended) and now - lastRetryAt >= 0.15 then
 				lastRetryAt = now
 				if diag.ended then
 					diag.ended = false
 					deadline = math.min(maxDeadline, now + duration)
 				end
-				if dAnchor <= maxDist - 1.5 and dPrompt <= maxDist - 1.5 then
-					triggerHoldStart()
-				end
+				triggerHoldStart()
 			end
 
-			-- ยืนชิดด้านที่ห่างบอสภายในรัศมี 2.8 studs ด้วยความเร็วคุมระยะ (ห้ามกระโดดหรือวิ่งเหวี่ยงไกลเกิน)
-			local ePos = findNearestEnemyPos(hrp.Position, 55, stageFolder)
-			if ePos or dAnchor > 3.6 or dPrompt > maxDist - 2.5 then
-				local targetPos
-				if ePos and dAnchor <= 4.5 then
-					local away = Vector3.new(aPos.X - ePos.X, 0, aPos.Z - ePos.Z)
-					local dir = away.Magnitude > 0.1 and away.Unit or Vector3.new(-1, 0, 0)
-					targetPos = Vector3.new(aPos.X + dir.X * safeRadius, hrp.Position.Y, aPos.Z + dir.Z * safeRadius)
-				else
-					local toPlayer = Vector3.new(hrp.Position.X - aPos.X, 0, hrp.Position.Z - aPos.Z)
-					local dir = toPlayer.Magnitude > 0.1 and toPlayer.Unit or Vector3.new(-1, 0, 0)
-					targetPos = Vector3.new(aPos.X + dir.X * 2.4, hrp.Position.Y, aPos.Z + dir.Z * 2.4)
-				end
-				local curSpd = Helpers.GetMoveSpeed()
-				hum.WalkSpeed = math.clamp(curSpd, math.min(16, curSpd), 38)
-				pcall(function() hum:MoveTo(targetPos) end)
-			else
-				pcall(function()
-					hum:MoveTo(hrp.Position)
-					hum:Move(Vector3.zero)
-				end)
-			end
 			RunService.Heartbeat:Wait()
 		end
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
+
+		local endChar = LocalPlayer.Character
+		local endHum = endChar and endChar:FindFirstChildOfClass("Humanoid")
+		if endHum then
+			pcall(function() endHum.WalkSpeed = Helpers.GetMoveSpeed() end)
 		end
 	end
 
@@ -1750,10 +1731,11 @@ local function main()
 			table.insert(conns, prompt.Triggered:Connect(function() diag.trig = true end))
 		end)
 
-		-- หาก executor รองรับ fireproximityprompt และไม่ได้ระบุ hold_only ให้ยิงตรงทันที
+		-- หาก executor รองรับ fireproximityprompt และไม่ได้ระบุ hold_only ให้ลอง trigger ทันที (Instant Trigger)
 		if fireproximityprompt and method ~= "hold_only" then
+			pcall(fireproximityprompt, prompt, 0, true)
 			pcall(fireproximityprompt, prompt)
-			local tEnd = os.clock() + 0.5
+			local tEnd = os.clock() + 0.18
 			while os.clock() < tEnd and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
 				if Helpers.IsCarrying() or diag.trig then break end
 				RunService.Heartbeat:Wait()
@@ -1770,7 +1752,7 @@ local function main()
 		end
 
 		local hold = prompt.HoldDuration or 0.5
-		holdAndOrbit(prompt, hold + 0.3, stageFolder, diag)
+		holdStationary(prompt, hold + 0.25, diag)
 		pcall(function() prompt:InputHoldEnd() end)
 		pressPromptKey(prompt, false)
 
@@ -2157,61 +2139,69 @@ local function main()
 		local stageFolder = getStageFolder(i)
 		local lastDiag = nil
 		local lastDist = -1
-		local bounds = Helpers.GetSafeZoneBounds()
-		for _ = 1, 3 do
-			local char = LocalPlayer.Character
-			if char then
-				if Core.Flags.AntiRagdollMode then
-					Helpers.RecoverFromHit(char)
-				end
-				waitUntil(function()
-					local ragLocked = not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true
-					return not ragLocked and not char:GetAttribute("TrapImmobilized")
-				end, 3)
-			end
-			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then break end
-			local p0 = promptPos(prompt)
-			if not p0 then break end
-			stageFolder = getStageFolder(i)
 
-			local standTarget = safeStandPos(packAnchorPos(prompt) or p0, stageFolder, 2.5)
-
-			-- เดินเข้าไปยืนด้านที่ห่างบอสที่สุดให้ชิดระยะ Prompt จริง (<= 3.5 studs)
-			Helpers.MoveTo(standTarget, function()
-				return not Core.Flags.AutoSteal or not prompt.Parent
-			end, { precise = true, arriveDist = 2.0, evadeEnemies = true })
-			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then break end
-			local hrp = Helpers.GetRoot()
-			local pNow = packAnchorPos(prompt) or promptPos(prompt)
-			if hrp and pNow then
-				lastDist = (hrp.Position - pNow).Magnitude
-				if lastDist > 4.8 then
-					local flat = Vector3.new(hrp.Position.X - pNow.X, 0, hrp.Position.Z - pNow.Z)
-					local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.new(-1, 0, 0)
-					Helpers.Teleport(CFrame.new(Vector3.new(pNow.X + dir.X * 2.5, math.max(hrp.Position.Y, 69), pNow.Z + dir.Z * 2.5)))
-					lastDist = (hrp.Position - pNow).Magnitude
-				end
+		local char = LocalPlayer.Character
+		if char then
+			if Core.Flags.AntiRagdollMode then
+				Helpers.RecoverFromHit(char)
 			end
-			task.wait(0.05)
-			local promptDiag = usePrompt(prompt, "auto", stageFolder)
-			lastDiag = promptDiag
-			local got = waitUntil(Helpers.IsCarrying, 0.6)
-			if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and prompt.Parent then
-				local fallDiag = usePrompt(prompt, "hold_only", stageFolder) -- สำรอง
-				got = waitUntil(Helpers.IsCarrying, 0.8)
-				if not got then
-					lastDiag = {
-						began = promptDiag.began or fallDiag.began,
-						trig = promptDiag.trig or fallDiag.trig,
-						fireTrig = promptDiag.trig,
-					}
-				else
-					lastDiag = fallDiag
-				end
-			end
-			if got or Helpers.IsCarrying() then break end
+			waitUntil(function()
+				local ragLocked = not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true
+				return not ragLocked and not char:GetAttribute("TrapImmobilized")
+			end, 3)
 		end
-		if not Helpers.IsCarrying() then
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+			return false, "ยกเลิก/ตัวละครตาย"
+		end
+
+		local p0 = promptPos(prompt)
+		if not p0 then return false, "ไม่มีพิกัดแพ็ค" end
+		local a0 = packAnchorPos(prompt) or p0
+
+		local standTarget = safeStandPos(a0, stageFolder, 2.0)
+
+		-- เดินเข้าไปยืนตำแหน่งประชิด 2.0 studs
+		Helpers.MoveTo(standTarget, function()
+			return not Core.Flags.AutoSteal or not prompt.Parent
+		end, { precise = true, arriveDist = 2.0, evadeEnemies = true })
+
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+			return false, "ยกเลิก/ตัวละครตาย"
+		end
+
+		local hrp = Helpers.GetRoot()
+		local pNow = packAnchorPos(prompt) or promptPos(prompt)
+		if hrp and pNow then
+			lastDist = (hrp.Position - pNow).Magnitude
+			if lastDist > 3.8 then
+				local flat = Vector3.new(hrp.Position.X - pNow.X, 0, hrp.Position.Z - pNow.Z)
+				local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.new(-1, 0, 0)
+				Helpers.Teleport(CFrame.new(Vector3.new(pNow.X + dir.X * 2.0, math.max(hrp.Position.Y, 69), pNow.Z + dir.Z * 2.0)))
+				lastDist = (hrp.Position - pNow).Magnitude
+			end
+		end
+
+		task.wait(0.04)
+		local promptDiag = usePrompt(prompt, "auto", stageFolder)
+		lastDiag = promptDiag
+		local got = waitUntil(Helpers.IsCarrying, 0.4)
+
+		-- หากยังไม่หยิบ และ prompt ยังอยู่ ให้ลองซ้ำอีก 1 ครั้งด้วย hold_only
+		if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and prompt.Parent then
+			local fallDiag = usePrompt(prompt, "hold_only", stageFolder)
+			got = waitUntil(Helpers.IsCarrying, 0.5)
+			if not got then
+				lastDiag = {
+					began = promptDiag.began or fallDiag.began,
+					trig = promptDiag.trig or fallDiag.trig,
+					fireTrig = promptDiag.trig,
+				}
+			else
+				lastDiag = fallDiag
+			end
+		end
+
+		if not (got or Helpers.IsCarrying()) then
 			local b = lastDiag and tostring(lastDiag.began) or "?"
 			local t = lastDiag and tostring(lastDiag.trig) or "?"
 			return false, string.format("หยิบไม่สำเร็จ(b=%s,t=%s,d=%.0f)", b, t, lastDist)
