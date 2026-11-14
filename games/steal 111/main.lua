@@ -1262,6 +1262,7 @@ local function main()
 	local getPacksToPlace = nil
 	local openReadyPlacedPacks = nil
 	local placePacksInBase = nil
+	local autoMergeStep = nil
 	local runBaseMaintenance = nil
 	local baseFullUntil = 0
 	local function isFullReason(reason)
@@ -2085,7 +2086,13 @@ local function main()
 			pcall(openReadyPlacedPacks)
 		end
 
-		-- Priority 2: นำแพ็คในกระเป๋าไปวางลงฐาน (เฉพาะเมื่อผู้ใช้เปิด AutoPlacePacks และฐานยังไม่เต็ม)
+		-- Priority 2: หากมีแพ็คที่รวมได้ ให้รวมให้เรียบร้อยก่อนนำไปวาง
+		if (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
+			lastMerge = 0
+			pcall(autoMergeStep)
+		end
+
+		-- Priority 3: นำแพ็คในกระเป๋าไปวางลงฐาน (เฉพาะเมื่อผู้ใช้เปิด AutoPlacePacks และฐานยังไม่เต็ม)
 		if Core.Flags.AutoPlacePacks and placePacksInBase then
 			local count = (getPacksToPlace and #getPacksToPlace()) or 0
 			if count > 0 and not isBaseFull() then
@@ -2651,6 +2658,33 @@ local function main()
 			end
 		end
 
+		-- 4. สแกนจาก Coaches (PlayerData.Coaches) สำหรับ mode == "fuse"
+		if mode == "fuse" then
+			local cu = getCoachUtil()
+			local coachData = getPlayerDataKey("Coaches")
+			if cu and cu.GetItems and type(coachData) == "table" then
+				local coachItems = cu.GetItems(coachData)
+				for _, item in ipairs(coachItems) do
+					local cId = item.Id
+					local isSkip = (itemSkipUntil[mode .. ":" .. cId] or 0) > now or permSkipItems[mode .. ":" .. cId]
+					local canMut = cu.CanMutate and cu.CanMutate(item.CoachId)
+					if not isSkip and canMut and not seenIds[cId] then
+						local cEntry = cu.Get and cu.Get(item.CoachId)
+						local name = (cEntry and cEntry.Name) or item.CoachId
+						local mut = normMutation(item.Mutation)
+						seenIds[cId] = true
+						table.insert(candidates, {
+							Id = cId,
+							Name = name,
+							Mutation = mut,
+							Kind = "Coach",
+							Raw = item,
+						})
+					end
+				end
+			end
+		end
+
 		return candidates
 	end
 
@@ -2767,7 +2801,7 @@ local function main()
 		end
 	end
 
-	local function autoMergeStep()
+	autoMergeStep = function()
 		if Core.Busy or Helpers.IsCarrying() then return end
 		local now = os.clock()
 		local mc = getMutateConfig()
@@ -2889,7 +2923,7 @@ local function main()
 				local sFuse, rFuse = isRemoteOk(resFuse)
 				if okFuse and sFuse then
 					count = count + 1
-					local mutResult = (type(resFuse) == "table" and resFuse.Character and resFuse.Character.Mutation) or "สำเร็จ"
+					local mutResult = (type(resFuse) == "table" and ((resFuse.Coach and resFuse.Coach.Mutation) or (resFuse.Character and resFuse.Character.Mutation))) or "สำเร็จ"
 					logAction("Fuse", string.format("กลายพันธุ์ %s สำเร็จ! (%s)", tostring(cName), tostring(mutResult)), true)
 					task.wait(rl)
 				else
@@ -2916,6 +2950,12 @@ local function main()
 				task.spawn(function()
 					task.wait(0.5)
 					autoEquipBestStep(false)
+				end)
+			end
+			if equipBestCoach then
+				task.spawn(function()
+					task.wait(0.5)
+					equipBestCoach()
 				end)
 			end
 		end
@@ -3035,22 +3075,28 @@ local function main()
 				openReadyPlacedPacks()
 			end
 
-			-- ถ้าเปิด AutoMerge ให้ลองรวมแพ็กซ้ำก่อนนำไปวาง
-			if Core.Flags.AutoMerge and autoMergeStep then
-				local mergeCandidates = getBackpackCandidates and getBackpackCandidates("merge") or {}
-				local counts = {}
-				local hasPairs = false
-				for _, c in ipairs(mergeCandidates) do
-					local k = c.Name .. "|" .. c.Mutation
-					counts[k] = (counts[k] or 0) + 1
-					if counts[k] >= 2 then
-						hasPairs = true
-						break
+			-- หากมีแพ็คซ้ำที่สามารถรวมได้ ให้รวมแบบ Multi-Pass จนกว่าจะหมดคู่ก่อนนำไปวางที่ฐาน
+			if (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks) and autoMergeStep then
+				lastMerge = 0
+				local maxPasses = 4
+				while maxPasses > 0 and Core._alive do
+					maxPasses = maxPasses - 1
+					local mergeCandidates = getBackpackCandidates and getBackpackCandidates("merge") or {}
+					local counts = {}
+					local hasPairs = false
+					for _, c in ipairs(mergeCandidates) do
+						local k = c.Name .. "|" .. c.Mutation
+						counts[k] = (counts[k] or 0) + 1
+						if counts[k] >= 2 then
+							hasPairs = true
+							break
+						end
 					end
-				end
-				if hasPairs then
-					pcall(autoMergeStep)
-					task.wait(0.2)
+					if not hasPairs then break end
+					lastMerge = 0
+					local okMerge = pcall(autoMergeStep)
+					if not okMerge then break end
+					task.wait(0.25)
 				end
 			end
 
