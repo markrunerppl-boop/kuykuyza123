@@ -454,6 +454,30 @@ local function main()
 		return MutateConfig
 	end
 
+	local StageConfig = nil
+	local function getStageConfig()
+		if not StageConfig then
+			StageConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.StageConfig end)
+		end
+		return StageConfig
+	end
+
+	local TreadmillConfig = nil
+	local function getTreadmillConfig()
+		if not TreadmillConfig then
+			TreadmillConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.TreadmillConfig end)
+		end
+		return TreadmillConfig
+	end
+
+	local BaseUpgradeConfig = nil
+	local function getBaseUpgradeConfig()
+		if not BaseUpgradeConfig then
+			BaseUpgradeConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.BaseUpgradeConfig end)
+		end
+		return BaseUpgradeConfig
+	end
+
 	function Helpers.GetSafeZoneBounds()
 		local game_ = Workspace:FindFirstChild("Game")
 		local sz = game_ and game_:FindFirstChild("SafeZone")
@@ -2056,46 +2080,39 @@ local function main()
 	local lastOrderSig = ""
 
 	local function getStageBossSpeed(i)
-		local folder = getStageFolder(i)
-		local maxSpd = nil
-		if folder then
-			for _, ch in ipairs(folder:GetChildren()) do
-				if ch.Name == "Enemy" and ch:IsA("Model") then
-					local hum = ch:FindFirstChildOfClass("Humanoid")
-					local spd = hum and hum.WalkSpeed
-					if not spd or spd <= 0 then
-						local attrSpd = ch:GetAttribute("WalkSpeed") or ch:GetAttribute("Speed") or ch:GetAttribute("MoveSpeed")
-						spd = tonumber(attrSpd)
-					end
-					if not spd or spd <= 0 then
-						local val = ch:FindFirstChild("WalkSpeed") or ch:FindFirstChild("Speed")
-						if val and (val:IsA("NumberValue") or val:IsA("IntValue")) then
-							spd = tonumber(val.Value)
-						end
-					end
-					if spd and spd > 0 and (not maxSpd or spd > maxSpd) then
-						maxSpd = spd
-					end
+		if bossSpeedCache[i] then return bossSpeedCache[i] end
+
+		local sc = getStageConfig()
+		local spdCfg = getSpeedConfig()
+		local stageKey = "Stage" .. i
+		local stageData = sc and sc.Stages and sc.Stages[stageKey]
+		if stageData then
+			-- ด่าน 1 มีระบุ WalkSpeed ชัดเจนใน Enemy (16)
+			local enemyWalkSpeed = stageData.Enemy and stageData.Enemy.WalkSpeed
+			if enemyWalkSpeed and enemyWalkSpeed > 0 then
+				bossSpeedCache[i] = enemyWalkSpeed
+				return enemyWalkSpeed
+			end
+			-- ด่านอื่นๆ คำนวณความเร็ววิ่งจริงจาก RecommendedSpeed ผ่าน SpeedConfig.ToWalkSpeed
+			local rec = tonumber(stageData.RecommendedSpeed)
+			if rec and spdCfg and spdCfg.ToWalkSpeed then
+				local ok, ws = pcall(spdCfg.ToWalkSpeed, rec, false)
+				if ok and type(ws) == "number" and ws > 0 then
+					bossSpeedCache[i] = ws
+					return ws
 				end
 			end
 		end
 
-		if maxSpd then
-			bossSpeedCache[i] = maxSpd
-			return maxSpd
-		end
-
-		if bossSpeedCache[i] then
-			return bossSpeedCache[i]
-		end
-
-		-- ค่าความเร็วบอสประมาณการมาตรฐานตามด่าน (หากบอสยังไม่ spawn หรือยังไม่ stream เข้ามา)
+		-- Fallback ความเร็วมาตรฐานอ้างอิงจาก RecommendedSpeed ของ StageConfig จริง
 		local fallbackSpeeds = {
-			[1] = 20, [2] = 26, [3] = 34, [4] = 45,
-			[5] = 60, [6] = 80, [7] = 110, [8] = 150,
-			[9] = 195, [10] = 240, [11] = 285, [12] = 330
+			[1] = 16, [2] = 36, [3] = 64, [4] = 85,
+			[5] = 101, [6] = 117, [7] = 135, [8] = 157,
+			[9] = 207, [10] = 215, [11] = 226, [12] = 241
 		}
-		return fallbackSpeeds[i] or (16 + i * 25)
+		local spd = fallbackSpeeds[i] or (16 + i * 18)
+		bossSpeedCache[i] = spd
+		return spd
 	end
 
 	local function buildStageOrder()
@@ -2129,7 +2146,7 @@ local function main()
 					break
 				end
 			end
-			local minSpd = lowestSelected and getStageBossSpeed(lowestSelected) or 20
+			local minSpd = lowestSelected and getStageBossSpeed(lowestSelected) or 16
 			local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
 			if sig ~= lastOrderSig then
 				lastOrderSig = sig
@@ -2151,7 +2168,15 @@ local function main()
 
 		-- หากเปิดโหมดเลือกเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
 		if fastestOnly and #candidates > 0 then
-			local best = candidates[1]
+			-- กรองหาด่านที่ดีที่สุดที่ canOutrun == true เสมอ (ไม่เลือกด่านที่วิ่งไม่ทันแม้จะปิด OutrunOnly)
+			local best = nil
+			for _, c in ipairs(candidates) do
+				if c.canOutrun then
+					best = c
+					break
+				end
+			end
+			best = best or candidates[1]
 			local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
 			if sig ~= lastOrderSig then
 				lastOrderSig = sig
@@ -2195,8 +2220,8 @@ local function main()
 					if ok and res then
 						Stats.stealOk = Stats.stealOk + 1
 						logAction("ขโมย", string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName)), true)
-						-- หากผู้ใช้เปิด AutoPlacePacks ให้รอซิงก์แพ็คเข้ากระเป๋าและวางลงฐาน
-						if Core.Flags.AutoPlacePacks and runBaseMaintenance then
+						-- หากผู้ใช้เปิด AutoPlacePacks หรือ AutoOpenPacks ให้จัดการวงรอบบำรุงรักษาฐาน
+						if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
 							local waitSyncEnd = os.clock() + 2.0
 							while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
 								local count = (getPacksToPlace and #getPacksToPlace()) or 0
@@ -2853,6 +2878,12 @@ local function main()
 								local name = rec.PackName or "Pack"
 								logAction("เปิดแพ็ก", "ฟักสำเร็จ: " .. tostring(name), true)
 								baseFullUntil = 0
+								if autoEquipBestStep then
+									task.spawn(function()
+										task.wait(0.3)
+										autoEquipBestStep(false)
+									end)
+								end
 								task.wait(0.2)
 							else
 								itemSkipUntil[rec.Id] = now + 4
@@ -3163,10 +3194,15 @@ local function main()
 
 	local function autoOpenPacksStep()
 		if not Core._alive then return end
-		-- ถ้ากำลังเปิดโหมด AutoSteal ให้ลูปขโมยเป็นตัวจัดการวงรอบ Base Maintenance เอง
-		if Core.Flags.AutoSteal then return end
-		if runBaseMaintenance then
-			runBaseMaintenance()
+		-- ฟัก/เปิดแพ็กที่พร้อมเปิดบนฐานตลอดเวลา (รีโมททำงานได้จากทุกจุด ไม่กระทบการเดินหรือขโมย)
+		if openReadyPlacedPacks then
+			pcall(openReadyPlacedPacks)
+		end
+		-- หากไม่ได้เปิด AutoSteal หรือไม่ได้กำลังแบกแพ็ค ให้จัดการนำแพ็คในกระเป๋าไปวางบนฐานด้วย
+		if not Core.Flags.AutoSteal and not Helpers.IsCarrying() and not Core.Busy then
+			if runBaseMaintenance then
+				pcall(runBaseMaintenance)
+			end
 		end
 	end
 
@@ -3214,13 +3250,33 @@ local function main()
 	local function autoUpgradeTreadmillStep()
 		local now = os.clock()
 		if now < nextTmUpgrade then return end
+
+		local tc = getTreadmillConfig()
+		local pd = getPlayerData()
+		local curLvl = pd and pd.Get and pd.Get(tc and tc.Upgrade and tc.Upgrade.DataName or "TreadmillLevel")
+		local normLvl = tc and tc.NormalizeLevelName and tc.NormalizeLevelName(curLvl)
+		local nextPrice = tc and tc.GetPriceForNextLevel and tc.GetPriceForNextLevel(normLvl)
+
+		if nextPrice == nil then
+			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
+			nextTmUpgrade = now + 60
+			return
+		end
+
+		local cash = getPlayerCash()
+		if cash < nextPrice then
+			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
+			nextTmUpgrade = now + 4
+			return
+		end
+
 		local ok, res = Net.Invoke(Net.Paths.TreadmillUpgrade, {})
 		local success, reason = isRemoteOk(res)
 		if ok and success then
-			nextTmUpgrade = now + 0.8
-			logAction("อัปเกรด", "อัปเกรดลู่วิ่งสำเร็จ", true)
+			nextTmUpgrade = now + 1.0
+			logAction("อัปเกรด", "อัปเกรดลู่วิ่งสำเร็จ (Level: " .. tostring(res and res.LevelName or "Next") .. ")", true)
 		else
-			nextTmUpgrade = now + 4
+			nextTmUpgrade = now + 5
 			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
 				logAction("อัปเกรด", "ลู่วิ่ง: " .. tostring(reason), false)
 			end
@@ -3230,13 +3286,33 @@ local function main()
 	local function autoUpgradeBaseStep()
 		local now = os.clock()
 		if now < nextBaseUpgrade then return end
+
+		local bc = getBaseUpgradeConfig()
+		local pd = getPlayerData()
+		local curLvl = pd and pd.Get and pd.Get("BaseUpgradeLevel")
+		local normLvl = bc and bc.NormalizeLevel and bc.NormalizeLevel(curLvl)
+		local nextPrice = bc and bc.GetPriceForNextLevel and bc.GetPriceForNextLevel(normLvl)
+
+		if nextPrice == nil then
+			-- เลเวลตันแล้ว หยุดตรวจเป็นเวลานาน
+			nextBaseUpgrade = now + 60
+			return
+		end
+
+		local cash = getPlayerCash()
+		if cash < nextPrice then
+			-- เงินยังไม่พอ ไม่ยิงคำสั่ง ป้องกันเซิร์ฟเวอร์ส่ง Toast Notification แจ้งเตือนเงินไม่พอรัวๆ
+			nextBaseUpgrade = now + 4
+			return
+		end
+
 		local ok, res = Net.Invoke(Net.Paths.BaseUpgradePurchase, {})
 		local success, reason = isRemoteOk(res)
 		if ok and success then
-			nextBaseUpgrade = now + 0.8
-			logAction("อัปเกรด", "อัปเกรดฐานสำเร็จ", true)
+			nextBaseUpgrade = now + 1.0
+			logAction("อัปเกรด", "อัปเกรดฐานสำเร็จ (Level: " .. tostring(res and res.Level or "Next") .. ")", true)
 		else
-			nextBaseUpgrade = now + 4
+			nextBaseUpgrade = now + 5
 			if ok and reason and reason ~= "NOT_ENOUGH_CASH" then
 				logAction("อัปเกรด", "ฐาน: " .. tostring(reason), false)
 			end
