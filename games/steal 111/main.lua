@@ -121,6 +121,7 @@ local function main()
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
 	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
+	Core.Flags.MaxStageStealPacks = 4      -- โควต้าขโมยการ์ดที่ดีที่สุดรอบละ 4 ใบในด่านเดียว
 	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
@@ -2157,8 +2158,6 @@ local function main()
 	local function buildStageOrder()
 		local mySpeed = Helpers.GetMoveSpeed()
 		local margin = Core.Flags.OutrunMargin or 1.0
-		local outrunOnly = Core.Flags.OutrunOnly ~= false
-		local fastestOnly = Core.Flags.TargetFastestOnly ~= false
 
 		local candidates = {}
 		for i = 1, 12 do
@@ -2166,7 +2165,7 @@ local function main()
 				local bSpd = getStageBossSpeed(i)
 				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
 				local canOutrun = (i == 1) or (mySpeed >= (bSpd * margin))
-				if canOutrun or not outrunOnly then
+				if canOutrun then
 					table.insert(candidates, {
 						stage = i,
 						bossSpeed = bSpd,
@@ -2176,7 +2175,7 @@ local function main()
 			end
 		end
 
-		-- หากเปิด OutrunOnly แต่ความเร็วตัวละครยังต่ำกว่าบอสทุกด่านที่เลือก
+		-- หากความเร็วตัวละครยังต่ำกว่าบอสทุกด่านที่เลือก
 		if #candidates == 0 then
 			local lowestSelected = nil
 			for i = 1, 12 do
@@ -2194,107 +2193,131 @@ local function main()
 			return {}
 		end
 
-		-- เรียงลำดับ: ด่านที่วิ่งหนีทันมาก่อน -> ในกลุ่มที่วิ่งหนีทัน ให้ด่านที่บอสเร็วที่สุด (bossSpeed สูงสุด) มาก่อน
+		-- เรียงลำดับหาด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน (bossSpeed สูงสุด)
 		table.sort(candidates, function(a, b)
-			if a.canOutrun ~= b.canOutrun then
-				return a.canOutrun == true
-			end
 			if a.bossSpeed ~= b.bossSpeed then
 				return a.bossSpeed > b.bossSpeed
 			end
 			return a.stage > b.stage
 		end)
 
-		-- หากเปิดโหมดเลือกเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
-		if fastestOnly and #candidates > 0 then
-			-- กรองหาด่านที่ดีที่สุดที่ canOutrun == true เสมอ (ไม่เลือกด่านที่วิ่งไม่ทันแม้จะปิด OutrunOnly)
-			local best = nil
-			for _, c in ipairs(candidates) do
-				if c.canOutrun then
-					best = c
-					break
-				end
-			end
-			best = best or candidates[1]
-			local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
-			if sig ~= lastOrderSig then
-				lastOrderSig = sig
-				local info = (best.stage == 1 and mySpeed < best.bossSpeed)
-					and string.format("เลือกด่าน 1 (ด่านเริ่มต้น/เควสต์สอนเล่น | เราเร็ว %.0f)", mySpeed)
-					or string.format("เลือกด่าน %d (บอสเร็ว %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed)
-				logAction("ด่านเป้าหมาย", info, true)
-			end
-			return { best.stage }
+		local best = candidates[1]
+		local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
+		if sig ~= lastOrderSig then
+			lastOrderSig = sig
+			local info = (best.stage == 1 and mySpeed < best.bossSpeed)
+				and string.format("เลือกด่าน 1 (ด่านเริ่มต้น/เควสต์สอนเล่น | เราเร็ว %.0f)", mySpeed)
+				or string.format("เลือกด่าน %d (บอสเร็วที่สุดที่วิ่งทัน %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed)
+			logAction("ด่านเป้าหมาย", info, true)
 		end
 
-		local stages = {}
-		for _, c in ipairs(candidates) do
-			table.insert(stages, c.stage)
-		end
-		return stages
+		return { best.stage }
 	end
 
+	local stageStealCount = 0
+	local currentTargetStage = nil
+	local nextStealBatchTime = 0
+
 	local function stealCycle()
-		-- 1. สร้างลำดับด่านที่เลือก โดยอ้างอิงจากความเร็วตัวละครเทียบกับความเร็วบอส
-		local anyFound = false
+		-- 1. ตรวจสอบด่านเป้าหมายเพียงด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
 		local targetStages = buildStageOrder()
-
-		for _, i in ipairs(targetStages) do
-			if not Core._alive or not Core.Flags.AutoSteal then break end
-
-			if Core.Flags["Stage" .. i] and Helpers.IsAlive() then
-				local prompt = checkStageHasPacks(i)
-				if prompt then
-					anyFound = true
-					Core.Busy = true
-					leaveTreadmill()
-					local packModel = prompt.Parent
-					while packModel and packModel ~= Workspace and not packModel:IsA("Model") do
-						packModel = packModel.Parent
-					end
-					local rName = packModel and getModelRarity(packModel) or "Pack"
-					local pName = packModel and (packModel:GetAttribute("PackName") or packModel.Name) or ""
-					local ok, res, why = pcall(stealFromStage, i, prompt)
-					stopPin()
-					Core.Busy = false
-					if ok and res then
-						Stats.stealOk = Stats.stealOk + 1
-						local info = (pName ~= "" and pName ~= rName)
-							and string.format("ด่าน %d [%s - %s]: สำเร็จ", i, tostring(rName), tostring(pName))
-							or string.format("ด่าน %d [%s]: สำเร็จ", i, tostring(rName))
-						logAction("ขโมย", info, true)
-						-- หากผู้ใช้เปิด AutoPlacePacks หรือ AutoOpenPacks ให้จัดการวงรอบบำรุงรักษาฐาน
-						if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
-							local waitSyncEnd = os.clock() + 2.0
-							while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
-								local count = (getPacksToPlace and #getPacksToPlace()) or 0
-								if count > 0 then break end
-								task.wait(0.15)
-							end
-							runBaseMaintenance()
-						end
-					else
-						Stats.stealFail = Stats.stealFail + 1
-						local reason = res
-						if ok then reason = why or "ไม่ทราบสาเหตุ" end
-						logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
-						returnToSafeRest(false)
-						task.wait(math.max(Core.Flags.StealDelay or 0.2, 0.4))
-					end
-					task.wait(Core.Flags.StealDelay)
-					break
-				end
-			end
-		end
-
-		-- 2. หากไม่มีแพ็คในด่านใดเลยที่ตรงกับเกรดที่เลือก ให้กลับฐานและขึ้นลู่วิ่งทันที
-		if not anyFound and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			-- หากตัวละครยังไม่ได้อยู่บนลู่วิ่ง ให้ขึ้นลู่วิ่งทันที
-			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+		if #targetStages == 0 then
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
 			task.wait(1.0)
+			return
 		end
+
+		local i = targetStages[1]
+		local maxPacks = Core.Flags.MaxStageStealPacks or 4
+
+		-- หากมีการสลับด่านเป้าหมาย (เช่น Speed เพิ่มขึ้นจนวิ่งทันด่านที่สูงกว่า) ให้รีเซ็ตโควต้าเริ่มใหม่
+		if currentTargetStage ~= i then
+			currentTargetStage = i
+			stageStealCount = 0
+			nextStealBatchTime = 0
+		end
+
+		-- ตรวจสอบว่าในรอบปัจจุบันขโมยครบโควต้า 4 ใบแล้วหรือยัง
+		local now = os.clock()
+		if stageStealCount >= maxPacks then
+			if now < nextStealBatchTime then
+				-- ยังอยู่ในช่วงพักรอบ (25 วินาที) ให้ขึ้นลู่วิ่งปั๊ม Speed รอชุดใหม่
+				if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
+					returnToSafeRest(true)
+				end
+				task.wait(1.0)
+				return
+			else
+				-- ครบเวลาพักรอบแล้ว รีเซ็ตตัวนับเพื่อเริ่มขโมย 4 ใบใหม่ในด่าน
+				stageStealCount = 0
+				logAction("ขโมย", string.format("ด่าน %d: เริ่มรอบขโมยการ์ดที่ดีที่สุดชุดใหม่ (%d ใบ)", i, maxPacks), true)
+			end
+		end
+
+		if not Core.Flags["Stage" .. i] or not Helpers.IsAlive() then
+			return
+		end
+
+		local prompt = checkStageHasPacks(i)
+		if not prompt then
+			-- ในด่านยังไม่มีแพ็คตามเกรดที่เลือกเกิดใหม่ ให้กลับขึ้นลู่วิ่งรอ
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				returnToSafeRest(true)
+			end
+			task.wait(1.0)
+			return
+		end
+
+		Core.Busy = true
+		leaveTreadmill()
+		local packModel = prompt.Parent
+		while packModel and packModel ~= Workspace and not packModel:IsA("Model") do
+			packModel = packModel.Parent
+		end
+		local rName = packModel and getModelRarity(packModel) or "Pack"
+		local pName = packModel and (packModel:GetAttribute("PackName") or packModel.Name) or ""
+		local ok, res, why = pcall(stealFromStage, i, prompt)
+		stopPin()
+		Core.Busy = false
+
+		if ok and res then
+			stageStealCount = stageStealCount + 1
+			Stats.stealOk = Stats.stealOk + 1
+			local info = (pName ~= "" and pName ~= rName)
+				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), stageStealCount, maxPacks)
+				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), stageStealCount, maxPacks)
+			logAction("ขโมย", info, true)
+
+			-- จัดการนำแพ็คไปรวม/วางที่ฐาน
+			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
+				local waitSyncEnd = os.clock() + 2.0
+				while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
+					local count = (getPacksToPlace and #getPacksToPlace()) or 0
+					if count > 0 then break end
+					task.wait(0.15)
+				end
+				runBaseMaintenance()
+			end
+
+			-- หากขโมยครบโควต้า 4 ใบแล้ว ให้กลับฐานขึ้นลู่วิ่งและพักรอบ 25 วินาที
+			if stageStealCount >= maxPacks then
+				nextStealBatchTime = os.clock() + 25
+				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งฝึกซ้อม (รอชุดใหม่)", maxPacks, i), true)
+				if runBaseMaintenance then pcall(runBaseMaintenance) end
+				returnToSafeRest(true)
+			end
+		else
+			Stats.stealFail = Stats.stealFail + 1
+			local reason = res
+			if ok then reason = why or "ไม่ทราบสาเหตุ" end
+			logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
+			returnToSafeRest(false)
+			task.wait(math.max(Core.Flags.StealDelay or 0.2, 0.4))
+		end
+
+		task.wait(Core.Flags.StealDelay)
 	end
 
 	local function startStealLoop()
@@ -4500,6 +4523,10 @@ local function main()
 		CreateToggle(pFarm, "ขโมยเฉพาะด่านบอสเร็วสุดที่วิ่งทัน (Target Fastest Boss Only)", Core.Flags.TargetFastestOnly, function(v)
 			Core.Flags.TargetFastestOnly = v
 			lastOrderSig = ""
+		end)
+
+		CreateToggle(pFarm, "จำกัดรอบละ 4 ใบที่ดีที่สุด (Quota 4 Best Packs/Round)", Core.Flags.MaxStageStealPacks == 4, function(v)
+			Core.Flags.MaxStageStealPacks = v and 4 or 999
 		end)
 
 		CreateToggle(pFarm, "ขโมยเฉพาะด่านที่วิ่งหนีบอสทัน (Outrun Boss Only)", Core.Flags.OutrunOnly, function(v)
