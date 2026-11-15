@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v3.1 (Forward Declaration Scope Fix + Seamless Hybrid Farm)
+-- เวอร์ชัน: v3.2 (Hybrid Timing: 40s Train / 4 Throws + Forward Declaration Scope Fix)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -48,7 +48,7 @@ Core.Flags.AutoThrow        = false   -- โยนอาหารอัตโน
 Core.Flags.PerfectThrow     = true    -- บังคับคะแนนเต็ม 100% (Meter Accuracy = 1.0)
 Core.Flags.AutoSuperThrow   = false   -- ใช้งาน Super Throw เมื่อมีสิทธิ์
 Core.Flags.AutoTrain        = false   -- ฝึกพลังอัตโนมัติ (วาร์ปไปแท่นฝึก + ระบบแก้ค้าง)
-Core.Flags.AutoCycle        = false   -- ฟาร์มไฮบริด (ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง อัตโนมัติ)
+Core.Flags.AutoCycle        = false   -- ฟาร์มไฮบริด (ฝึกพลัง 40s สลับโยนอาหาร 4 ครั้ง อัตโนมัติ)
 Core.Flags.AutoTapBonus     = true    -- กดคูณ 2 อัตโนมัติทันทีที่มีรอบโบนัสขณะฝึกซ้อม
 Core.Flags.AutoStandUpgrade = false   -- อัปเกรดแท่นฝึกอัตโนมัติ (พร้อมระบบกันแจ้งเตือนเงินไม่พอ)
 Core.Flags.AutoBuyFood      = true    -- ซื้ออาหารอัตโนมัติเมื่อเงินพอ
@@ -699,14 +699,14 @@ end
 -- [Forward Declaration]: ประกาศตัวแปร local ล่วงหน้าเพื่อให้ runCycleFarm เรียกใช้งานได้
 local runThrowCycle
 
--- [ฟังก์ชันหลัก 1.5]: ลูปฟาร์มไฮบริด (Auto Cycle: ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง อัตโนมัติ)
+-- [ฟังก์ชันหลัก 1.5]: ลูปฟาร์มไฮบริด (Auto Cycle: ฝึกพลัง 40s สลับโยนอาหาร 4 ครั้ง อัตโนมัติ)
 local function runCycleFarm()
     if not Core.Flags.AutoCycle or not Core._alive then return end
 
-    -- เฟส 1: ฝึกพลังบนแท่นฝึก (ประมาณ 20 วินาที พร้อมรับ 2x Tap Bonus อัตโนมัติ)
-    logAction("ฟาร์มไฮบริด", "เริ่มรอบฝึกพลังสะสมพลังขว้าง (20 วินาที)...", true)
+    -- เฟส 1: ฝึกพลังบนแท่นฝึก (ประมาณ 40 วินาที พร้อมรับ 2x Tap Bonus อัตโนมัติ)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบฝึกพลังสะสมพลังขว้าง (40 วินาที)...", true)
     local t0 = os.clock()
-    while Core.Flags.AutoCycle and Core._alive and (os.clock() - t0 < 20) do
+    while Core.Flags.AutoCycle and Core._alive and (os.clock() - t0 < 40) do
         runTrainCycle()
         task.wait(1.0)
     end
@@ -722,8 +722,8 @@ local function runCycleFarm()
 
     if not Core.Flags.AutoCycle or not Core._alive then return end
 
-    -- เฟส 2: โยนอาหารคะแนนเต็ม 100% (6 ครั้ง)
-    logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (เป้าหมาย 6 ครั้ง)...", true)
+    -- เฟส 2: โยนอาหารคะแนนเต็ม 100% (4 ครั้ง)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (เป้าหมาย 4 ครั้ง)...", true)
 
     -- วาร์ปไปที่แท่นโยนทางการล่วงหน้าพร้อมล็อคตำแหน่ง ป้องกัน pushBack
     local launchCF = Helpers.GetLaunchCFrame()
@@ -736,12 +736,12 @@ local function runCycleFarm()
 
     local throwsDone = 0
     local attempts = 0
-    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 and attempts < 15 do
+    while Core.Flags.AutoCycle and Core._alive and throwsDone < 4 and attempts < 10 do
         attempts = attempts + 1
         local ok = runThrowCycle()
         if ok then
             throwsDone = throwsDone + 1
-            logAction("ฟาร์มไฮบริด", string.format("โยนสำเร็จแล้ว %d/6 ครั้ง", throwsDone), true)
+            logAction("ฟาร์มไฮบริด", string.format("โยนสำเร็จแล้ว %d/4 ครั้ง", throwsDone), true)
             task.wait(0.2)
         else
             task.wait(0.4)
@@ -1257,7 +1257,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v3.1</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v3.2</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1625,7 +1625,7 @@ CreateToggle(FarmPage, "AutoStandUpgrade", "อัปเกรดแท่นฝ
 end)
 
 CreateSection(FarmPage, "ระบบฟาร์มไฮบริด (Hybrid Auto Cycle)")
-CreateToggle(FarmPage, "AutoCycle", "🔄 ฟาร์มไฮบริด (ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง)", function(val)
+CreateToggle(FarmPage, "AutoCycle", "🔄 ฟาร์มไฮบริด (ฝึกพลัง 40s สลับโยนอาหาร 4 ครั้ง)", function(val)
     if val then
         if Core.Flags.AutoThrow then
             Core:SetToggle("AutoThrow", false)
@@ -1834,6 +1834,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v3.1 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v3.2 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v3.1 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v3.2 โหลดสำเร็จ 100%")
