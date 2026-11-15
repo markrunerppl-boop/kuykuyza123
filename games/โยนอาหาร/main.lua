@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.9 (Fixed AutoCycle Hybrid Engine + Replicated Position Sync + Clean Training State Guard)
+-- เวอร์ชัน: v3.0 (Zero-Pushback Throw Engine + AreaUtil Official Launch Sync + Seamless Hybrid Farm)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -321,12 +321,13 @@ pcall(function()
     end
 end)
 
-local FoodsConfig, FenceConfig, StandsConfig, BalanceCurve, NumberFormat
+local FoodsConfig, FenceConfig, StandsConfig, BalanceCurve, NumberFormat, AreaUtil
 pcall(function() FoodsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FoodsConfig")) end)
 pcall(function() FenceConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FenceConfig")) end)
 pcall(function() StandsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StandsConfig")) end)
 pcall(function() BalanceCurve = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BalanceCurve")) end)
 pcall(function() NumberFormat = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("NumberFormat")) end)
+pcall(function() AreaUtil = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("AreaUtil")) end)
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes", 5)
 local remotes = {}
@@ -430,12 +431,13 @@ function Helpers.StopTrainingClean()
 
     -- รอให้สถานะ Training บนเซิร์ฟเวอร์เคลียร์ออกจริง
     local t0 = os.clock()
-    while (LocalPlayer:GetAttribute("Training") == true) and (os.clock() - t0 < 1.5) and Core._alive do
+    while (LocalPlayer:GetAttribute("Training") == true) and (os.clock() - t0 < 2.0) and Core._alive do
         task.wait(0.05)
     end
 
-    local tGui = LocalPlayer.PlayerGui:FindFirstChild("TrainingGui") or LocalPlayer.PlayerGui:FindFirstChild("TrainingSequence")
-    if tGui then pcall(function() tGui:Destroy() end) end
+    task.wait(0.1)
+    local tGui = LocalPlayer.PlayerGui:FindFirstChild("TrainingGui")
+    if tGui then pcall(function() tGui.Enabled = false end) end
     if ScreenFX and ScreenFX.Reset then pcall(ScreenFX.Reset) end
     if CameraRig and CameraRig.Release then pcall(CameraRig.Release) end
     local cam = Workspace.CurrentCamera
@@ -535,15 +537,20 @@ function Helpers.GetTrainingSpot()
     return nil
 end
 
--- ค้นหาเส้นโยนอาหาร (StarterArea.CrossLine)
+-- ค้นหาตำแหน่งแท่นโยนอาหารทางการ (AreaUtil Official Launch Position)
 function Helpers.GetLaunchCFrame()
+    if AreaUtil and AreaUtil.GetLaunchPosition then
+        local lp = AreaUtil.GetLaunchPosition()
+        if lp then
+            return CFrame.lookAt(Vector3.new(lp.X, lp.Y + 3.0, lp.Z), Vector3.new(lp.X, lp.Y + 3.0, lp.Z - 10))
+        end
+    end
     local starterArea = Workspace:FindFirstChild("StarterArea")
     if starterArea then
-        local crossLine = starterArea:FindFirstChild("CrossLine")
-        if crossLine and crossLine:IsA("BasePart") then
-            return crossLine.CFrame + Vector3.new(0, 3.5, 0)
-        end
-        return CFrame.new(starterArea.Position.X, starterArea.Position.Y + starterArea.Size.Y / 2 + 3.5, starterArea.Position.Z)
+        return CFrame.lookAt(
+            Vector3.new(starterArea.Position.X, starterArea.Position.Y + starterArea.Size.Y / 2 + 3.0, starterArea.Position.Z),
+            Vector3.new(starterArea.Position.X, starterArea.Position.Y + starterArea.Size.Y / 2 + 3.0, starterArea.Position.Z - 10)
+        )
     end
     return nil
 end
@@ -708,23 +715,25 @@ local function runCycleFarm()
 
     -- จบเฟสฝึกซ้อม เคลียร์ตัวละครและเซิร์ฟเวอร์ก่อนสลับโหมด
     Helpers.StopTrainingClean()
-    task.wait(0.25)
+    task.wait(0.3)
 
     if not Core.Flags.AutoCycle or not Core._alive then return end
 
     -- เฟส 2: โยนอาหารคะแนนเต็ม 100% (6 ครั้ง)
     logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (เป้าหมาย 6 ครั้ง)...", true)
 
-    -- วาร์ปไปที่เส้นโยนล่วงหน้าพร้อมรอ Replication 0.35 วินาที ป้องกันเซิร์ฟเวอร์แจ้งเตือน TooFar
+    -- วาร์ปไปที่แท่นโยนทางการล่วงหน้าพร้อมล็อคตำแหน่ง ป้องกัน pushBack
     local launchCF = Helpers.GetLaunchCFrame()
-    if launchCF then
+    local hrp = Helpers.GetRoot()
+    if launchCF and hrp then
         Helpers.TeleportTo(launchCF)
-        task.wait(0.35)
+        hrp.Anchored = true
+        task.wait(0.4)
     end
 
     local throwsDone = 0
     local attempts = 0
-    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 and attempts < 14 do
+    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 and attempts < 15 do
         attempts = attempts + 1
         local ok = runThrowCycle()
         if ok then
@@ -732,13 +741,13 @@ local function runCycleFarm()
             logAction("ฟาร์มไฮบริด", string.format("โยนสำเร็จแล้ว %d/6 ครั้ง", throwsDone), true)
             task.wait(0.2)
         else
-            task.wait(0.35)
+            task.wait(0.4)
         end
     end
 
     -- จบเฟสโยนอาหาร เคลียร์สถานะก่อนกลับไปฝึกพลัง
     Helpers.StopThrowingClean()
-    task.wait(0.25)
+    task.wait(0.3)
 end
 
 -- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% ไวที่สุดในเซิร์ฟเวอร์ (Ultra-Fast Adaptive Pipeline + Zero-Freeze Guard)
@@ -760,15 +769,19 @@ local function runThrowCycle()
         ClientState.Busy = "KuykuyThrow" -- บล็อก pollLine ไม่ให้ตัวเกมเปิดคัตซีน/ล็อคตัวละคร
     end
 
-    -- ตรวจสอบตำแหน่ง: ยืนชิดหน้าเส้น StarterArea (เฉพาะเมื่อระยะห่างเกิน 6 studs)
+    -- ตรวจสอบตำแหน่ง: ยืนชิดหน้าแท่นโยนทางการ (เฉพาะเมื่อระยะห่างเกิน 5 studs)
     local launchCF = Helpers.GetLaunchCFrame()
     local hrp = Helpers.GetRoot()
     if launchCF and hrp then
         local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(launchCF.Position.X, 0, launchCF.Position.Z)).Magnitude
-        if flatDist > 6 then
+        if flatDist > 5 then
             Helpers.TeleportTo(launchCF)
             task.wait(0.35)
         end
+        -- ล็อคตำแหน่งตัวละครด้วย Anchored ป้องกัน pollLine ของเกมเรียก pushBack ดีดตัวละครถอยหลัง
+        hrp.Anchored = true
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
     end
 
     local throwSuccess = false
@@ -837,14 +850,22 @@ local function runThrowCycle()
             task.wait(0.2)
         elseif reason == "TooFar" then
             local launchCF = Helpers.GetLaunchCFrame()
-            if launchCF then Helpers.TeleportTo(launchCF) end
-            task.wait(0.3)
+            if launchCF then
+                Helpers.TeleportTo(launchCF)
+                local hrp = Helpers.GetRoot()
+                if hrp then hrp.Anchored = true end
+            end
+            task.wait(0.35)
         else
             logAction("โยนอาหาร", "เริ่มโยนไม่สำเร็จ: " .. tostring(reason), false)
             task.wait(0.3)
         end
     end
 
+    local curHrp = Helpers.GetRoot()
+    if curHrp then
+        curHrp.Anchored = false
+    end
     Core.Busy = false
     if ClientState and ClientState.Busy == "KuykuyThrow" then
         ClientState.Busy = nil
@@ -1233,7 +1254,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.9</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v3.0</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1810,6 +1831,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.9 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v3.0 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.9 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v3.0 โหลดสำเร็จ 100%")
