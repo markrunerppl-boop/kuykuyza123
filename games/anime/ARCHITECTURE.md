@@ -1,22 +1,36 @@
 # ARCHITECTURE.md - ดัชนีโครงสร้างและแผนผังสคริปต์ (Anime Mine)
 
-ไฟล์สคริปต์หลัก: `games/anime/anime_mine.lua`
+ไฟล์สคริปต์หลัก: `games/anime/anime_mine.lua` (ความยาวประมาณ 5,230 บรรทัด)
 
 ---
 
-## 1. ผังโครงสร้างโค้ดตามช่วงบรรทัด (Line Map)
+## 1. 🔍 สารบัญค้นหาฟังก์ชันและตำแหน่งบรรทัด (Quick Search Index)
 
-```
-[Lines 1 - 220]    : Bootloader, Watchdog, IdleRejoin Nullifier, Toast Purger
-[Lines 221 - 250]  : Safe Require Modules & Safe Data Accessors (SafeGetData, SafeSendEvent)
-[Lines 251 - 445]  : Helper Functions (FormatNumber, Damage Calculator, Character Zone Scanner, Sell Key Builder)
-[Lines 446 - 670]  : Centralized Config State (Config, SaveConfig, LoadConfig)
-[Lines 675 - 1480] : 🤝 TRADE SUITE V7.1 PRO (TradeState, Session Handlers, Watchdog Engine, Trade UI)
-[Lines 1481 - 2600]: UI Construction (Modern Kuykuy Hub Framework, Tabs, Layout, Status Badges)
-[Lines 2601 - 3570]: UI Event Bindings & Action Triggers (Buttons, Toggles, Dropdowns, Sliders)
-[Lines 3571 - 4385]: 🚀 MASTER WORKER PIPELINE (Isolated Task 1 - Task 12 ในขณะ AFK)
-[Lines 4386 - End] : Anti-AFK & Final Initialization
-```
+> **💡 คำแนะนำ:** หากต้องการค้นหาในโปรแกรมแก้ไขโค้ด ให้กด `Ctrl + F` แล้วพิมพ์คำในช่อง **"คำค้นหา (Ctrl+F)"** จะพบฟังก์ชันทันที
+
+| ระบบ / ฟังก์ชันการทำงาน | ชื่อฟังก์ชันในโค้ด | อยู่บรรทัดที่ | คำค้นหา (Ctrl+F) |
+| :--- | :--- | :--- | :--- |
+| **🛡️ Safe Event & State Accessors** | `SafeSendEvent` / `SafeGetData` | ~210 - 245 | `local function SafeSendEvent` |
+| **💰 ระบบขายของรวม (Auto Sell)** | `GetUnifiedSellKeys` | ~370 - 450 | `local function GetUnifiedSellKeys` |
+| **⚙️ ค่าคอนฟิกเริ่มต้นของสคริปต์** | `Config = { ... }` | ~460 - 550 | `Config = {` |
+| **🎒 ระบบสแกนคลังไอเทมเพื่อเทรด** | `FetchOwnedInventory` | ~828 - 1220 | `local function FetchOwnedInventory` |
+| **📦 ระบบเปิดกล่องบอส Colossus** | `TriggerOpenPetalfallCrate` | ~1343 - 1580 | `local function TriggerOpenPetalfallCrate` |
+| **🎨 โครงสร้างหน้าต่าง UI (Kuykuy Hub)** | UI Construction & Tabs | ~1585 - 2800 | `Kuykuy Hub Framework` |
+| **🔘 การผูกปุ่มและ Event บนหน้า UI** | UI Bindings & Action Buttons | ~2801 - 3680 | `AddToggle("AutoMine"` |
+| **🤝 ระบบส่งของเทรดอัตโนมัติ** | `RunTransferWorker` | ~4053 - 4350 | `local function RunTransferWorker` |
+| **[TASK 1] เก็บหีบบนแปลง** | Auto Take Chest Loop | ~4506 | `[TASK 1]` |
+| **[TASK 2] ขายของอัตโนมัติในลูป** | Unified Auto Sell Loop | ~4525 | `[TASK 2]` |
+| **[TASK 3] อัปเกรดผังสกิลโซน** | Zone Skill Tree & Core | ~4569 | `[TASK 3]` |
+| **[TASK 4] ซื้อขวานที่ดีที่สุด** | Auto Buy Best Pickaxe | ~4642 | `[TASK 4]` |
+| **[TASK 5] อัปเกรดสเตตัสคนงาน** | Auto Upgrade Stats (Base DMG) | ~4715 | `[TASK 5]` |
+| **[TASK 6] สุ่มกลายพันธุ์คนงาน** | Auto Mutation & Auto-Lock | ~4785 | `[TASK 6]` |
+| **[TASK 7] ทอยลูกเต๋าบัฟ** | Auto Roll Dice (Enchant/HW) | ~4888 | `[TASK 7]` |
+| **[TASK 8] สุ่มม้วนตัวละคร** | Auto Summon Scrolls | ~4916 | `[TASK 8]` |
+| **[TASK 9] รับรางวัล Index & Events** | Auto Claim Index & Events | ~4940 | `[TASK 9]` |
+| **[TASK 10] ลง Infinity Trial** | Auto Infinity Trial | ~5017 | `[TASK 10]` |
+| **[TASK 11] เปิดกล่อง Colossus ในลูป** | Auto Open Colossus Crates | ~5066 | `[TASK 11]` |
+| **[TASK 11.5] เลื่อนระดับโกโลซัส** | Auto Next Colossus Tier | ~5080 | `[TASK 11.5]` |
+| **[TASK 12] ขุดหินในแปลง / ซื้อโซน** | Auto Mine & Unlock Zones | ~5112 | `[TASK 12]` |
 
 ---
 
@@ -64,20 +78,3 @@ Config = {
     AutoNextColossusTier = true,
 }
 ```
-
----
-
-## 3. รายการ Task ใน Master Worker Loop (AFK Pipeline)
-- **Task 1:** เก็บหีบบนแปลง (`MineTakeChest`)
-- **Task 2:** ขายไอเทมรวม (`MineSellItems`)
-- **Task 3:** อัปเกรดผังสกิลโซนและแกนหลัก (`AutoUpgradeTree`, `AutoUpgradeCore`)
-- **Task 4:** ซื้อขวานที่ดีที่สุด (`AutoBuyBestPickaxe`)
-- **Task 5:** อัปเกรดสเตตัสคนงานเรียงตาม Base DMG (`AutoUpgradeAllChars`)
-- **Task 6:** สุ่มกลายพันธุ์คนงาน (`AutoMutation`)
-- **Task 7:** ทอยลูกเต๋า Enchant & Halloween (`AutoRollDice`)
-- **Task 8:** สุ่มตัวละครจากม้วนอัญเชิญ (`AutoSummonScrolls`)
-- **Task 9:** รับรางวัลในดัชนี Index (`AutoClaimIndex`)
-- **Task 10:** รับรางวัลบอร์ดอีเวนต์ (`AutoClaimEvents`)
-- **Task 11:** เปิดกล่อง Colossus & Petalfall Crate (`OpenColossusCrate`)
-- **Task 11.5:** เลื่อนระดับบอสโกโลซัสอัตโนมัติ (`AutoNextColossusTier`)
-- **Task 12:** วาร์ปขุดหินในแปลง, ซื้อโซนใหม่, และจัดชุดคนงานที่ดีที่สุด (`MineEquipBest`)
