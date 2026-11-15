@@ -756,6 +756,17 @@ TradeState = {
                     if decoded.AutoTradeThresholdAmount ~= nil then TradeState.AutoTradeThresholdAmount = tonumber(decoded.AutoTradeThresholdAmount) or 50 end
                     if type(decoded.SelectedItems) == "table" then
                         SavedTradeItems = decoded.SelectedItems
+                        for selK, selV in pairs(decoded.SelectedItems) do
+                            if not TradeState.SelectedItems[selK] then
+                                TradeState.SelectedItems[selK] = {
+                                    Key = selK,
+                                    Name = selK,
+                                    Amount = tonumber(selV) or 999,
+                                    MaxCount = 999,
+                                    MaxCap = 999
+                                }
+                            end
+                        end
                     end
                 end
             end
@@ -3578,21 +3589,30 @@ end)
 
     -- 🛡️ ตรวจสอบสถานะว่าอีกฝ่ายกำลังติดเทรดอยู่หรือไม่ (Attributes, Cooldown, Values) ป้องกันการยิงซ้ำซ้อน
     local function CheckTargetBusy(target)
-        if not target then return false, 0 end
+        if not target or not target:IsDescendantOf(Players) then return false, 0 end
         if TradeState.TargetBusyUntil and tick() < TradeState.TargetBusyUntil then
             return true, math.max(1, math.ceil(TradeState.TargetBusyUntil - tick()))
         end
+        -- ตรวจสอบ Attributes เฉพาะค่าที่เป็น true จริงเท่านั้น ป้องกัน False Positive
         if target:GetAttribute("Trading") == true
             or target:GetAttribute("InTrade") == true
             or target:GetAttribute("Busy") == true
-            or target:GetAttribute("TradeActive") == true
-            or target:GetAttribute("TradeSession") ~= nil then
+            or target:GetAttribute("TradeActive") == true then
             TradeState.TargetBusyUntil = tick() + 15
             return true, 15
         end
-        if target:FindFirstChild("Trading") or target:FindFirstChild("InTrade") or target:FindFirstChild("Busy") then
+        local ts = target:GetAttribute("TradeSession")
+        if (type(ts) == "number" and ts > 0) or (type(ts) == "string" and #ts > 0 and ts ~= "0" and ts ~= "none") then
             TradeState.TargetBusyUntil = tick() + 15
             return true, 15
+        end
+        -- ตรวจสอบ Child Instances เฉพาะที่เป็น BoolValue และมีค่าเป็น true จริง
+        for _, childName in ipairs({"Trading", "InTrade", "Busy"}) do
+            local c = target:FindFirstChild(childName)
+            if c and c:IsA("BoolValue") and c.Value == true then
+                TradeState.TargetBusyUntil = tick() + 15
+                return true, 15
+            end
         end
         return false, 0
     end
@@ -3721,6 +3741,55 @@ end)
         end
     end)
     
+    -- ดึงจำนวนไอเทมที่มีจริง ณ ปัจจุบันอย่างแม่นยำ 100% จากตารางของเกม (รองรับทั้ง EnchantItems, Potions, ColossusCrates, Ores, etc.)
+    local function GetItemCurrentCount(key, ownedMap, mg)
+        if ownedMap and (tonumber(ownedMap[key]) or 0) > 0 then
+            return tonumber(ownedMap[key]) or 0
+        end
+        if not mg then
+            local d2 = SafeGetData2()
+            mg = d2 and d2.MineGame
+        end
+        if not mg then return 0 end
+
+        if mg.EnchantItems and tonumber(mg.EnchantItems[key]) then return tonumber(mg.EnchantItems[key]) or 0 end
+        if mg.Potions and tonumber(mg.Potions[key]) then return tonumber(mg.Potions[key]) or 0 end
+        if mg.ColossusCrates and tonumber(mg.ColossusCrates[key]) then return tonumber(mg.ColossusCrates[key]) or 0 end
+        if mg.Crates and tonumber(mg.Crates[key]) then return tonumber(mg.Crates[key]) or 0 end
+        if mg.Items and tonumber(mg.Items[key]) then return tonumber(mg.Items[key]) or 0 end
+        if mg.Ores and tonumber(mg.Ores[key]) then return tonumber(mg.Ores[key]) or 0 end
+        if mg.Pickaxes and tonumber(mg.Pickaxes[key]) then return tonumber(mg.Pickaxes[key]) or 0 end
+        if mg.Characters and tonumber(mg.Characters[key]) then return tonumber(mg.Characters[key]) or 0 end
+        if key == "Gems" then
+            if MineConfig and type(MineConfig.GetGemCount) == "function" then
+                return MineConfig.GetGemCount(mg) or 0
+            end
+            return tonumber(mg.Gems) or 0
+        end
+        if key == "Enchanted Dice" then
+            if MineConfig and type(MineConfig.GetEnchantDiceCount) == "function" then
+                return MineConfig.GetEnchantDiceCount(mg) or 0
+            end
+            return tonumber(mg.EnchantDice) or 0
+        end
+        if key == "Summon Scroll" then
+            if MineConfig and type(MineConfig.GetSummonScrollCount) == "function" then
+                return MineConfig.GetSummonScrollCount(mg) or 0
+            end
+            return tonumber(mg.SummonScrolls) or 0
+        end
+        if key == "กล่องซากเรือจากกระแสน้ำ" or key == "Tidewreck Crate" or key == "Tidewreck" then
+            if mg.ColossusCrates then
+                return tonumber(mg.ColossusCrates["Tidewreck Crate"]) or tonumber(mg.ColossusCrates["Tidewreck"]) or tonumber(mg.ColossusCrates["กล่องซากเรือจากกระแสน้ำ"]) or 0
+            end
+        elseif key == "Petalfall Crate" or key == "Petalfall" or key == "กล่องบอส Petalfall" then
+            if mg.ColossusCrates then
+                return tonumber(mg.ColossusCrates["Petalfall Crate"]) or tonumber(mg.ColossusCrates["Petalfall"]) or tonumber(mg.ColossusCrates["กล่องบอส Petalfall"]) or 0
+            end
+        end
+        return 0
+    end
+
     -- Main Transfer Worker (สำหรับ Sender)
     local function GetAvailableCountMap()
         local list = FetchOwnedInventory()
@@ -3793,18 +3862,23 @@ end)
 
             -- ตรวจสอบคลังไอเทมจริงล่าสุด ณ ปัจจุบัน
             local ownedMap = GetAvailableCountMap()
+            local d2 = SafeGetData2()
+            local mg = d2 and d2.MineGame
             local itemsToSendList = {}
 
             for key, item in pairs(TradeState.SelectedItems) do
                 local currentAvailable = ownedMap[key] or 0
+                if currentAvailable <= 0 then
+                    currentAvailable = GetItemCurrentCount(key, ownedMap, mg)
+                end
                 if currentAvailable > 0 then
                     local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
                     -- ⚡ ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง: คำนวณจำนวนส่งเป็นจำนวนทั้งหมดที่มีจริงในคลัง (ไม่เกิน Cap)
-                    local sendAmount = TradeState.SendAllAlways and math.min(currentAvailable, cap) or math.min(item.Amount, currentAvailable, cap)
+                    local sendAmount = TradeState.SendAllAlways and math.min(currentAvailable, cap) or math.min(item.Amount or currentAvailable, currentAvailable, cap)
                     if sendAmount > 0 then
                         table.insert(itemsToSendList, {
                             Key = key,
-                            Name = item.Name,
+                            Name = item.Name or key,
                             Amount = sendAmount,
                             MaxCap = cap
                         })
@@ -3989,6 +4063,7 @@ end)
                 StatusBar.Text = "✅ การโอนย้ายไอเทมเสร็จสมบูรณ์"
                 StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
                 TradeState.IsTradeActive = false
+                TradeState.CurrentSession = nil
                 UpdateTradeUIState(false)
                 RenderInventoryList()
                 break
@@ -3998,7 +4073,11 @@ end)
             local nextOwnedMap = GetAvailableCountMap()
             local remainingItemsCount = 0
             for key, _ in pairs(TradeState.SelectedItems) do
-                remainingItemsCount = remainingItemsCount + (nextOwnedMap[key] or 0)
+                local c = nextOwnedMap[key] or 0
+                if c <= 0 then
+                    c = GetItemCurrentCount(key, nextOwnedMap)
+                end
+                remainingItemsCount = remainingItemsCount + c
             end
 
             if remainingItemsCount <= 0 then
@@ -4006,6 +4085,7 @@ end)
                 StatusBar.Text = "✅ ส่งไอเทมที่เลือกทั้งหมดเรียบร้อย (ของหมดกระเป๋า)"
                 StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
                 TradeState.IsTradeActive = false
+                TradeState.CurrentSession = nil
                 UpdateTradeUIState(false)
                 RenderInventoryList()
                 break
@@ -4067,10 +4147,10 @@ end)
     _G.ToggleTrade = ToggleTrade
     _G.IsTradeActive = function() return TradeState.IsTradeActive end
 
-    -- 🛡️ Sender Threshold Watchdog: ตรวจเช็กยอดรวมไอเทมที่เลือก และเริ่มส่งเทรดอัตโนมัติเมื่อสะสมถึงยอด
+    -- 🛡️ Sender Threshold Watchdog: ตรวจเช็กยอดรวมไอเทมที่เลือก และเริ่มส่งเทรดอัตโนมัติเมื่อสะสมถึงยอดหรือเกิน
     task.spawn(function()
         while true do
-            task.wait(2.0)
+            task.wait(1.5)
             if getgenv and (getgenv()._AnimeMineWorkerActive == false or getgenv()._AnimeMineSessionId ~= scriptSessionId) then
                 break
             end
@@ -4079,41 +4159,95 @@ end)
             end
 
             pcall(function()
-                if TradeState.Mode == "Sender"
-                    and TradeState.AutoTradeThresholdEnabled
-                    and not TradeState.IsTradeActive
-                    and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "closed" or TradeState.CurrentSession.Stage == "saving") then
+                if TradeState.AutoTradeThresholdEnabled and not TradeState.IsTradeActive then
+                    TradeState.Mode = "Sender"
 
-                    -- 🛑 ป้องกันการยิงคำขอซ้ำซ้อน: หากอีกฝ่ายกำลังติดเทรดหรืออยู่ในช่วง Cooldown ให้รอจนกว่าจะว่าง
-                    if TradeState.TargetBusyUntil and tick() < TradeState.TargetBusyUntil then
+                    -- ป้องกัน Session เก่าที่ค้างอยู่ขัดขวางการเริ่มเทรดใหม่
+                    if TradeState.CurrentSession and (TradeState.CurrentSession.Stage == "closed" or TradeState.CurrentSession.Stage == "saving" or not TradeState.CurrentSession.SessionId) then
+                        TradeState.CurrentSession = nil
+                    end
+
+                    -- ค้นหาและผูกกับผู้รับเป้าหมายอัตโนมัติ
+                    local targetPlayer = TradeState.TargetReceiver
+                    if not targetPlayer or not targetPlayer:IsDescendantOf(Players) then
+                        if TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
+                            targetPlayer = Players:FindFirstChild(TradeState.SavedReceiverName)
+                        end
+                        if not targetPlayer or not targetPlayer:IsDescendantOf(Players) then
+                            local others = GetOtherPlayers()
+                            if #others > 0 then
+                                if TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
+                                    for _, p in ipairs(others) do
+                                        if p.Name == TradeState.SavedReceiverName then
+                                            targetPlayer = p
+                                            break
+                                        end
+                                    end
+                                end
+                                if not targetPlayer then
+                                    targetPlayer = others[1]
+                                end
+                            end
+                        end
+                        if targetPlayer then
+                            TradeState.TargetReceiver = targetPlayer
+                            TradeState.SavedReceiverName = targetPlayer.Name
+                        end
+                    end
+
+                    if not targetPlayer or not targetPlayer:IsDescendantOf(Players) then
                         return
                     end
 
-                    local targetPlayer = TradeState.TargetReceiver
-                    if not targetPlayer and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
-                        targetPlayer = Players:FindFirstChild(TradeState.SavedReceiverName)
-                        if targetPlayer then TradeState.TargetReceiver = targetPlayer end
+                    -- ป้องกันการยิงซ้ำซ้อนเมื่ออีกฝ่ายกำลังติดเทรดอยู่
+                    local isBusy, waitSec = CheckTargetBusy(targetPlayer)
+                    if isBusy then
+                        return
                     end
 
-                    if targetPlayer and targetPlayer.Parent == Players then
-                        local isBusy, waitSec = CheckTargetBusy(targetPlayer)
-                        if isBusy then
-                            return
-                        end
+                    -- รวบรวมรายการไอเทมที่ผู้ใช้เลือกไว้ทั้งหมด (ทั้งจาก SelectedItems และ SavedTradeItems)
+                    local selectedSet = {}
+                    for k, _ in pairs(TradeState.SelectedItems or {}) do
+                        selectedSet[k] = true
+                    end
+                    for k, _ in pairs(SavedTradeItems or {}) do
+                        selectedSet[k] = true
+                    end
 
-                        local ownedMap = GetAvailableCountMap()
-                        local totalMatchingCount = 0
-                        local hasAnySelected = false
-                        for key, _ in pairs(TradeState.SelectedItems or {}) do
-                            hasAnySelected = true
-                            totalMatchingCount = totalMatchingCount + (ownedMap[key] or 0)
-                        end
+                    local ownedMap = GetAvailableCountMap()
+                    local d2 = SafeGetData2()
+                    local mg = d2 and d2.MineGame
 
-                        local requiredThreshold = tonumber(TradeState.AutoTradeThresholdAmount) or 50
-                        if hasAnySelected and totalMatchingCount >= requiredThreshold then
-                            TradeNotify("ยอดสะสมครบตามเป้าหมาย!", string.format("พบไอเทมที่เลือกสะสมครบ %d/%d ชิ้น เริ่มระบบเทรดส่งให้ %s ทันที!", totalMatchingCount, requiredThreshold, targetPlayer.Name), 4)
-                            ToggleTrade(true)
+                    local totalMatchingCount = 0
+                    local maxSingleCount = 0
+                    local hasAnySelected = false
+
+                    for key, _ in pairs(selectedSet) do
+                        hasAnySelected = true
+                        local count = GetItemCurrentCount(key, ownedMap, mg)
+                        totalMatchingCount = totalMatchingCount + count
+                        if count > maxSingleCount then
+                            maxSingleCount = count
                         end
+                        -- ซิงค์ให้แน่ใจว่าอยู่ใน SelectedItems พร้อมสำหรับการเทรด
+                        if not TradeState.SelectedItems[key] then
+                            TradeState.SelectedItems[key] = {
+                                Key = key,
+                                Name = key,
+                                Amount = 999,
+                                MaxCount = 999,
+                                MaxCap = 999
+                            }
+                        end
+                    end
+
+                    local requiredThreshold = tonumber(TradeState.AutoTradeThresholdAmount) or 50
+
+                    -- ตรวจสอบเงื่อนไข: เมื่อไอเทมที่เลือกสะสมถึงยอด หรือมากกว่าตามที่ระบุตัวเลขไว้
+                    if hasAnySelected and (totalMatchingCount >= requiredThreshold or maxSingleCount >= requiredThreshold) then
+                        local triggerCount = math.max(totalMatchingCount, maxSingleCount)
+                        TradeNotify("ยอดสะสมครบตามเป้าหมาย!", string.format("ตรวจพบของที่เลือกสะสมครบยอด (%d/%d ชิ้น) เริ่มระบบเทรดส่งให้ %s ทันที!", triggerCount, requiredThreshold, targetPlayer.Name), 4)
+                        ToggleTrade(true)
                     end
                 end
             end)
