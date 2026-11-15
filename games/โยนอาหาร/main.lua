@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.5 (Ultra-Fast Adaptive Throwing + Zero-Latency Loop + Anti-Freeze Guard)
+-- เวอร์ชัน: v2.6 (Auto Buy & Equip Best Food Robust Engine + Direct Array Cache + Pre-Check Guards)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -308,10 +308,12 @@ pcall(function()
     end
 end)
 
-local FoodsConfig, FenceConfig, StandsConfig
+local FoodsConfig, FenceConfig, StandsConfig, BalanceCurve, NumberFormat
 pcall(function() FoodsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FoodsConfig")) end)
 pcall(function() FenceConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FenceConfig")) end)
 pcall(function() StandsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StandsConfig")) end)
+pcall(function() BalanceCurve = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BalanceCurve")) end)
+pcall(function() NumberFormat = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("NumberFormat")) end)
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes", 5)
 local remotes = {}
@@ -420,6 +422,23 @@ function Helpers.GetMoney()
         if cash and type(cash.Value) == "number" then return cash.Value end
     end
     return 0
+end
+
+function Helpers.FormatMoney(num)
+    if NumberFormat and NumberFormat.Money then
+        local ok, s = pcall(NumberFormat.Money, num)
+        if ok and s then return s end
+    end
+    if type(num) == "number" then
+        if num >= 1e15 then return string.format("%.2fQa", num / 1e15)
+        elseif num >= 1e12 then return string.format("%.2fT", num / 1e12)
+        elseif num >= 1e9 then return string.format("%.2fB", num / 1e9)
+        elseif num >= 1e6 then return string.format("%.2fM", num / 1e6)
+        elseif num >= 1e3 then return string.format("%.1fK", num / 1e3)
+        end
+        return tostring(math.floor(num))
+    end
+    return tostring(num or 0)
 end
 
 -- ค้นหาแท่นฝึกพลัง (TrainingSpot) ของผู้เล่น
@@ -715,45 +734,84 @@ local function runFenceUpgrade()
     end
 end
 
--- [ฟังก์ชันหลัก 5]: ระบบซื้ออาหารและใส่อาหารที่ดีที่สุดอัตโนมัติ (Auto Buy & Equip Best Food)
-local function runFoodManagement()
+-- [ฟังก์ชันหลัก 5]: ระบบซื้ออาหารและใส่อาหารที่ดีที่สุดอัตโนมัติ (Auto Buy & Equip Best Food - Robust Engine)
+local function runFoodManagement(isManual)
+    if not remotes.Shop_Buy and not remotes.Shop_Equip then return end
+    if not FoodsConfig or not FoodsConfig.All then return end
+
+    local allFoods = FoodsConfig.All
     local curMoney = Helpers.GetMoney()
 
-    -- 1. ซื้ออาหารอัตโนมัติ (เรียงจากระดับสูงสุดที่เงินพอซื้อ)
-    if Core.Flags.AutoBuyFood and remotes.Shop_Buy and FoodsConfig and FoodsConfig.All then
-        local allFoods = FoodsConfig.All
-        for i = #allFoods, 1, -1 do
+    -- ดึงข้อมูลอาหารที่ครอบครองจาก DataController โดยตรง (Direct Array + Fallback)
+    local ownedFoods = {}
+    if DataController and DataController.Get then
+        pcall(function()
+            local raw = DataController:Get("OwnedFoods")
+            if type(raw) == "table" then
+                ownedFoods = raw
+            end
+        end)
+    end
+
+    local function checkOwned(idx)
+        if idx == 1 then return true end
+        if ownedFoods[idx] == true then return true end
+        if DataController and DataController.GetPath then
+            local ok, val = pcall(function() return DataController:GetPath("OwnedFoods." .. idx) end)
+            if ok and val == true then return true end
+        end
+        return false
+    end
+
+    local boughtAny = false
+    local nextUnownedIndex = nil
+    local nextUnownedFood = nil
+
+    -- 1. ซื้ออาหารอัตโนมัติ (AutoBuyFood หรือ Manual Click)
+    if (isManual or Core.Flags.AutoBuyFood) and remotes.Shop_Buy then
+        for i = 1, #allFoods do
             local food = allFoods[i]
-            local isOwned = false
-            if i == 1 then
-                isOwned = true
-            elseif DataController and DataController.GetPath then
-                isOwned = (DataController:GetPath("OwnedFoods." .. i) == true)
+            local isOwned = checkOwned(i)
+            local isLocked = false
+            if FoodsConfig.IsLocked then
+                pcall(function() isLocked = FoodsConfig.IsLocked(i) end)
             end
 
-            if not isOwned and food.Price and curMoney >= food.Price then
-                local ok, res = Net.Invoke(remotes.Shop_Buy, i)
-                if ok and res and res.Ok then
-                    logAction("อาหาร", string.format("ซื้ออาหารสำเร็จ: ชิ้นที่ %d", i), true)
-                    task.wait(0.3)
+            if not isOwned and not isLocked then
+                local price = food.Price
+                if BalanceCurve and BalanceCurve.GetItemPrice then
+                    pcall(function() price = BalanceCurve.GetItemPrice(LocalPlayer, food) end)
+                end
+
+                if not nextUnownedIndex then
+                    nextUnownedIndex = i
+                    nextUnownedFood = food
+                end
+
+                if price and curMoney >= price then
+                    local ok, res = Net.Invoke(remotes.Shop_Buy, i)
+                    if ok and res and res.Ok then
+                        local foodName = food.Name or ("ชิ้นที่ " .. i)
+                        logAction("อาหาร", string.format("ซื้ออาหารสำเร็จ: %s (ชิ้นที่ %d)", foodName, i), true)
+                        ownedFoods[i] = true
+                        curMoney = curMoney - price
+                        boughtAny = true
+                        task.wait(0.2)
+                    else
+                        break
+                    end
+                else
                     break
                 end
             end
         end
     end
 
-    -- 2. สวมใส่อาหารที่ดีที่สุดอัตโนมัติ
-    if Core.Flags.AutoEquipFood and remotes.Shop_Equip and FoodsConfig and FoodsConfig.All then
-        local allFoods = FoodsConfig.All
+    -- 2. สวมใส่อาหารที่ดีที่สุดอัตโนมัติ (AutoEquipFood หรือ Manual Click หรือหลังจากซื้อสำเร็จ)
+    if (isManual or Core.Flags.AutoEquipFood or boughtAny) and remotes.Shop_Equip then
         local bestOwnedIndex = 1
         for i = #allFoods, 1, -1 do
-            local isOwned = false
-            if i == 1 then
-                isOwned = true
-            elseif DataController and DataController.GetPath then
-                isOwned = (DataController:GetPath("OwnedFoods." .. i) == true)
-            end
-            if isOwned then
+            if checkOwned(i) then
                 bestOwnedIndex = i
                 break
             end
@@ -761,15 +819,50 @@ local function runFoodManagement()
 
         local currentEquipped = 1
         if DataController and DataController.Get then
-            currentEquipped = DataController:Get("EquippedFood") or 1
+            pcall(function() currentEquipped = DataController:Get("EquippedFood") or 1 end)
         end
+
+        local bestFood = allFoods[bestOwnedIndex]
+        local bestName = (bestFood and bestFood.Name) or ("Food " .. bestOwnedIndex)
 
         if currentEquipped ~= bestOwnedIndex then
             local ok, res = Net.Invoke(remotes.Shop_Equip, bestOwnedIndex)
             if ok and res and res.Ok then
-                logAction("อาหาร", string.format("สวมใส่อาหารที่ดีที่สุดสำเร็จ: ชิ้นที่ %d", bestOwnedIndex), true)
+                logAction("อาหาร", string.format("สวมใส่อาหารที่ดีที่สุดสำเร็จ: %s (ชิ้นที่ %d)", bestName, bestOwnedIndex), true)
+            else
+                local reason = (res and res.Reason) or tostring(res)
+                logAction("อาหาร", "ใส่อาหารไม่สำเร็จ: " .. tostring(reason), false)
+            end
+        elseif isManual and not boughtAny then
+            if nextUnownedFood and nextUnownedFood.Price then
+                local nextPrice = nextUnownedFood.Price
+                if BalanceCurve and BalanceCurve.GetItemPrice then
+                    pcall(function() nextPrice = BalanceCurve.GetItemPrice(LocalPlayer, nextUnownedFood) end)
+                end
+                local nextName = nextUnownedFood.Name or ("ชิ้นที่ " .. nextUnownedIndex)
+                logAction("อาหาร", string.format("สวมใส่อันที่ดีที่สุดอยู่แล้ว: %s (ชิ้นถัดไป %s ขาดอีก %s)", bestName, nextName, Helpers.FormatMoney(math.max(0, nextPrice - curMoney))), true)
+            else
+                logAction("อาหาร", string.format("สวมใส่อาหารระดับสูงสุดแล้ว: %s", bestName), true)
             end
         end
+    end
+end
+
+-- ตัวจัดการลูปอาหารอัตโนมัติ (ทำงานเมื่อเปิด AutoBuyFood หรือ AutoEquipFood)
+function Helpers.UpdateFoodLoop()
+    if not Core._alive then return end
+    if Core.Flags.AutoBuyFood or Core.Flags.AutoEquipFood then
+        if not Core._loops["Loop_Food"] then
+            Core:Loop("Loop_Food", nil, 3.0, function()
+                if not (Core.Flags.AutoBuyFood or Core.Flags.AutoEquipFood) then
+                    Core:StopLoop("Loop_Food")
+                    return
+                end
+                runFoodManagement(false)
+            end)
+        end
+    else
+        Core:StopLoop("Loop_Food")
     end
 end
 
@@ -852,7 +945,7 @@ end)
 if Core.Flags.AutoThrow then Core:Loop("Loop_Throw", "AutoThrow", 0.15, runThrowCycle) end
 if Core.Flags.AutoTrain then Core:Loop("Loop_Train", "AutoTrain", 2.2, runTrainCycle) end
 if Core.Flags.AutoStandUpgrade then Core:Loop("Loop_Stand", "AutoStandUpgrade", 5.0, runStandUpgrade) end
-if Core.Flags.AutoBuyFood then Core:Loop("Loop_Food", "AutoBuyFood", 4.0, runFoodManagement) end
+if Core.Flags.AutoBuyFood or Core.Flags.AutoEquipFood then Helpers.UpdateFoodLoop() end
 if Core.Flags.AutoEquipBest then Core:Loop("Loop_Plot", "AutoEquipBest", 15.0, runPlotManagement) end
 if Core.Flags.AutoClaimOffline then Core:Loop("Loop_Claims", "AutoClaimOffline", 30.0, runClaimRewards) end
 
@@ -956,7 +1049,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.5</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.6</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1306,18 +1399,15 @@ AddTabButton("FoodTab", "🍖 อาหาร/ร้านค้า", false, 2)
 
 CreateSection(FoodPage, "ระบบจัดการอาหาร (Foods Management)")
 CreateToggle(FoodPage, "AutoBuyFood", "ซื้ออาหารที่ดีที่สุดอัตโนมัติ (Auto Buy Food)", function(val)
-    if val then
-        Core:Loop("Loop_Food", "AutoBuyFood", 4.0, runFoodManagement)
-    else
-        Core:StopLoop("Loop_Food")
-    end
+    Helpers.UpdateFoodLoop()
 end)
 
 CreateToggle(FoodPage, "AutoEquipFood", "ใส่อาหารที่ดีที่สุดอัตโนมัติ (Auto Equip Food)", function(val)
+    Helpers.UpdateFoodLoop()
 end)
 
 CreateButton(FoodPage, "⚡ ซื้อและใส่อาหารที่ดีที่สุดทันที (Buy & Equip Best Now)", UIColors.Card, function()
-    runFoodManagement()
+    runFoodManagement(true)
 end)
 
 -- 3. แท็บจัดการแปลง (Plot Tab)
@@ -1494,6 +1584,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.5 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v2.6 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.5 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.6 โหลดสำเร็จ 100%")
