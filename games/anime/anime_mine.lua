@@ -470,7 +470,7 @@ Config = {
         TrialStart = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Start) or "MineTrialStart",
         TrialClaim = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Claim) or "MineTrialClaim",
         TrialCancel = (MineTrialConfig and MineTrialConfig.Events and MineTrialConfig.Events.Cancel) or "MineTrialCancel",
-        OpenColossusCrate = "MineOpenColossusCrate",
+        OpenColossusCrate = (MineCrateConfig and MineCrateConfig.Events and (MineCrateConfig.Events.Open or MineCrateConfig.Events.OpenColossusCrate or MineCrateConfig.Events.OpenCrate)) or "MineOpenColossusCrate",
         BigNodeToggle = "MineBigNodeToggle",
 
         -- Dynamic / Module-based Event Constants (พร้อม Fallback)
@@ -1343,24 +1343,126 @@ end
 local function TriggerOpenPetalfallCrate()
     local d2 = SafeGetData2()
     local mg = d2 and d2.MineGame
-    local cc = mg and mg.ColossusCrates
-    if not cc then
+    if not mg then return end
+
+    -- ค้นหากล่อง Colossus จากทุก Table ในข้อมูลผู้เล่น (ColossusCrates, Crates, Items)
+    local cratesToOpen = {}
+    local processedKeys = {}
+
+    local function isCrateKey(k)
+        if type(k) ~= "string" then return false end
+        local lk = k:lower()
+        return lk:find("crate") ~= nil 
+            or lk:find("petalfall") ~= nil 
+            or lk:find("tidewreck") ~= nil 
+            or lk:find("colossus") ~= nil 
+            or lk:find("shipwreck") ~= nil
+            or k:find("กล่อง") ~= nil
+    end
+
+    local function collectCrates(tbl, forceAll)
+        if type(tbl) ~= "table" then return end
+        for k, v in pairs(tbl) do
+            local count = tonumber(v) or 0
+            if count > 0 and not processedKeys[k] then
+                if forceAll or isCrateKey(k) then
+                    processedKeys[k] = true
+                    table.insert(cratesToOpen, { Key = k, Count = count })
+                end
+            end
+        end
+    end
+
+    -- 1. สำรวจใน mg.ColossusCrates (ทุกไอเทมในตารางนี้ถือเป็น Colossus Crate)
+    collectCrates(mg.ColossusCrates, true)
+
+    -- 2. สำรวจใน mg.Crates (ค้นหากล่องบอสและกล่องทั้งหมด)
+    collectCrates(mg.Crates, false)
+
+    -- 3. สำรวจใน mg.Items (กรณีตัวเกมจัดประเภทกล่องเป็น Item เช่น กล่องซากเรือจากกระแสน้ำ)
+    collectCrates(mg.Items, false)
+
+    -- 4. ตรวจสอบ Default Candidate Keys เผื่อมีอยู่ในตารางแต่ชื่อไม่ตรง pattern
+    local candidateKeys = {
+        "Tidewreck Crate",
+        "กล่องซากเรือจากกระแสน้ำ",
+        "Petalfall Crate",
+        "Petalfall",
+        "กล่องบอส Petalfall",
+        "Shipwreck Crate"
+    }
+    for _, cKey in ipairs(candidateKeys) do
+        if not processedKeys[cKey] then
+            local cnt = 0
+            if mg.ColossusCrates and tonumber(mg.ColossusCrates[cKey]) then
+                cnt = tonumber(mg.ColossusCrates[cKey]) or 0
+            elseif mg.Crates and tonumber(mg.Crates[cKey]) then
+                cnt = tonumber(mg.Crates[cKey]) or 0
+            elseif mg.Items and tonumber(mg.Items[cKey]) then
+                cnt = tonumber(mg.Items[cKey]) or 0
+            end
+            if cnt > 0 then
+                processedKeys[cKey] = true
+                table.insert(cratesToOpen, { Key = cKey, Count = cnt })
+            end
+        end
+    end
+
+    if #cratesToOpen == 0 then
         UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
         return
     end
 
+    -- กำหนด Remote Event ที่จะใช้ยิงคำสั่งเปิดกล่อง
+    local primaryEvent = (MineCrateConfig and MineCrateConfig.Events and (MineCrateConfig.Events.Open or MineCrateConfig.Events.OpenColossusCrate or MineCrateConfig.Events.OpenCrate)) 
+        or (Config.Events and Config.Events.OpenColossusCrate) 
+        or "MineOpenColossusCrate"
+
     local openedAny = false
-    for crateName, countVal in pairs(cc) do
-        local count = tonumber(countVal) or 0
+    for _, crateData in ipairs(cratesToOpen) do
+        local crateName = crateData.Key
+        local count = crateData.Count
         if count > 0 then
             openedAny = true
             local openAmount = math.clamp(count, 1, 50)
             UpdateStatus(string.format("📦 เปิด %s (%d/%d กล่อง)...", tostring(crateName), openAmount, count))
-            SafeSendEvent(Config.Events.OpenColossusCrate, crateName, openAmount)
+
+            -- Layer 1: ยิงผ่าน Primary Event พร้อมระบุจำนวน
+            SafeSendEvent(primaryEvent, crateName, openAmount)
+
+            -- Layer 2: ถ้ารองรับภาษาไทย/อังกฤษ สลับส่งคีย์คู่ขนาน (Alias)
+            local aliasKey = nil
+            if crateName == "กล่องซากเรือจากกระแสน้ำ" then
+                aliasKey = "Tidewreck Crate"
+            elseif crateName == "Tidewreck Crate" then
+                aliasKey = "กล่องซากเรือจากกระแสน้ำ"
+            elseif crateName == "กล่องบอส Petalfall" then
+                aliasKey = "Petalfall Crate"
+            elseif crateName == "Petalfall Crate" then
+                aliasKey = "Petalfall"
+            end
+            if aliasKey then
+                SafeSendEvent(primaryEvent, aliasKey, openAmount)
+            end
+
+            -- Layer 3: ยิง Event เผื่อเซิร์ฟเวอร์รับแบบ Single Argument (เปิดทีละกล่อง/ไม่รับจำนวน)
+            SafeSendEvent(primaryEvent, crateName)
+            if aliasKey then
+                SafeSendEvent(primaryEvent, aliasKey)
+            end
+
+            -- Layer 4: Fallback สำหรับ Event ทางเลือกในกรณีที่แมพใช้ชื่ออื่น
+            if primaryEvent == "MineOpenColossusCrate" then
+                SafeSendEvent("MineOpenCrate", crateName, openAmount)
+                SafeSendEvent("MineCrateOpen", crateName, openAmount)
+                SafeSendEvent("MineUseItem", crateName, openAmount)
+            end
+
             HumanWait(0.4, 0.6)
             UpdateStatus(string.format("✅ เปิด %s %d กล่องสำเร็จ!", tostring(crateName), openAmount))
         end
     end
+
     if not openedAny then
         UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
     elseif Config.AutoEquipBest then
@@ -4854,21 +4956,10 @@ task.spawn(function()
         -- [TASK 11] เปิด Colossus Crates (Petalfall & Tidewreck Crate ฯลฯ อัตโนมัติ)
         -- -------------------------------------------------------------
         local ok11, err11 = pcall(function()
-            if Config.AutoOpenPetalfallCrate and mg and mg.ColossusCrates then
-                for crateName, countVal in pairs(mg.ColossusCrates) do
-                    local count = tonumber(countVal) or 0
-                    if count > 0 then
-                        local openAmount = math.clamp(count, 1, 50)
-                        UpdateStatus(string.format("📦 เปิด %s (%d/%d กล่อง)...", tostring(crateName), openAmount, count))
-                        SafeSendEvent(Config.Events.OpenColossusCrate, crateName, openAmount)
-                        HumanWait(0.4, 0.6)
-                        if Config.AutoEquipBest then
-                            TriggerEquipBest()
-                        end
-                        d2 = SafeGetData2()
-                        mg = d2 and d2.MineGame
-                    end
-                end
+            if Config.AutoOpenPetalfallCrate then
+                TriggerOpenPetalfallCrate()
+                d2 = SafeGetData2()
+                mg = d2 and d2.MineGame
             end
         end)
         if not ok11 then
