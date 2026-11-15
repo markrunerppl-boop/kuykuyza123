@@ -674,11 +674,20 @@ local function main()
 		if Helpers.mutatePadCache and Helpers.mutatePadCache.Parent then
 			return Helpers.mutatePadCache
 		end
-		local m2 = Workspace:FindFirstChild("Machine2")
-		local pad = m2 and m2:FindFirstChild("MutationMachine")
-		if pad and pad:IsA("BasePart") then
-			Helpers.mutatePadCache = pad
-			return pad
+		local pad = Workspace:FindFirstChild("MutationMachine", true)
+			or Workspace:FindFirstChild("MergeMachine", true)
+			or (Workspace:FindFirstChild("Machine2", true) and Workspace:FindFirstChild("Machine2", true):FindFirstChild("MutationMachine", true))
+		if pad then
+			if pad:IsA("BasePart") then
+				Helpers.mutatePadCache = pad
+				return pad
+			elseif pad:IsA("Model") then
+				local p = pad.PrimaryPart or pad:FindFirstChildWhichIsA("BasePart")
+				if p then
+					Helpers.mutatePadCache = p
+					return p
+				end
+			end
 		end
 		return nil
 	end
@@ -1181,6 +1190,7 @@ local function main()
 		OpenOwned = RP .. "Packs.OpenOwned",         -- RF: InvokeServer(packGuid)
 		PacksOpened = RP .. "Packs.Opened",          -- RE: FireServer(packGuid)
 		PacksEquipBest = RP .. "Packs.EquipBest",    -- RF: InvokeServer({})
+		PacksMerge = RP .. "Packs.Merge",            -- RF: InvokeServer({id1, id2})
 		EconomySellItems = RP .. "Economy.SellItems", -- RF: InvokeServer({packGuid})
 		MutateMergeAll = RP .. "Mutate.MergeAll",     -- RF: InvokeServer(packId)
 		MutateMerge = RP .. "Mutate.Merge",          -- RF: InvokeServer({id1, id2})
@@ -2944,17 +2954,20 @@ local function main()
 		end
 
 		-- 1. สแกนจาก Tools ใน Backpack / Character
-		for _, tool in ipairs(getBagTools(false)) do
+		for _, tool in ipairs(getBagTools(true)) do
 			local packId = tool:GetAttribute("PackId")
 			if type(packId) == "string" and packId ~= "" and not seenIds[packId] then
 				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 				if not isSkip and not isFav(packId, tool) then
-					local isUnit = tool:GetAttribute("CardIsPack") == false or tool:GetAttribute("ItemCategory") == "Units" or tool:GetAttribute("CharacterName") ~= nil
-					local isPack = not isUnit and (tool:GetAttribute("CardIsPack") == true or tool:GetAttribute("ItemCategory") == "Packs")
+					local itemCat = tool:GetAttribute("ItemCategory")
+					local cardIsPack = tool:GetAttribute("CardIsPack")
+					local charName = tool:GetAttribute("CharacterName")
+					local isUnit = (itemCat == "Units") or (cardIsPack == false) or (charName ~= nil)
+					local isPack = not isUnit and (cardIsPack == true or itemCat == "Packs" or itemCat == "Pack" or (type(packId) == "string" and packId ~= ""))
 					local mut = normMutation(getToolMutation(tool))
 
 					if mode == "merge" and isPack then
-						local name = tool:GetAttribute("PackName") or tool.Name
+						local name = tool:GetAttribute("ItemName") or tool:GetAttribute("PackName") or tool:GetAttribute("CardName") or tool.Name
 						local mergeCount = tonumber(tool:GetAttribute("MergeCount")) or 0
 						if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
 							seenIds[packId] = true
@@ -2967,7 +2980,7 @@ local function main()
 							})
 						end
 					elseif mode == "fuse" and isUnit then
-						local name = tool:GetAttribute("CharacterName") or tool.Name
+						local name = tool:GetAttribute("CharacterName") or tool:GetAttribute("ItemName") or tool.Name
 						if type(name) == "string" and name ~= "" then
 							seenIds[packId] = true
 							table.insert(candidates, {
@@ -2985,9 +2998,9 @@ local function main()
 		-- 2. สแกนจาก Inventory.Packs.Backpack และ Inventory.Packs.Placed (PlayerData)
 		for _, containerName in ipairs({ "Backpack", "Placed" }) do
 			local list = (type(packsData[containerName]) == "table" and packsData[containerName]) or {}
-			for _, item in pairs(list) do
-				if type(item) == "table" and type(item.Id) == "string" and not seenIds[item.Id] then
-					local packId = item.Id
+			for k, item in pairs(list) do
+				local packId = (type(item) == "table" and (item.Id or item.PackId or item.UUID)) or (type(k) == "string" and #k >= 20 and k) or nil
+				if type(packId) == "string" and packId ~= "" and not seenIds[packId] and type(item) == "table" then
 					local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
 					if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
 						local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
@@ -2995,7 +3008,7 @@ local function main()
 						local mut = normMutation(item.Mutation)
 
 						if mode == "merge" and not isChar and not isPath then
-							local name = item.PackName or item.Name
+							local name = item.ItemName or item.PackName or item.Name or item.DisplayName
 							local mergeCount = (pc and pc.GetMergeCount and pc.GetMergeCount(item)) or tonumber(item.MergeCount) or 0
 							if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
 								seenIds[packId] = true
@@ -3009,7 +3022,7 @@ local function main()
 								})
 							end
 						elseif mode == "fuse" and isChar then
-							local name = item.CharacterName or item.PackName or item.Name
+							local name = item.CharacterName or item.ItemName or item.PackName or item.Name
 							if type(name) == "string" and name ~= "" then
 								seenIds[packId] = true
 								table.insert(candidates, {
@@ -3234,16 +3247,12 @@ local function main()
 							local pairsInGroup = math.floor(#list / 2)
 							count = count + math.max(pairsInGroup, 1)
 							groupMerged = true
+							logAction("Merge", string.format("รวมกลุ่ม %s สำเร็จ (%d คู่)", tostring(pName), pairsInGroup), true)
 							task.wait(rl)
-						else
-							local failAllReason = string.upper(tostring(rAll or ""))
-							if not atMachine and failAllReason:find("MACHINE") then
-								return count, "NEED_MACHINE"
-							end
 						end
 					end
 
-					-- 2. Fallback รวมทีละคู่ หากเซิร์ฟเวอร์ไม่รองรับ MergeAll
+					-- 2. Fallback รวมทีละคู่ (Multi-Remote Strategy: Mutate.Merge -> Packs.Merge)
 					if not groupMerged then
 						local i = 1
 						while i + 1 <= #list do
@@ -3251,24 +3260,48 @@ local function main()
 							local idA = list[i].Id
 							local idB = list[i + 1].Id
 
-							local okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
-							local sPair, rPair = isRemoteOk(resPair)
+							local okPair, resPair = false, nil
+							local sPair, rPair = false, nil
+
+							-- วิธีที่ 1: เรียกผ่าน Mutate.Merge ({ idA, idB })
+							if Net.Paths.MutateMerge then
+								okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
+								sPair, rPair = isRemoteOk(resPair)
+							end
+
+							-- วิธีที่ 2: หากไม่สำเร็จ สลับเรียก Packs.Merge ({ idA, idB })
+							if not (okPair and sPair) and Net.Paths.PacksMerge then
+								local okP2, resP2 = Net.Invoke(Net.Paths.PacksMerge, { idA, idB })
+								local sP2, rP2 = isRemoteOk(resP2)
+								if okP2 and sP2 then
+									okPair, resPair, sPair, rPair = okP2, resP2, sP2, rP2
+								else
+									-- วิธีที่ 3: เรียก Packs.Merge แบบแยกพารามิเตอร์ (idA, idB)
+									local okP3, resP3 = Net.Invoke(Net.Paths.PacksMerge, idA, idB)
+									local sP3, rP3 = isRemoteOk(resP3)
+									if okP3 and sP3 then
+										okPair, resPair, sPair, rPair = okP3, resP3, sP3, rP3
+									end
+								end
+							end
+
 							if okPair and sPair then
 								count = count + 1
 								itemSkipUntil["merge:" .. idA] = nil
 								itemSkipUntil["merge:" .. idB] = nil
+								logAction("Merge", string.format("รวม %s สำเร็จ (+1 คู่)", tostring(pName)), true)
 								task.wait(rl)
 							else
 								local failReason = string.upper(tostring(rPair or "REJECTED"))
-								if not atMachine and failReason:find("MACHINE") then
+								if not atMachine and (failReason:find("MACHINE") or failReason:find("PAD") or failReason:find("NEAR")) then
 									return count, "NEED_MACHINE"
 								elseif failReason:find("LIMIT") then
 									permSkipItems["merge:" .. idA] = true
 									permSkipItems["merge:" .. idB] = true
 									logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
 								else
-									itemSkipUntil["merge:" .. idA] = os.clock() + 10
-									itemSkipUntil["merge:" .. idB] = os.clock() + 10
+									itemSkipUntil["merge:" .. idA] = os.clock() + 8
+									itemSkipUntil["merge:" .. idB] = os.clock() + 8
 									logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
 								end
 								break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
