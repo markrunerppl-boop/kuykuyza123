@@ -1220,11 +1220,15 @@ TradeState = {
             end
         end
 
-        -- เรียงลำดับ: เลือกแล้วขึ้นก่อน -> มีของขึ้นก่อน -> เรียงตามชื่อ
+        -- เรียงลำดับ: เลือกแล้วขึ้นก่อน -> กล่องบอส (Crate) ขึ้นก่อนในหมวด Other -> มีของขึ้นก่อน -> เรียงตามชื่อ
         table.sort(list, function(a, b)
             local aSel = (TradeState.SelectedItems and TradeState.SelectedItems[a.Key]) and 1 or 0
             local bSel = (TradeState.SelectedItems and TradeState.SelectedItems[b.Key]) and 1 or 0
             if aSel ~= bSel then return aSel > bSel end
+
+            local aIsCrate = (a.Kind == "Crate") and 1 or 0
+            local bIsCrate = (b.Kind == "Crate") and 1 or 0
+            if aIsCrate ~= bIsCrate then return aIsCrate > bIsCrate end
 
             local aHas = a.Count > 0 and 1 or 0
             local bHas = b.Count > 0 and 1 or 0
@@ -3042,12 +3046,34 @@ ItemCountLabel.TextXAlignment = Enum.TextXAlignment.Left
 ItemCountLabel.LayoutOrder = 9
 ItemCountLabel.Parent = TabTrade
 
+local SearchBoxRow = Instance.new("Frame")
+SearchBoxRow.Size = UDim2.new(1, 0, 0, 24)
+SearchBoxRow.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
+SearchBoxRow.LayoutOrder = 10
+SearchBoxRow.Parent = TabTrade
+
+local sbCorner = Instance.new("UICorner")
+sbCorner.CornerRadius = UDim.new(0, 5)
+sbCorner.Parent = SearchBoxRow
+
+local ItemSearchBox = Instance.new("TextBox")
+ItemSearchBox.Size = UDim2.new(1, -12, 1, 0)
+ItemSearchBox.Position = UDim2.new(0, 6, 0, 0)
+ItemSearchBox.BackgroundTransparency = 1
+ItemSearchBox.PlaceholderText = "🔍 ค้นหาไอเทม (พิมพ์ชื่อ เช่น ซากเรือ หรือ Tidewreck)..."
+ItemSearchBox.PlaceholderColor3 = Color3.fromRGB(130, 130, 150)
+ItemSearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+ItemSearchBox.Font = Enum.Font.GothamMedium
+ItemSearchBox.TextSize = 10
+ItemSearchBox.ClearTextOnFocus = false
+ItemSearchBox.Parent = SearchBoxRow
+
 ItemScrollBox = Instance.new("ScrollingFrame")
 ItemScrollBox.Size = UDim2.new(1, 0, 0, 150)
 ItemScrollBox.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
 ItemScrollBox.ScrollBarThickness = 3
 ItemScrollBox.ScrollBarImageColor3 = Theme.Accent
-ItemScrollBox.LayoutOrder = 10
+ItemScrollBox.LayoutOrder = 11
 ItemScrollBox.Parent = TabTrade
 
 local isbCorner = Instance.new("UICorner")
@@ -3106,9 +3132,12 @@ RenderInventoryList = function()
 
     local rawItems = FetchOwnedInventory()
     local items = {}
+    local query = string.lower(ItemSearchBox and ItemSearchBox.Text or "")
 
     for _, it in ipairs(rawItems) do
-        if TradeState.CurrentCategory == "All" or it.Category == TradeState.CurrentCategory then
+        local matchCat = (TradeState.CurrentCategory == "All" or it.Category == TradeState.CurrentCategory)
+        local matchQuery = (query == "" or string.find(string.lower(it.Name), query, 1, true) or string.find(string.lower(it.Key), query, 1, true))
+        if matchCat and matchQuery then
             table.insert(items, it)
         end
     end
@@ -3274,6 +3303,10 @@ RenderInventoryList = function()
     end
 end
 
+ItemSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    RenderInventoryList()
+end)
+
 RenderInventoryList()
 
 local RefreshInvBtn = Instance.new("TextButton")
@@ -3283,7 +3316,7 @@ RefreshInvBtn.Text = "🔄 รีเฟรชคลังไอเทม (Refres
 RefreshInvBtn.TextColor3 = Color3.fromRGB(220, 220, 230)
 RefreshInvBtn.Font = Enum.Font.GothamSemibold
 RefreshInvBtn.TextSize = 10.5
-RefreshInvBtn.LayoutOrder = 11
+RefreshInvBtn.LayoutOrder = 12
 RefreshInvBtn.Parent = TabTrade
 
 local refCorner = Instance.new("UICorner")
