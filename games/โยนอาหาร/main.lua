@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.7 (Complete Teardown & Action Cancellation Engine + Force Character Recovery)
+-- เวอร์ชัน: v2.8 (Mutual Exclusion Engine + Auto Cycle Hybrid Farm + Clean State Transitions)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -38,6 +38,7 @@ local Core = {
     _alive = true,
     _gui = nil,
     _updateLogUI = nil,
+    _toggleUpdaters = {},
 }
 
 ENV.__KUY = Core
@@ -47,6 +48,7 @@ Core.Flags.AutoThrow        = false   -- โยนอาหารอัตโน
 Core.Flags.PerfectThrow     = true    -- บังคับคะแนนเต็ม 100% (Meter Accuracy = 1.0)
 Core.Flags.AutoSuperThrow   = false   -- ใช้งาน Super Throw เมื่อมีสิทธิ์
 Core.Flags.AutoTrain        = false   -- ฝึกพลังอัตโนมัติ (วาร์ปไปแท่นฝึก + ระบบแก้ค้าง)
+Core.Flags.AutoCycle        = false   -- ฟาร์มไฮบริด (ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง อัตโนมัติ)
 Core.Flags.AutoTapBonus     = true    -- กดคูณ 2 อัตโนมัติทันทีที่มีรอบโบนัสขณะฝึกซ้อม
 Core.Flags.AutoStandUpgrade = false   -- อัปเกรดแท่นฝึกอัตโนมัติ (พร้อมระบบกันแจ้งเตือนเงินไม่พอ)
 Core.Flags.AutoBuyFood      = true    -- ซื้ออาหารอัตโนมัติเมื่อเงินพอ
@@ -213,7 +215,7 @@ end
 function Core:Loop(name, flag, interval, fn)
     self:StopLoop(name)
     self._loops[name] = task.spawn(function()
-        while self._alive and self.Flags[flag] do
+        while self._alive and (flag == nil or self.Flags[flag]) do
             local ok, err = pcall(fn)
             if not ok then
                 warn(string.format("[Kuy] Loop '%s' error: %s", name, tostring(err)))
@@ -222,6 +224,15 @@ function Core:Loop(name, flag, interval, fn)
         end
         self._loops[name] = nil
     end)
+end
+
+function Core:SetToggle(flagKey, value)
+    self.Flags[flagKey] = value
+    local updater = self._toggleUpdaters and self._toggleUpdaters[flagKey]
+    if updater then
+        pcall(updater, value)
+    end
+    pcall(Config.Save)
 end
 
 -- =====================================================================
@@ -406,6 +417,42 @@ function Helpers.RecoverCharacter(force)
     end
 end
 
+-- สลับหยุดการฝึกซ้อมอย่างราบรื่น ไม่ทิ้งบั๊กกล้องหรือ UI
+function Helpers.StopTrainingClean()
+    if remotes.Training_Stop then
+        pcall(function() remotes.Training_Stop:InvokeServer() end)
+    end
+    local tGui = LocalPlayer.PlayerGui:FindFirstChild("TrainingGui") or LocalPlayer.PlayerGui:FindFirstChild("TrainingSequence")
+    if tGui then pcall(function() tGui:Destroy() end) end
+    if ScreenFX and ScreenFX.Reset then pcall(ScreenFX.Reset) end
+    if CameraRig and CameraRig.Release then pcall(CameraRig.Release) end
+    local cam = Workspace.CurrentCamera
+    if cam then
+        cam.CameraType = Enum.CameraType.Custom
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then cam.CameraSubject = hum end
+    end
+    if ClientState and (ClientState.Busy == "Training" or ClientState.Busy == "KuykuyTrain") then
+        ClientState.Busy = nil
+    end
+    Helpers.RecoverCharacter(true)
+end
+
+-- สลับหยุดการโยนอาหารอย่างราบรื่น คืนค่าสถานะพร้อมสำหรับโหมดอื่น
+function Helpers.StopThrowingClean()
+    if remotes.Throw_Cancel then
+        pcall(function() remotes.Throw_Cancel:InvokeServer("Switch") end)
+    end
+    local tSeq = LocalPlayer.PlayerGui:FindFirstChild("ThrowSequence") or Workspace:FindFirstChild("ThrowSequence_" .. LocalPlayer.Name)
+    if tSeq then pcall(function() tSeq:Destroy() end) end
+    if ScreenFX and ScreenFX.Reset then pcall(ScreenFX.Reset) end
+    if CameraRig and CameraRig.Release then pcall(CameraRig.Release) end
+    if ClientState and (ClientState.Busy == "Throw" or ClientState.Busy == "KuykuyThrow") then
+        ClientState.Busy = nil
+    end
+    Helpers.RecoverCharacter(true)
+end
+
 function Helpers.TeleportTo(targetPos)
     local hrp = Helpers.GetRoot()
     if hrp and targetPos then
@@ -582,7 +629,6 @@ end)
 -- [ฟังก์ชันหลัก 1]: ลูปฝึกซ้อม (Auto Train Power ปลอดภัย ไร้สถานะค้าง)
 local function runTrainCycle()
     if Core.Busy then return end
-    if Core.Flags.AutoThrow then return end -- ป้องกันการชนกันระหว่างโยนอาหารกับฝึกพลัง
     if not Helpers.IsAlive() then return end
     if not remotes.Training_Start then return end
 
@@ -621,6 +667,41 @@ local function runTrainCycle()
             logAction("ฝึกพลัง", "เริ่มฝึกไม่ได้: " .. tostring(reason), false)
         end
     end
+end
+
+-- [ฟังก์ชันหลัก 1.5]: ลูปฟาร์มไฮบริด (Auto Cycle: ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง อัตโนมัติ)
+local function runCycleFarm()
+    if not Core.Flags.AutoCycle or not Core._alive then return end
+
+    -- เฟส 1: ฝึกพลังบนแท่นฝึก (ประมาณ 20 วินาที พร้อมรับ 2x Tap Bonus อัตโนมัติ)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบฝึกพลังสะสมพลังขว้าง...", true)
+    local t0 = os.clock()
+    while Core.Flags.AutoCycle and Core._alive and (os.clock() - t0 < 20) do
+        runTrainCycle()
+        task.wait(2.0)
+    end
+
+    if not Core.Flags.AutoCycle or not Core._alive then
+        Helpers.StopTrainingClean()
+        return
+    end
+
+    -- จบเฟสฝึกซ้อม เคลียร์ตัวละครและเซิร์ฟเวอร์ก่อนสลับโหมด
+    Helpers.StopTrainingClean()
+    task.wait(0.3)
+
+    -- เฟส 2: โยนอาหารคะแนนเต็ม 100% (6 ครั้ง)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (6 ครั้ง)...", true)
+    local throwsDone = 0
+    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 do
+        runThrowCycle()
+        throwsDone = throwsDone + 1
+        task.wait(0.2)
+    end
+
+    -- จบเฟสโยนอาหาร เคลียร์สถานะก่อนกลับไปฝึกพลัง
+    Helpers.StopThrowingClean()
+    task.wait(0.3)
 end
 
 -- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% ไวที่สุดในเซิร์ฟเวอร์ (Ultra-Fast Adaptive Pipeline + Zero-Freeze Guard)
@@ -993,9 +1074,17 @@ Core:Connect(RunService.Heartbeat, function()
     end
 end)
 
--- ผูกลูปเข้ากับ Core:Loop ตามการตั้งค่าที่โหลดมา
-if Core.Flags.AutoThrow then Core:Loop("Loop_Throw", "AutoThrow", 0.15, runThrowCycle) end
-if Core.Flags.AutoTrain then Core:Loop("Loop_Train", "AutoTrain", 2.2, runTrainCycle) end
+-- ผูกลูปเข้ากับ Core:Loop ตามการตั้งค่าที่โหลดมา (พร้อม Mutual Exclusion Guard ป้องกันการแย่งทรัพยากร)
+if Core.Flags.AutoCycle then
+    Core.Flags.AutoThrow = false
+    Core.Flags.AutoTrain = false
+    Core:Loop("Loop_Cycle", "AutoCycle", 0.5, runCycleFarm)
+elseif Core.Flags.AutoThrow then
+    Core.Flags.AutoTrain = false
+    Core:Loop("Loop_Throw", "AutoThrow", 0.15, runThrowCycle)
+elseif Core.Flags.AutoTrain then
+    Core:Loop("Loop_Train", "AutoTrain", 2.2, runTrainCycle)
+end
 if Core.Flags.AutoStandUpgrade then Core:Loop("Loop_Stand", "AutoStandUpgrade", 5.0, runStandUpgrade) end
 if Core.Flags.AutoBuyFood or Core.Flags.AutoEquipFood then Helpers.UpdateFoodLoop() end
 if Core.Flags.AutoEquipBest then Core:Loop("Loop_Plot", "AutoEquipBest", 15.0, runPlotManagement) end
@@ -1101,7 +1190,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.7</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.8</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1342,18 +1431,32 @@ local function CreateToggle(parent, flagKey, title, callback)
 
     local state = initialValue
     local lastClick = 0
+
+    local function updateVisual(newVal, doCallback)
+        state = newVal
+        Core.Flags[flagKey] = newVal
+        local targetPos = newVal and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+        local targetColor = newVal and UIColors.Accent or UIColors.Sidebar
+        pcall(function()
+            TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
+            TweenService:Create(toggleTrack, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
+        end)
+        if doCallback and callback then
+            pcall(callback, newVal)
+        end
+    end
+
+    Core._toggleUpdaters[flagKey] = function(newVal)
+        updateVisual(newVal, true)
+    end
+
     local function onToggle()
         local now = os.clock()
         if now - lastClick < 0.25 then return end
         lastClick = now
-        state = not state
-        Core.Flags[flagKey] = state
-        local targetPos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-        local targetColor = state and UIColors.Accent or UIColors.Sidebar
-        TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
-        TweenService:Create(toggleTrack, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
-        logAction("การตั้งค่า", (state and "เปิด: " or "ปิด: ") .. title, state)
-        if callback then callback(state) end
+        local nextState = not state
+        logAction("การตั้งค่า", (nextState and "เปิด: " or "ปิด: ") .. title, nextState)
+        updateVisual(nextState, true)
         pcall(Config.Save)
     end
 
@@ -1406,14 +1509,17 @@ AddTabButton("FarmTab", "🎮 ฟาร์มหลัก", true, 1)
 CreateSection(FarmPage, "ระบบโยนอาหาร (Food Throwing)")
 CreateToggle(FarmPage, "AutoThrow", "โยนอาหารอัตโนมัติ (Auto Throw - ไวพิเศษ)", function(val)
     if val then
+        if Core.Flags.AutoTrain then
+            Core:SetToggle("AutoTrain", false)
+            Helpers.StopTrainingClean()
+        end
+        if Core.Flags.AutoCycle then
+            Core:SetToggle("AutoCycle", false)
+        end
         Core:Loop("Loop_Throw", "AutoThrow", 0.15, runThrowCycle)
     else
         Core:StopLoop("Loop_Throw")
-        Core.Busy = false
-        if ClientState and ClientState.Busy == "KuykuyThrow" then
-            ClientState.Busy = nil
-        end
-        Helpers.RecoverCharacter()
+        Helpers.StopThrowingClean()
     end
 end)
 
@@ -1426,11 +1532,17 @@ end)
 CreateSection(FarmPage, "ระบบฝึกซ้อมพลัง (Power Training)")
 CreateToggle(FarmPage, "AutoTrain", "ฝึกพลังอัตโนมัติ (Auto Train)", function(val)
     if val then
+        if Core.Flags.AutoThrow then
+            Core:SetToggle("AutoThrow", false)
+            Helpers.StopThrowingClean()
+        end
+        if Core.Flags.AutoCycle then
+            Core:SetToggle("AutoCycle", false)
+        end
         Core:Loop("Loop_Train", "AutoTrain", 2.2, runTrainCycle)
     else
         Core:StopLoop("Loop_Train")
-        if remotes.Training_Stop then pcall(function() Net.Invoke(remotes.Training_Stop) end) end
-        Helpers.RecoverCharacter()
+        Helpers.StopTrainingClean()
     end
 end)
 
@@ -1442,6 +1554,25 @@ CreateToggle(FarmPage, "AutoStandUpgrade", "อัปเกรดแท่นฝ
         Core:Loop("Loop_Stand", "AutoStandUpgrade", 5.0, runStandUpgrade)
     else
         Core:StopLoop("Loop_Stand")
+    end
+end)
+
+CreateSection(FarmPage, "ระบบฟาร์มไฮบริด (Hybrid Auto Cycle)")
+CreateToggle(FarmPage, "AutoCycle", "🔄 ฟาร์มไฮบริด (ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง)", function(val)
+    if val then
+        if Core.Flags.AutoThrow then
+            Core:SetToggle("AutoThrow", false)
+            Helpers.StopThrowingClean()
+        end
+        if Core.Flags.AutoTrain then
+            Core:SetToggle("AutoTrain", false)
+            Helpers.StopTrainingClean()
+        end
+        Core:Loop("Loop_Cycle", "AutoCycle", 0.5, runCycleFarm)
+    else
+        Core:StopLoop("Loop_Cycle")
+        Helpers.StopTrainingClean()
+        Helpers.StopThrowingClean()
     end
 end)
 
@@ -1636,6 +1767,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.7 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v2.8 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.7 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.8 โหลดสำเร็จ 100%")
