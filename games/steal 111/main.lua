@@ -148,7 +148,7 @@ local function main()
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
 	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
-	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าค่อยเป็น 4)
+	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าในเมนูได้ถ้าต้องการ)
 	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
@@ -2564,7 +2564,7 @@ local function main()
 				if now - StealState.lastQuotaLogTime > 15 then
 					StealState.lastQuotaLogTime = now
 					local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
-					logAction("ขโมย", string.format("%s -> เก็บครบทุกใบแล้ว พักบนลู่วิ่ง รอแพ็ครีเซ็ต (ด่านใหม่)", reason), false)
+					logAction("ขโมย", string.format("%s -> เก็บครบทุกใบแล้ว พักบนลู่วิ่ง รอแพ็ครีเซ็ต (เช็กทุก ~1.5 วิ แล้วออกไปเก็บต่อทันที)", reason), false)
 				end
 			end
 
