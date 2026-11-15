@@ -781,8 +781,8 @@ TradeState = {
         PreReadyDelay    = 1.5,     -- หน่วงเวลาก่อนส่ง MineTradeReady (วินาที)
         ConfirmWaitTime  = 4.5,     -- เวลารอนับถอยหลังของเกมก่อนกดยืนยัน Confirm (วินาที)
         RequestTimeout   = 35.0,    -- เวลารอผู้รับกดยอมรับคำขอเทรด (วินาที) ปรับเพิ่มสำหรับ UGPhone / Mobile
-        MaxStackCap      = 999,     -- เพดานขีดจำกัดสูงสุดต่อ 1 ช่องของเซิร์ฟเวอร์
-        MaxGemsCap       = 1000000, -- เพดานอัญมณีสูงสุดต่อ 1 รอบการเทรด (1 ล้าน Gems)
+        MaxStackCap      = 1000000000, -- ขยายเพดานสูงสุดเพื่อรองรับการส่งของทั้งหมดในครั้งเดียว (ไม่จำกัดที่ 999)
+        MaxGemsCap       = 1000000000, -- เพดานอัญมณีสูงสุดต่อ 1 รอบการเทรด
     }
     
     local function TradeNotify(title, msg, duration)
@@ -3290,7 +3290,7 @@ RenderInventoryList = function()
                     TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
                     return
                 end
-                local sendNum = TradeState.SendAllAlways and maxCap or (tonumber(amtBox.Text) or 1)
+                local sendNum = maxCap
                 sendNum = math.clamp(math.floor(sendNum), 1, maxCap)
                 TradeState.SelectedItems[it.Key] = {
                     Key = it.Key,
@@ -3866,24 +3866,30 @@ end)
             local mg = d2 and d2.MineGame
             local itemsToSendList = {}
 
-            for key, item in pairs(TradeState.SelectedItems) do
+            -- รวบรวมไอเทมที่เลือกไว้ทั้งหมด (รวมทั้ง SelectedItems และ SavedTradeItems)
+            local selectedKeyMap = {}
+            for k, v in pairs(TradeState.SelectedItems or {}) do
+                selectedKeyMap[k] = (type(v) == "table" and v.Name) or k
+            end
+            for k, _ in pairs(SavedTradeItems or {}) do
+                if not selectedKeyMap[k] then
+                    selectedKeyMap[k] = k
+                end
+            end
+
+            for key, name in pairs(selectedKeyMap) do
                 local currentAvailable = ownedMap[key] or 0
                 if currentAvailable <= 0 then
                     currentAvailable = GetItemCurrentCount(key, ownedMap, mg)
                 end
                 if currentAvailable > 0 then
-                    local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
-                    -- ⚡ ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง: คำนวณจำนวนส่งเป็นจำนวนทั้งหมดที่มีจริงในคลัง (ไม่เกิน Cap)
-                    local sendAmount = TradeState.SendAllAlways and math.min(currentAvailable, cap) or math.min(item.Amount or currentAvailable, currentAvailable, cap)
-                    if sendAmount > 0 then
-                        table.insert(itemsToSendList, {
-                            Key = key,
-                            Name = item.Name or key,
-                            Amount = sendAmount,
-                            MaxCap = cap
-                        })
-                        if #itemsToSendList >= 8 then break end -- ขีดจำกัด 8 ช่องต่อรอบของเกม
-                    end
+                    -- ⚡ ส่งไอเทมที่เลือกไว้ทั้งหมดในครั้งเดียว: ดึงจำนวนทั้งหมด 100% ที่มีจริงในกระเป๋าใส่ในรอบเดียว
+                    table.insert(itemsToSendList, {
+                        Key = key,
+                        Name = name or key,
+                        Amount = currentAvailable
+                    })
+                    if #itemsToSendList >= 8 then break end -- ขีดจำกัด 8 ช่องต่อรอบของเกม
                 end
             end
 
@@ -3956,11 +3962,10 @@ end)
                     return
                 end
 
-                local cap = item.MaxCap or TradeTimingConfig.MaxStackCap
-                local sendAmount = math.clamp(item.Amount, 1, cap)
+                local sendAmount = tonumber(item.Amount) or 1
                 TradeState.EditRevision = math.max(TradeState.EditRevision, tonumber(TradeState.CurrentSession and TradeState.CurrentSession.LastEditId) or 0) + 1
 
-                StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d", idx, #itemsToSendList, item.Name, sendAmount)
+                StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d (ส่งทั้งหมด)", idx, #itemsToSendList, item.Name, sendAmount)
                 StatusBar.TextColor3 = Color3.fromRGB(240, 220, 100)
 
                 local finalKey = ResolveActualItemKey(item.Key)
@@ -4072,7 +4077,7 @@ end)
             -- ถ้าเปิด AutoLoopUntilEmpty: เช็คว่ายังมีของที่เลือกเหลือในคลังหรือไม่
             local nextOwnedMap = GetAvailableCountMap()
             local remainingItemsCount = 0
-            for key, _ in pairs(TradeState.SelectedItems) do
+            for key, _ in pairs(selectedKeyMap) do
                 local c = nextOwnedMap[key] or 0
                 if c <= 0 then
                     c = GetItemCurrentCount(key, nextOwnedMap)
