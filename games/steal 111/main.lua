@@ -28,7 +28,7 @@ local RP = "ReplicatedStorage.Remotes."
 local STEAL_RARITY_KEYS = {
 	"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
 	"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
-	"Exclusive", "Godlike", "Secret"
+	"Exclusive", "Godlike", "Absolute", "Mystery", "Secret"
 }
 
 local STAGE_CENTERS = {
@@ -44,6 +44,7 @@ local STAGE_CENTERS = {
 	[10] = Vector3.new(4820, 68, -366),
 	[11] = Vector3.new(5490, 68, -365),
 	[12] = Vector3.new(6135, 68, -364),
+	[13] = Vector3.new(6875, 68, -364),
 }
 
 local function main()
@@ -144,13 +145,14 @@ local function main()
 	Core.Flags.AutoUpgradeLuck = false      -- อัปเกรดโชคในบ้านอัตโนมัติ (Upgrade Luck Machine)
 	Core.Flags.AutoRebirth = false          -- เกิดใหม่อัตโนมัติเมื่อ Speed ถึงเกณฑ์
 	Core.Flags.AutoClaim = false            -- เคลม Offline / Daily / Index อัตโนมัติ
+	Core.Flags.AutoEnterDungeon = false     -- ลงดันเจี้ยนอัตโนมัติเมื่อประตูเปิด
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
 	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
 	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าในเมนูได้ถ้าต้องการ)
 	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
-	for i = 1, 12 do
+	for i = 1, 13 do
 		Core.Flags["Stage" .. i] = true
 	end
 	for _, r in ipairs(STEAL_RARITY_KEYS) do
@@ -512,6 +514,143 @@ local function main()
 			M.IndexConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.IndexConfig end)
 		end
 		return M.IndexConfig
+	end
+
+	function Helpers.GetTowerConfig()
+		if not M.TowerConfig then
+			M.TowerConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.TowerConfig end)
+		end
+		return M.TowerConfig
+	end
+
+	function Helpers.GetDungeonUtil()
+		if not M.DungeonUtil then
+			M.DungeonUtil = safeRequire(function() return ReplicatedStorage.Shared.Utilities.DungeonUtil end)
+		end
+		return M.DungeonUtil
+	end
+
+	function Helpers.IsDungeonPlace()
+		return game.PlaceId == 135412798316370 or Workspace:FindFirstChild("DungeonRoom") ~= nil or Workspace:FindFirstChild("DungeonFighters") ~= nil
+	end
+
+	function Helpers.GetDungeonPad()
+		local dp = Workspace:FindFirstChild("dungeon portal")
+		if dp then
+			local pad = dp:FindFirstChild("DungeonPad")
+			if pad then
+				return pad:FindFirstChild("Ring") or pad
+			end
+		end
+		return nil
+	end
+
+	function Helpers.IsDungeonPortalOpen()
+		local attr = ReplicatedStorage:GetAttribute("DungeonPortalOpenUntil")
+		if type(attr) == "number" then
+			local now = workspace:GetServerTimeNow()
+			return attr > now
+		end
+		local du = Helpers.GetDungeonUtil()
+		if du and type(du.GetPortal) == "function" then
+			local ok, p = pcall(du.GetPortal, workspace:GetServerTimeNow())
+			if ok and type(p) == "table" and p.IsOpen ~= nil then
+				return p.IsOpen
+			end
+		end
+		return false
+	end
+
+	function Helpers.GetPlayerSpeedStat()
+		local pd = getPlayerData()
+		if pd and type(pd.Get) == "function" then
+			local ok, spd = pcall(pd.Get, "Speed")
+			if ok and tonumber(spd) then return tonumber(spd) end
+		end
+		local ls = LocalPlayer:FindFirstChild("leaderstats")
+		if ls then
+			local sp = ls:FindFirstChild("Speed")
+			if sp and type(sp.Value) == "number" then return sp.Value end
+		end
+		return 0
+	end
+
+	function Helpers.CanEnterDungeon()
+		if not Helpers.IsDungeonPortalOpen() then
+			return false, "ประตูดันเจี้ยนยังไม่เปิด"
+		end
+		local speed = Helpers.GetPlayerSpeedStat()
+		if speed < 50000000000 then
+			return false, string.format("ต้องการความเร็ว 50B+ (ปัจจุบัน %.2e)", speed)
+		end
+		return true, "พร้อมลงดันเจี้ยน"
+	end
+
+	function Helpers.EnterDungeon()
+		local can, reason = Helpers.CanEnterDungeon()
+		if not can then
+			return false, reason
+		end
+		local ring = Helpers.GetDungeonPad()
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if ring and hrp and ring:IsA("BasePart") then
+			pcall(function()
+				hrp.CFrame = ring.CFrame + Vector3.new(0, 3, 0)
+			end)
+			task.wait(0.5)
+		end
+
+		local partySuccess = false
+		if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
+			local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, "Dugeon")
+			if ok and type(res) == "table" and res.Success then
+				partySuccess = true
+			end
+		end
+
+		task.wait(0.3)
+		if Net and Net.Paths and Net.Paths.DungeonPartyStart then
+			local ok, res = Net.Invoke(Net.Paths.DungeonPartyStart)
+			if ok and (res == nil or (type(res) == "table" and res.Success)) then
+				logAction("ดันเจี้ยน", "เริ่มเทเลพอร์ตเข้าสู่ Dungeon สำเร็จ", true)
+				return true, "กำลังเทเลพอร์ต"
+			end
+		end
+
+		return partySuccess, "ส่งคำขอเข้าดันเจี้ยนแล้ว"
+	end
+
+	function Helpers.AutoDungeonStep()
+		if not Core.Flags.AutoEnterDungeon then return end
+
+		-- กรณีอยู่ในแมพดันเจี้ยนแล้ว (PlaceId 135412798316370)
+		if Helpers.IsDungeonPlace() then
+			if Net and Net.Paths and Net.Paths.TowersSetAuto then
+				Net.Fire(Net.Paths.TowersSetAuto, 2.0, true)
+			end
+			return
+		end
+
+		-- กรณีอยู่ในแมพหลัก
+		local can, reason = Helpers.CanEnterDungeon()
+		if not can then
+			return
+		end
+
+		if StealState and StealState.isStealing then
+			return
+		end
+
+		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
+			if Net and Net.Paths and Net.Paths.ExitRequest then
+				Net.Fire(Net.Paths.ExitRequest, 0.5)
+				task.wait(0.5)
+			end
+		end
+
+		logAction("ดันเจี้ยน", "ประตูดันเจี้ยนเปิดอยู่ และ Speed ถึง 50B -> กำลังเข้าดันเจี้ยน...", true)
+		Helpers.EnterDungeon()
 	end
 
 	function Helpers.GetSafeZoneBounds()
@@ -1207,6 +1346,11 @@ local function main()
 		AurasPurchase = RP .. "Auras.Purchase",      -- RF: InvokeServer(auraId)
 		AurasEquip = RP .. "Auras.Equip",            -- RF: InvokeServer(auraId)
 		ToolsRequestEquip = RP .. "Tools.RequestEquip", -- RE: FireServer({Equipped, Tool})
+		DungeonPartyOpen = RP .. "DungeonParty.Open",   -- RF: InvokeServer("Dugeon")
+		DungeonPartyStart = RP .. "DungeonParty.Start", -- RF: InvokeServer()
+		TowersSetAuto = RP .. "Towers.SetAuto",         -- RE: FireServer(true/false)
+		TowersStart = RP .. "Towers.Start",             -- RF: InvokeServer(...)
+		TowersExit = RP .. "Towers.Exit",               -- RE: FireServer()
 	}
 
 	function Net.Get(remote)
@@ -1360,6 +1504,7 @@ local function main()
 
 	local lastEnter = 0
 	local function enterTreadmill()
+		if Helpers.IsDungeonPlace() then return end
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 1.5 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 
@@ -1530,11 +1675,14 @@ local function main()
 			Primordial = 11,
 			Exclusive = 12,
 			Godlike = 13,
-			Secret = 14,
+			Absolute = 14,
+			Secret = 15,
+			Mystery = 15,
+			["???"] = 15,
 		}
 
 		local rName = tostring(r)
-		if type(rName) == "string" and #rName > 0 then
+		if rName ~= "???" and type(rName) == "string" and #rName > 0 then
 			rName = rName:sub(1,1):upper() .. rName:sub(2):lower()
 		end
 		local rank = sr or (ranks[rName]) or 1
@@ -1549,7 +1697,7 @@ local function main()
 
 		-- 1. ตรวจสอบจากชื่อ Rarity/Grade โดยตรง
 		local flagKey = "Rarity_" .. tostring(rName)
-		if Core.Flags[flagKey] == true then
+		if Core.Flags[flagKey] == true or (rName == "???" and Core.Flags["Rarity_Mystery"] == true) or (rName == "Secret" and Core.Flags["Rarity_Mystery"] == true) then
 			return true
 		end
 
@@ -1568,10 +1716,11 @@ local function main()
 			[11] = "Primordial",
 			[12] = "Exclusive",
 			[13] = "Godlike",
-			[14] = "Secret",
+			[14] = "Absolute",
+			[15] = "Mystery",
 		}
 		local fallbackName = rankNames[rank]
-		if fallbackName and Core.Flags["Rarity_" .. fallbackName] == true then
+		if fallbackName and (Core.Flags["Rarity_" .. fallbackName] == true or (fallbackName == "Mystery" and Core.Flags["Rarity_Secret"] == true)) then
 			return true
 		end
 
@@ -2398,7 +2547,8 @@ local function main()
 		local fallbackSpeeds = {
 			[1] = 16, [2] = 36, [3] = 64, [4] = 85,
 			[5] = 101, [6] = 117, [7] = 135, [8] = 157,
-			[9] = 207, [10] = 215, [11] = 226, [12] = 241
+			[9] = 207, [10] = 215, [11] = 226, [12] = 241,
+			[13] = 250
 		}
 		local spd = fallbackSpeeds[i] or (16 + i * 18)
 		StealState.bossSpeedCache[i] = spd
@@ -2410,7 +2560,7 @@ local function main()
 		local margin = Core.Flags.OutrunMargin or 1.0
 
 		local candidates = {}
-		for i = 1, 12 do
+		for i = 1, 13 do
 			if Core.Flags["Stage" .. i] then
 				local bSpd = getStageBossSpeed(i)
 				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
@@ -2499,7 +2649,7 @@ local function main()
 		if #candidateStages == 0 then
 			local mySpeed = Helpers.GetMoveSpeed()
 			local lowestSelected = nil
-			for s = 1, 12 do
+			for s = 1, 13 do
 				if Core.Flags["Stage" .. s] then
 					lowestSelected = s
 					break
@@ -2736,6 +2886,7 @@ local function main()
 	end
 
 	local function stealCycle()
+		if Helpers.IsDungeonPlace() then return end
 		-- ล้างล็อก Busy ที่ค้างจากรอบที่ถูก cancel/พัง (เฉพาะที่ลูปขโมยล็อกเอง)
 		if StealState.holdBusy then
 			StealState.holdBusy = false
@@ -3277,7 +3428,12 @@ local function main()
 		-- สแกนจาก Inventory.Packs.Backpack เผื่อ Tool ยังไม่โหลด
 		if #toSell == 0 and type(bpRecords) == "table" then
 			local pc = getPacksConfig()
-			local ranks = (pc and pc.RarityRank) or {}
+			local ranks = (pc and pc.RarityRank) or {
+				Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5,
+				Mythical = 6, Cosmic = 7, Divine = 8, Omniversal = 9, Eternal = 10,
+				Primordial = 11, Exclusive = 12, Godlike = 13, Absolute = 14,
+				Secret = 15, Mystery = 15, ["???"] = 15,
+			}
 			for _, rec in ipairs(bpRecords) do
 				if type(rec) == "table" and type(rec.Id) == "string" and not seen[rec.Id] then
 					local packId = rec.Id
@@ -4239,6 +4395,12 @@ local function main()
 		Core:Loop("autoClaim", "AutoClaim", 2, autoClaimStep)
 	end
 
+	function Loops.Dungeon()
+		Core:Loop("autoDungeon", "AutoEnterDungeon", 2.5, function()
+			Helpers.AutoDungeonStep()
+		end)
+	end
+
 	Core:Connect(LocalPlayer.Idled, function()
 		if Core._alive and Core.Flags.AntiAfk and VirtualUser then
 			pcall(function()
@@ -5074,9 +5236,14 @@ local function main()
 			if v then Helpers.RecoverFromHit(LocalPlayer.Character) end
 		end)
 
+		CreateToggle(pFarm, "ลงดันเจี้ยนอัตโนมัติเมื่อเปิด (Auto Enter Dungeon)", Core.Flags.AutoEnterDungeon, function(v)
+			Core.Flags.AutoEnterDungeon = v
+			if v then Loops.Dungeon() end
+		end)
+
 		-- Stage Multi-Select Dropdown
 		local stageOptions = {}
-		for i = 1, 12 do
+		for i = 1, 13 do
 			table.insert(stageOptions, {
 				value = "Stage" .. i,
 				label = string.format("ด่านที่ %d (Stage %d)", i, i),
@@ -5102,6 +5269,8 @@ local function main()
 			{ value = "Rarity_Primordial", label = "Primordial (ระดับ 11)",  short = "Prim" },
 			{ value = "Rarity_Exclusive",  label = "Exclusive (ระดับ 12)",   short = "Excl" },
 			{ value = "Rarity_Godlike",    label = "Godlike (ระดับ 13)",     short = "God" },
+			{ value = "Rarity_Absolute",   label = "Absolute (ระดับ 14)",    short = "Abs" },
+			{ value = "Rarity_Mystery",    label = "??? / Mystery (ระดับ 15)", short = "Mys" },
 			{ value = "Rarity_Secret",     label = "Secret (ระดับพิเศษ)",    short = "Sec" },
 		}
 		CreateMultiSelectDropdown(pFarm, "เกรดของแพ็คที่ต้องการขโมย (All Grades)", rarityOptions, Core.Flags, function()
@@ -5162,11 +5331,13 @@ local function main()
 			[11] = "Primordial (11)",
 			[12] = "Exclusive (12)",
 			[13] = "Godlike (13)",
+			[14] = "Absolute (14)",
+			[15] = "Mystery (15)",
 		}
 		local rarityOptions = {
 			"Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)",
 			"Cosmic (7)", "Divine (8)", "Omniversal (9)", "Eternal (10)",
-			"Primordial (11)", "Exclusive (12)", "Godlike (13)"
+			"Primordial (11)", "Exclusive (12)", "Godlike (13)", "Absolute (14)", "Mystery (15)"
 		}
 		local curRarityVal = Core.Flags.SellBelowRarity or 6
 		local curRarityText = RARITY_NAMES[curRarityVal] or "Mythical (6)"
@@ -5340,6 +5511,7 @@ local function main()
 		if Core.Flags.AutoUpgradeLuck then task.spawn(Loops.UpgradeLuck) end
 		if Core.Flags.AutoRebirth then task.spawn(Loops.Rebirth) end
 		if Core.Flags.AutoClaim then task.spawn(Loops.Claim) end
+		if Core.Flags.AutoEnterDungeon then task.spawn(Loops.Dungeon) end
 
 		Core.Flags.UI = true
 		Core:Loop("autoSaveConfig", "UI", 30, function()
