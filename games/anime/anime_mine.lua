@@ -1087,7 +1087,106 @@ TradeState = {
             end
         end
 
-        -- 10. ไอเทมที่ถูกบันทึกไว้ใน SavedTradeItems หรือ TradeState.SelectedItems
+        -- 10. กล่องบอสโกโลซัสและกล่องสุ่ม (Colossus Crates & Crates: กล่องซากเรือจากกระแสน้ำ, Petalfall Crate ฯลฯ)
+        if type(mg.ColossusCrates) == "table" then
+            for crateKey, count in pairs(mg.ColossusCrates) do
+                local num = tonumber(count) or 0
+                if CanTradeItem(crateKey) and not keyExists[crateKey] then
+                    keyExists[crateKey] = true
+                    local displayName = crateKey
+                    if crateKey == "Tidewreck Crate" or crateKey == "Tidewreck" or crateKey == "Shipwreck Crate" then
+                        displayName = "กล่องซากเรือจากกระแสน้ำ (Tidewreck Crate)"
+                    elseif crateKey == "Petalfall Crate" or crateKey == "Petalfall" then
+                        displayName = "กล่องบอส Petalfall (Petalfall Crate)"
+                    end
+                    table.insert(list, {
+                        Key = crateKey,
+                        Name = displayName,
+                        Count = num,
+                        Total = num,
+                        Kind = "Crate",
+                        Category = "Other",
+                        Emoji = "📦",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        if type(mg.Crates) == "table" then
+            for crateKey, count in pairs(mg.Crates) do
+                local num = tonumber(count) or 0
+                if CanTradeItem(crateKey) and not keyExists[crateKey] then
+                    keyExists[crateKey] = true
+                    table.insert(list, {
+                        Key = crateKey,
+                        Name = crateKey,
+                        Count = num,
+                        Total = num,
+                        Kind = "Crate",
+                        Category = "Other",
+                        Emoji = "📦",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        -- ตรวจสอบกล่องจาก MineCrateConfig
+        if MineCrateConfig and type(MineCrateConfig) == "table" then
+            local cratePool = MineCrateConfig.Crates or MineCrateConfig.List or MineCrateConfig
+            if type(cratePool) == "table" then
+                for cKey, cVal in pairs(cratePool) do
+                    local cName = (type(cVal) == "table" and (cVal.Name or cVal.Key)) or (type(cKey) == "string" and cKey)
+                    if cName and CanTradeItem(cName) and not keyExists[cName] and type(cVal) ~= "function" then
+                        keyExists[cName] = true
+                        table.insert(list, {
+                            Key = cName,
+                            Name = cName,
+                            Count = 0,
+                            Total = 0,
+                            Kind = "Crate",
+                            Category = "Other",
+                            Emoji = "📦",
+                            MaxCap = TradeTimingConfig.MaxStackCap
+                        })
+                    end
+                end
+            end
+        end
+
+        -- เพิ่มกล่อง Colossus Crates ยอดนิยมลงรายการล่วงหน้า (เพื่อให้สามารถติ๊กเปิดรอไว้ได้ แม้ในคลังยังไม่มี)
+        local defaultColossusCrates = {
+            { Key = "Tidewreck Crate", Name = "กล่องซากเรือจากกระแสน้ำ (Tidewreck Crate)" },
+            { Key = "กล่องซากเรือจากกระแสน้ำ", Name = "กล่องซากเรือจากกระแสน้ำ (Tidewreck)" },
+            { Key = "Petalfall Crate", Name = "กล่องบอส Petalfall (Petalfall Crate)" },
+        }
+        for _, def in ipairs(defaultColossusCrates) do
+            if not keyExists[def.Key] then
+                keyExists[def.Key] = true
+                local count = 0
+                if mg.ColossusCrates and type(mg.ColossusCrates) == "table" then
+                    count = tonumber(mg.ColossusCrates[def.Key]) or 0
+                    if count == 0 and (def.Key == "Tidewreck Crate" or def.Key == "กล่องซากเรือจากกระแสน้ำ") then
+                        count = tonumber(mg.ColossusCrates["Tidewreck Crate"]) or tonumber(mg.ColossusCrates["Tidewreck"]) or tonumber(mg.ColossusCrates["กล่องซากเรือจากกระแสน้ำ"]) or 0
+                    elseif count == 0 and (def.Key == "Petalfall Crate") then
+                        count = tonumber(mg.ColossusCrates["Petalfall Crate"]) or tonumber(mg.ColossusCrates["Petalfall"]) or 0
+                    end
+                end
+                table.insert(list, {
+                    Key = def.Key,
+                    Name = def.Name,
+                    Count = count,
+                    Total = count,
+                    Kind = "Crate",
+                    Category = "Other",
+                    Emoji = "📦",
+                    MaxCap = TradeTimingConfig.MaxStackCap
+                })
+            end
+        end
+
+        -- 11. ไอเทมที่ถูกบันทึกไว้ใน SavedTradeItems หรือ TradeState.SelectedItems
         for savedKey, _ in pairs(SavedTradeItems or {}) do
             if not keyExists[savedKey] and CanTradeItem(savedKey) then
                 keyExists[savedKey] = true
@@ -3596,7 +3695,45 @@ end)
         for _, it in ipairs(list) do
             map[it.Key] = it.Count
         end
+        -- ซิงค์จำนวนข้าม Alias สำหรับ Colossus Crates เพื่อความแม่นยำ
+        local twCount = map["Tidewreck Crate"] or map["กล่องซากเรือจากกระแสน้ำ"] or map["Tidewreck"] or 0
+        if twCount > 0 then
+            map["Tidewreck Crate"] = math.max(map["Tidewreck Crate"] or 0, twCount)
+            map["กล่องซากเรือจากกระแสน้ำ"] = math.max(map["กล่องซากเรือจากกระแสน้ำ"] or 0, twCount)
+            map["Tidewreck"] = math.max(map["Tidewreck"] or 0, twCount)
+        end
+        local pfCount = map["Petalfall Crate"] or map["Petalfall"] or 0
+        if pfCount > 0 then
+            map["Petalfall Crate"] = math.max(map["Petalfall Crate"] or 0, pfCount)
+            map["Petalfall"] = math.max(map["Petalfall"] or 0, pfCount)
+        end
         return map
+    end
+
+    local function ResolveActualItemKey(selectedKey)
+        local d2 = GameState and GameState.GetData2 and GameState.GetData2()
+        local mg = d2 and d2.MineGame
+        if not mg then return selectedKey end
+        
+        if mg.ColossusCrates and type(mg.ColossusCrates) == "table" then
+            if mg.ColossusCrates[selectedKey] ~= nil and (tonumber(mg.ColossusCrates[selectedKey]) or 0) > 0 then
+                return selectedKey
+            end
+            if selectedKey == "กล่องซากเรือจากกระแสน้ำ" or selectedKey == "Tidewreck Crate" or selectedKey == "Tidewreck" then
+                for _, candidate in ipairs({"Tidewreck Crate", "Tidewreck", "กล่องซากเรือจากกระแสน้ำ", "Shipwreck Crate"}) do
+                    if mg.ColossusCrates[candidate] and (tonumber(mg.ColossusCrates[candidate]) or 0) > 0 then
+                        return candidate
+                    end
+                end
+            elseif selectedKey == "Petalfall Crate" or selectedKey == "Petalfall" or selectedKey == "กล่องบอส Petalfall" then
+                for _, candidate in ipairs({"Petalfall Crate", "Petalfall", "กล่องบอส Petalfall"}) do
+                    if mg.ColossusCrates[candidate] and (tonumber(mg.ColossusCrates[candidate]) or 0) > 0 then
+                        return candidate
+                    end
+                end
+            end
+        end
+        return selectedKey
     end
 
         local function RunTransferWorker()
@@ -3719,7 +3856,8 @@ end)
                 StatusBar.Text = string.format("ใส่ไอเทม [%d/%d]: %s x%d", idx, #itemsToSendList, item.Name, sendAmount)
                 StatusBar.TextColor3 = Color3.fromRGB(240, 220, 100)
 
-                SafeSendEvent("MineTradeSetItem", item.Key, sendAmount, sess.SessionId, TradeState.EditRevision)
+                local finalKey = ResolveActualItemKey(item.Key)
+                SafeSendEvent("MineTradeSetItem", finalKey, sendAmount, sess.SessionId, TradeState.EditRevision)
 
                 local jitter = math.random(TradeTimingConfig.ThrottleDelayMin * 100, TradeTimingConfig.ThrottleDelayMax * 100) / 100
                 task.wait(jitter)

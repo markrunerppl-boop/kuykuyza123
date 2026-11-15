@@ -16,6 +16,8 @@
   - `mg.Holders` : คนงานบนแท่นขุดในแปลง (`h.CharName`, `h.Pickaxe`, `h.Level`)
   - `mg.Characters` : ตัวละครทั้งหมดในกระเป๋า (`[charName] = count`)
   - `mg.Pickaxes` : ขวานทั้งหมดในคลัง (`[pickName] = count`)
+  - `mg.ColossusCrates` : กล่องบอสโกโลซัสทั้งหมด (`Tidewreck Crate` / กล่องซากเรือจากกระแสน้ำ, `Petalfall Crate` ฯลฯ)
+  - `mg.Crates` : กล่องทั่วไปในคลัง
   - `mg.BigNodes[curZoneKey]` : บอสโกโลซัส (`Level`, `Drop`, `ActiveTime`, `Ore`)
   - `mg.Skills[curZoneKey]` : ผังสกิลประจำโซน (`NodeLevel`, `CharSpeed`, `CharDamage`)
   - `mg.Gems` : อัญมณี

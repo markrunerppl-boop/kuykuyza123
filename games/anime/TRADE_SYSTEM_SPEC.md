@@ -13,7 +13,7 @@ TradeState = {
     Mode = "Sender",            -- "Sender" หรือ "Receiver"
     TargetReceiver = nil,       -- Instance ของผู้เล่นผู้รับ
     SavedReceiverName = "",     -- ชื่อผู้รับที่บันทึกไว้ใน Config
-    CurrentCategory = "All",    -- "All", "Miners", "Pickaxes", "Gems", "Other"
+    CurrentCategory = "All",    -- "All", "Miners", "Pickaxes", "Gems", "Other" (รวม Colossus Crates: กล่องซากเรือจากกระแสน้ำ / Tidewreck Crate, Petalfall Crate, น้ำยา, แร่)
     SelectedItems = {},         -- [itemKey] = { Key = itemKey, Amount = number }
     SendAllAlways = true,       -- ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง (Max Always)
     AutoLoopUntilEmpty = true,  -- วนส่งซ้ำอัตโนมัติจนกว่าของที่เลือกจะหมดกระเป๋า
