@@ -1827,13 +1827,21 @@ local function main()
 		local hrp = Helpers.GetRoot()
 		if not hrp then return end
 		local bounds = Helpers.GetSafeZoneBounds()
-		local laneX = math.clamp(hrp.Position.X, bounds.maxX - 48, bounds.maxX - 28)
-		if hrp.Position.X <= bounds.maxX + 20 then
-			if math.abs(hrp.Position.Z - bounds.center.Z) > 4 then
-				Helpers.MoveTo(Vector3.new(laneX, hrp.Position.Y, bounds.center.Z), abortFn, { precise = false, arriveDist = 5 })
+		local centerZ = (bounds and bounds.center and bounds.center.Z) or -364.5
+		local maxX = (bounds and bounds.maxX) or 1203
+		local startX = maxX - 20
+		local centerPos = Vector3.new(startX, 68.5, centerZ)
+		local centerCF = CFrame.lookAt(centerPos, centerPos + Vector3.new(1, 0, 0))
+
+		-- หากอยู่ใน SafeZone หรืออยู่บริเวณฐาน ให้เทเลพอร์ตมาตั้งหลักตรงกึ่งกลางหน้าประตูทางออกทันที
+		if Helpers.IsInSafeZone() or hrp.Position.X <= maxX + 15 then
+			Helpers.Teleport(centerCF)
+			task.wait(0.08)
+		else
+			-- หากอยู่นอก SafeZone แล้ว ให้ MoveTo มายังเส้นกลางอย่างแม่นยำ (precise = true)
+			if math.abs(hrp.Position.Z - centerZ) > 4 then
+				Helpers.MoveTo(Vector3.new(hrp.Position.X, hrp.Position.Y, centerZ), abortFn, { precise = true, arriveDist = 3 })
 			end
-		elseif math.abs(hrp.Position.Z - bounds.center.Z) > 20 then
-			Helpers.MoveTo(Vector3.new(hrp.Position.X, hrp.Position.Y, bounds.center.Z), abortFn, { precise = false, arriveDist = 5 })
 		end
 	end
 
@@ -2191,6 +2199,26 @@ local function main()
 		local standTarget = safeStandPos(a0, stageFolder, 2.0)
 		local preFired = false
 		local pNow = packAnchorPos(prompt) or p0
+
+		-- หากเป็นด่านที่อยู่ไกล (ด่าน 2 ขึ้นไป) ให้วิ่งเกาะเส้นกลางเลนมาจนถึงหน้าด่านเป้าหมายก่อนเลี้ยวเข้าหาแพ็ค
+		local stageCenter = STAGE_CENTERS[i]
+		local hrpRun = Helpers.GetRoot()
+		local bounds = Helpers.GetSafeZoneBounds()
+		local corridorZ = (bounds and bounds.center and bounds.center.Z) or -364.5
+		if stageCenter and i > 1 and hrpRun and hrpRun.Position.X < (stageCenter.X - 50) then
+			local corridorTarget = Vector3.new(stageCenter.X - 45, stageCenter.Y, corridorZ)
+			Helpers.MoveTo(corridorTarget, function()
+				return not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying()
+			end, { precise = false, arriveDist = 8, evadeEnemies = false })
+		end
+
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+			return false, "ยกเลิก/ตัวละครตาย"
+		end
+
+		if Helpers.IsCarrying() then
+			return deliver(stageFolder)
+		end
 
 		-- วิ่งตรงเข้าไปยืนตำแหน่งประชิด 2.0 studs พร้อม Pre-trigger คว้าการ์ดทันทีขณะวิ่งเข้าถึง
 		Helpers.MoveTo(standTarget, function()
