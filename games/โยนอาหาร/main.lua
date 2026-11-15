@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.8 (Mutual Exclusion Engine + Auto Cycle Hybrid Farm + Clean State Transitions)
+-- เวอร์ชัน: v2.9 (Fixed AutoCycle Hybrid Engine + Replicated Position Sync + Clean Training State Guard)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -304,7 +304,7 @@ end
 -- 5. CACHE CLIENT CONTROLLERS & CONFIGS
 -- =====================================================================
 local DataController
-local ClientState, Movement, CameraRig, ScreenFX
+local ClientState, Movement, CameraRig, ScreenFX, TrainingController, ThrowController
 
 pcall(function()
     local playerScripts = LocalPlayer:WaitForChild("PlayerScripts", 5)
@@ -316,6 +316,8 @@ pcall(function()
         pcall(function() Movement = require(controllers:WaitForChild("Movement", 3)) end)
         pcall(function() CameraRig = require(controllers:WaitForChild("CameraRig", 3)) end)
         pcall(function() ScreenFX = require(controllers:WaitForChild("ScreenFX", 3)) end)
+        pcall(function() TrainingController = require(controllers:WaitForChild("TrainingController", 3)) end)
+        pcall(function() ThrowController = require(controllers:WaitForChild("ThrowController", 3)) end)
     end
 end)
 
@@ -419,9 +421,19 @@ end
 
 -- สลับหยุดการฝึกซ้อมอย่างราบรื่น ไม่ทิ้งบั๊กกล้องหรือ UI
 function Helpers.StopTrainingClean()
-    if remotes.Training_Stop then
-        pcall(function() remotes.Training_Stop:InvokeServer() end)
+    if TrainingController and TrainingController.Stop then
+        pcall(TrainingController.Stop)
     end
+    if remotes.Training_Stop then
+        pcall(function() Net.Invoke(remotes.Training_Stop) end)
+    end
+
+    -- รอให้สถานะ Training บนเซิร์ฟเวอร์เคลียร์ออกจริง
+    local t0 = os.clock()
+    while (LocalPlayer:GetAttribute("Training") == true) and (os.clock() - t0 < 1.5) and Core._alive do
+        task.wait(0.05)
+    end
+
     local tGui = LocalPlayer.PlayerGui:FindFirstChild("TrainingGui") or LocalPlayer.PlayerGui:FindFirstChild("TrainingSequence")
     if tGui then pcall(function() tGui:Destroy() end) end
     if ScreenFX and ScreenFX.Reset then pcall(ScreenFX.Reset) end
@@ -440,11 +452,14 @@ end
 
 -- สลับหยุดการโยนอาหารอย่างราบรื่น คืนค่าสถานะพร้อมสำหรับโหมดอื่น
 function Helpers.StopThrowingClean()
+    Core.Busy = false
     if remotes.Throw_Cancel then
-        pcall(function() remotes.Throw_Cancel:InvokeServer("Switch") end)
+        pcall(function() Net.Invoke(remotes.Throw_Cancel, "Reset") end)
     end
     local tSeq = LocalPlayer.PlayerGui:FindFirstChild("ThrowSequence") or Workspace:FindFirstChild("ThrowSequence_" .. LocalPlayer.Name)
     if tSeq then pcall(function() tSeq:Destroy() end) end
+    local luckyCatch = LocalPlayer.PlayerGui:FindFirstChild("LuckyCatch")
+    if luckyCatch then pcall(function() luckyCatch:Destroy() end) end
     if ScreenFX and ScreenFX.Reset then pcall(ScreenFX.Reset) end
     if CameraRig and CameraRig.Release then pcall(CameraRig.Release) end
     if ClientState and (ClientState.Busy == "Throw" or ClientState.Busy == "KuykuyThrow") then
@@ -601,7 +616,7 @@ end
 -- [ฟังก์ชันพิเศษ 1]: ดักจับสัญญาณกดคูณ 2 อัตโนมัติขณะฝึกซ้อม (Real-time Tap Bonus)
 if remotes.Training_Bonus then
     Core:Connect(remotes.Training_Bonus.OnClientEvent, function(bonusId, expireTime)
-        if not Core._alive or not (Core.Flags.AutoTapBonus or Core.Flags.AutoTrain) then
+        if not Core._alive or not (Core.Flags.AutoTapBonus or Core.Flags.AutoTrain or Core.Flags.AutoCycle) then
             return
         end
         if not bonusId or not remotes.Training_TapBonus then
@@ -632,7 +647,13 @@ local function runTrainCycle()
     if not Helpers.IsAlive() then return end
     if not remotes.Training_Start then return end
 
-    -- ล้างสถานะตกค้างหากมี
+    -- หากตัวละครกำลังฝึกพลังอยู่แล้ว ให้ผ่านทันที (ไม่รบกวนกล้อง/ไม่คืนค่าตำแหน่ง/ไม่ยิงคำสั่งซ้ำ)
+    local isTraining = (LocalPlayer:GetAttribute("Training") == true)
+    if isTraining then
+        return
+    end
+
+    -- ล้างสถานะตกค้างหากไม่ได้อยู่ในสถานะฝึกซ้อม
     Helpers.RecoverCharacter()
 
     -- ตรวจสอบแท่นฝึกเริ่มต้น หากยังไม่มี Stand ให้สั่งซื้อเริ่มต้นก่อน
@@ -652,13 +673,12 @@ local function runTrainCycle()
         local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(spot.Position.X, 0, spot.Position.Z)).Magnitude
         if flatDist > 8 then
             Helpers.TeleportTo(spot.Position + Vector3.new(0, 3, 0))
-            task.wait(0.3)
+            task.wait(0.4) -- รอ Replication ให้เซิร์ฟเวอร์อัปเดตตำแหน่ง
         end
     end
 
-    -- ตรวจสอบสถานะจริงของเซิร์ฟเวอร์
-    local isTraining = (LocalPlayer:GetAttribute("Training") == true)
-    if not isTraining then
+    -- ตรวจสอบสถานะจริงอีกครั้งก่อนเริ่ม
+    if not (LocalPlayer:GetAttribute("Training") == true) then
         local ok, res = Net.Invoke(remotes.Training_Start)
         if ok and res and res.Ok then
             logAction("ฝึกพลัง", "เริ่มการฝึกซ้อมบนแท่นฝึกสำเร็จ", true)
@@ -674,11 +694,11 @@ local function runCycleFarm()
     if not Core.Flags.AutoCycle or not Core._alive then return end
 
     -- เฟส 1: ฝึกพลังบนแท่นฝึก (ประมาณ 20 วินาที พร้อมรับ 2x Tap Bonus อัตโนมัติ)
-    logAction("ฟาร์มไฮบริด", "เริ่มรอบฝึกพลังสะสมพลังขว้าง...", true)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบฝึกพลังสะสมพลังขว้าง (20 วินาที)...", true)
     local t0 = os.clock()
     while Core.Flags.AutoCycle and Core._alive and (os.clock() - t0 < 20) do
         runTrainCycle()
-        task.wait(2.0)
+        task.wait(1.0)
     end
 
     if not Core.Flags.AutoCycle or not Core._alive then
@@ -688,34 +708,51 @@ local function runCycleFarm()
 
     -- จบเฟสฝึกซ้อม เคลียร์ตัวละครและเซิร์ฟเวอร์ก่อนสลับโหมด
     Helpers.StopTrainingClean()
-    task.wait(0.3)
+    task.wait(0.25)
+
+    if not Core.Flags.AutoCycle or not Core._alive then return end
 
     -- เฟส 2: โยนอาหารคะแนนเต็ม 100% (6 ครั้ง)
-    logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (6 ครั้ง)...", true)
+    logAction("ฟาร์มไฮบริด", "เริ่มรอบโยนอาหารเก็บสัตว์และทำเงิน (เป้าหมาย 6 ครั้ง)...", true)
+
+    -- วาร์ปไปที่เส้นโยนล่วงหน้าพร้อมรอ Replication 0.35 วินาที ป้องกันเซิร์ฟเวอร์แจ้งเตือน TooFar
+    local launchCF = Helpers.GetLaunchCFrame()
+    if launchCF then
+        Helpers.TeleportTo(launchCF)
+        task.wait(0.35)
+    end
+
     local throwsDone = 0
-    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 do
-        runThrowCycle()
-        throwsDone = throwsDone + 1
-        task.wait(0.2)
+    local attempts = 0
+    while Core.Flags.AutoCycle and Core._alive and throwsDone < 6 and attempts < 14 do
+        attempts = attempts + 1
+        local ok = runThrowCycle()
+        if ok then
+            throwsDone = throwsDone + 1
+            logAction("ฟาร์มไฮบริด", string.format("โยนสำเร็จแล้ว %d/6 ครั้ง", throwsDone), true)
+            task.wait(0.2)
+        else
+            task.wait(0.35)
+        end
     end
 
     -- จบเฟสโยนอาหาร เคลียร์สถานะก่อนกลับไปฝึกพลัง
     Helpers.StopThrowingClean()
-    task.wait(0.3)
+    task.wait(0.25)
 end
 
 -- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% ไวที่สุดในเซิร์ฟเวอร์ (Ultra-Fast Adaptive Pipeline + Zero-Freeze Guard)
 local function runThrowCycle()
-    if Core.Busy then return end
-    if not Helpers.IsAlive() then return end
+    if Core.Busy then return false end
+    if not Helpers.IsAlive() then return false end
     if not remotes.Throw_Start or not remotes.Throw_Resolve or not remotes.Throw_Complete then
-        return
+        return false
     end
 
     -- หยุดฝึกซ้อมก่อนโยนอาหารหากยังติดสถานะฝึกอยู่
-    if LocalPlayer:GetAttribute("Training") and remotes.Training_Stop then
-        Net.Invoke(remotes.Training_Stop)
-        task.wait(0.15)
+    if LocalPlayer:GetAttribute("Training") then
+        Helpers.StopTrainingClean()
+        task.wait(0.2)
     end
 
     Core.Busy = true
@@ -730,10 +767,11 @@ local function runThrowCycle()
         local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(launchCF.Position.X, 0, launchCF.Position.Z)).Magnitude
         if flatDist > 6 then
             Helpers.TeleportTo(launchCF)
-            task.wait(0.05)
+            task.wait(0.35)
         end
     end
 
+    local throwSuccess = false
     local okStart, startRes = Net.Invoke(remotes.Throw_Start)
     if okStart and startRes and startRes.Ok then
         if Core.Flags.AutoSuperThrow and remotes.Throw_UseSuper then
@@ -777,29 +815,30 @@ local function runThrowCycle()
             if okComp and compRes and compRes.Ok then
                 local animalName = (compRes and compRes.AnimalName) or (resolveRes and resolveRes.ModelName) or "สัตว์ใหม่"
                 logAction("โยนอาหาร", string.format("โยนเต็ม 100%% ไวพิเศษ! ได้รับ: %s", tostring(animalName)), true)
+                throwSuccess = true
             else
                 local reason = (compRes and compRes.Reason) or "Timeout"
                 logAction("โยนอาหาร", "ยืนยันผลไม่สำเร็จ: " .. tostring(reason), false)
-                if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel) end) end
+                if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel, "Reset") end) end
             end
         else
             local reason = (resolveRes and resolveRes.Reason) or tostring(resolveRes)
             logAction("โยนอาหาร", "Resolve ไม่สำเร็จ: " .. tostring(reason), false)
-            if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel) end) end
+            if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel, "Reset") end) end
         end
     else
         local reason = (startRes and startRes.Reason) or tostring(startRes)
         if reason == "Cooldown" then
-            -- เซิร์ฟเวอร์ยังติดคูลดาวน์สั้นๆ รอ 0.2 วินาทีแล้วเริ่มใหม่ทันที
-            task.wait(0.2)
+            -- เซิร์ฟเวอร์ยังติดคูลดาวน์สั้นๆ รอ 0.25 วินาทีแล้วเริ่มใหม่ทันที
+            task.wait(0.25)
         elseif reason == "Busy" then
             -- รีเซ็ตเซิร์ฟเวอร์หากมีเซสชันเดิมค้าง
-            if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel) end) end
+            if remotes.Throw_Cancel then pcall(function() Net.Invoke(remotes.Throw_Cancel, "Reset") end) end
             task.wait(0.2)
         elseif reason == "TooFar" then
             local launchCF = Helpers.GetLaunchCFrame()
             if launchCF then Helpers.TeleportTo(launchCF) end
-            task.wait(0.1)
+            task.wait(0.3)
         else
             logAction("โยนอาหาร", "เริ่มโยนไม่สำเร็จ: " .. tostring(reason), false)
             task.wait(0.3)
@@ -807,6 +846,10 @@ local function runThrowCycle()
     end
 
     Core.Busy = false
+    if ClientState and ClientState.Busy == "KuykuyThrow" then
+        ClientState.Busy = nil
+    end
+    return throwSuccess
 end
 
 -- [ฟังก์ชันหลัก 3]: ระบบอัปเกรดแท่นฝึก (พร้อม Anti-Spam Pre-check Guard ป้องกันแจ้งเตือนเงินไม่พอ)
@@ -1066,7 +1109,7 @@ end)
 -- ลูปเฝ้าระวังตัวละครแก้ค้างอัตโนมัติ (Watchdog Heartbeat)
 Core:Connect(RunService.Heartbeat, function()
     if not Core._alive then return end
-    if not Core.Busy then
+    if not Core.Busy and not (LocalPlayer:GetAttribute("Training") == true) then
         local hrp = Helpers.GetRoot()
         if hrp and hrp.Anchored then
             hrp.Anchored = false
@@ -1190,7 +1233,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.8</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.9</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1767,6 +1810,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.8 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v2.9 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.8 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.9 โหลดสำเร็จ 100%")
