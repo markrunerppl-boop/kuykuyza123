@@ -1621,44 +1621,85 @@ local function main()
 		return aDist < bDist
 	end
 
-	local function findStealPrompt(stageFolder)
-		if not stageFolder then return nil end
-		local root = stageFolder:FindFirstChild("SpawnedPacks")
-		if not root then return nil end
+	Helpers.StealRetry = { now = false, streak = 0 }
+
+	function Helpers.IsHeldByCharacter(inst)
+		local cur = inst
+		while cur and cur ~= Workspace do
+			if cur:IsA("Backpack") then return true end
+			if cur:IsA("Model") and Players:GetPlayerFromCharacter(cur) then return true end
+			cur = cur.Parent
+		end
+		return false
+	end
+
+	-- แพ็คยังหยิบได้ไหม (ยังอยู่, prompt เปิด, ไม่ได้อยู่ในมือผู้เล่นคนอื่น)
+	function Helpers.IsPromptAvailable(prompt)
+		if not prompt or not prompt.Parent or not prompt:IsA("ProximityPrompt") then return false end
+		if not prompt.Enabled then return false end
+		return not Helpers.IsHeldByCharacter(prompt.Parent)
+	end
+
+	-- เป้าหมายหลุดมือ (ถูกคนอื่นหยิบ/หาย) โดยที่เรายังไม่ได้แบก
+	function Helpers.PromptLost(prompt)
+		return (not Helpers.IsCarrying()) and (not Helpers.IsPromptAvailable(prompt))
+	end
+
+	function Helpers.BuildPackCandidate(model, hrp, enemies, anyGrade)
+		if not model or not model.Parent then return nil end
+		if not anyGrade and not isPackRarityAllowed(model) then return nil end
+		local p = model:FindFirstChild("StealPrompt", true)
+		if not Helpers.IsPromptAvailable(p) then return nil end
+		local pos = promptPos(p)
+		if not pos then return nil end
+		local minEnemyDist = math.huge
+		if enemies then
+			for _, ePos in ipairs(enemies) do
+				local ed = (pos - ePos).Magnitude
+				if ed < minEnemyDist then minEnemyDist = ed end
+			end
+		end
+		local mult, odd, weight = getPackScore(model)
+		local _, rank = getModelRarity(model)
+		return {
+			prompt = p, model = model, rank = rank or 1, mult = mult or 1,
+			odd = odd or 0, weight = weight or 0, enemyDist = minEnemyDist,
+			dist = hrp and (pos - hrp.Position).Magnitude or 0,
+		}
+	end
+
+	local function findStealPrompt(stageFolder, stageNum)
+		stageNum = stageNum or (stageFolder and tonumber(string.match(stageFolder.Name, "%d+")))
+		if not stageFolder and not stageNum then return nil end
 		local hrp = Helpers.GetRoot()
 		local enemies = getStageEnemyPositions(stageFolder)
-		local best = nil
-		for _, model in ipairs(root:GetChildren()) do
-			if isPackRarityAllowed(model) then
-				local p = model:FindFirstChild("StealPrompt", true)
-				if p and p:IsA("ProximityPrompt") and p.Enabled then
-					local pos = promptPos(p)
-					if pos then
-						local minEnemyDist = math.huge
-						for _, ePos in ipairs(enemies) do
-							local ed = (pos - ePos).Magnitude
-							if ed < minEnemyDist then minEnemyDist = ed end
-						end
-						local mult, odd, weight = getPackScore(model)
-						local _, rank = getModelRarity(model)
-						local cand = {
-							prompt = p,
-							model = model,
-							rank = rank or 1,
-							mult = mult or 1,
-							odd = odd or 0,
-							weight = weight or 0,
-							enemyDist = minEnemyDist,
-							dist = hrp and (pos - hrp.Position).Magnitude or 0,
-						}
-						if isBetterCandidate(cand, best) then
-							best = cand
-						end
+		local best, seen = nil, {}
+		local function consider(model)
+			if not model or seen[model] then return end
+			seen[model] = true
+			local cand = Helpers.BuildPackCandidate(model, hrp, enemies)
+			if cand and isBetterCandidate(cand, best) then best = cand end
+		end
+		local root = stageFolder and stageFolder:FindFirstChild("SpawnedPacks")
+		if root then
+			for _, m in ipairs(root:GetChildren()) do consider(m) end
+		end
+		-- แพ็คที่หลุดตกค้างในด่าน (Tag SpawnedPack) ให้แข่งคะแนนกับแพ็คปกติ
+		local center = stageNum and STAGE_CENTERS[stageNum]
+		if center then
+			local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, "SpawnedPack")
+			if okT and type(tagged) == "table" then
+				for _, m in ipairs(tagged) do
+					if m.Parent and not seen[m] then
+						local p = m:FindFirstChild("StealPrompt", true)
+						local pos = p and promptPos(p)
+						if pos and (pos - center).Magnitude <= 120 then consider(m) end
 					end
 				end
 			end
 		end
-		return best and best.prompt or nil
+		if best then return best.prompt, best end
+		return nil
 	end
 
 	-- ยืนนิ่งสนิทและกดค้างตาม HoldDuration จริง (ล็อกตำแหน่ง ไม่สั่ง MoveTo ป้องกัน Roblox ยกเลิกการกดค้าง)
@@ -1845,59 +1886,31 @@ local function main()
 		end
 	end
 
-	local function findDroppedPackPrompt(maxRadius)
+	local function findDroppedPackPrompt(maxRadius, skip, anyGrade)
 		local hrp = Helpers.GetRoot()
 		if not hrp then return nil end
 		local radius = maxRadius or 80
-		local bestPrompt = nil
-		local bestDist = radius
-
-		-- 1. ตรวจสอบจาก CollectionService Tag 'SpawnedPack'
-		local okTagged, taggedPacks = pcall(function()
-			return CollectionService:GetTagged("SpawnedPack")
-		end)
-		if okTagged and type(taggedPacks) == "table" then
-			for _, packModel in ipairs(taggedPacks) do
-				if packModel and packModel.Parent then
-					local prompt = packModel:FindFirstChild("StealPrompt", true)
-					if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
-						local pPos = promptPos(prompt) or packAnchorPos(prompt)
-						if pPos then
-							local d = (hrp.Position - pPos).Magnitude
-							if d <= bestDist then
-								bestDist = d
-								bestPrompt = prompt
-							end
-						end
-					end
-				end
-			end
+		local best, seen = nil, {}
+		local function consider(model)
+			if not model or seen[model] or (skip and skip[model]) then return end
+			seen[model] = true
+			local cand = Helpers.BuildPackCandidate(model, hrp, nil, anyGrade)
+			if cand and cand.dist <= radius and isBetterCandidate(cand, best) then best = cand end
 		end
-		if bestPrompt then return bestPrompt end
-
-		-- 2. ค้นหาใน Workspace.Game.Packs
+		local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, "SpawnedPack")
+		if okT and type(tagged) == "table" then
+			for _, m in ipairs(tagged) do consider(m) end
+		end
 		local game_ = Workspace:FindFirstChild("Game")
 		local packsFolder = game_ and game_:FindFirstChild("Packs")
 		if packsFolder then
 			for _, stage in ipairs(packsFolder:GetChildren()) do
-				local sp = stage:FindFirstChild("SpawnedPacks")
-				local container = sp or stage
-				for _, model in ipairs(container:GetChildren()) do
-					local prompt = model:FindFirstChild("StealPrompt", true)
-					if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
-						local pPos = promptPos(prompt) or packAnchorPos(prompt)
-						if pPos then
-							local d = (hrp.Position - pPos).Magnitude
-							if d <= bestDist then
-								bestDist = d
-								bestPrompt = prompt
-							end
-						end
-					end
-				end
+				local container = stage:FindFirstChild("SpawnedPacks") or stage
+				for _, m in ipairs(container:GetChildren()) do consider(m) end
 			end
 		end
-		return bestPrompt
+		if best then return best.prompt, best end
+		return nil
 	end
 
 	local function recoverDroppedPack(stageFolder)
@@ -1907,54 +1920,55 @@ local function main()
 		end
 		task.wait(0.15)
 
-		-- ค้นหาแพ็คที่เพิ่งหลุดตกพื้นในระยะใกล้
-		local prompt = findDroppedPackPrompt(75)
-		if not prompt then
-			task.wait(0.25)
-			prompt = findDroppedPackPrompt(90)
+		local skip, tries = {}, 0
+		local giveUpAt = os.clock() + 10
+		while Core._alive and Core.Flags.AutoSteal and Helpers.IsAlive() and tries < 3 and os.clock() < giveUpAt do
+			-- รอให้แพ็คที่เพิ่งหลุดโผล่/เปิด prompt (สูงสุด ~1.5 วิ) เรียงดีที่สุดก่อน ตามเกรดที่ตั้งค่า
+			local prompt, cand
+			local scanEnd = os.clock() + 1.5
+			repeat
+				prompt, cand = findDroppedPackPrompt(90, skip)
+				if not prompt then prompt, cand = findDroppedPackPrompt(45, skip, true) end -- ใบที่เพิ่งหล่นข้างตัว (กันอ่านเกรดไม่ได้)
+				if prompt then break end
+				task.wait(0.15)
+			until os.clock() >= scanEnd
+			if not prompt then break end
+
+			tries = tries + 1
+			skip[cand.model] = true
+			logAction("ขโมย", "แพ็คหลุด! กำลังไปเก็บใบที่ดีที่สุดที่เหลืออยู่...", true)
+
+			local pPos = promptPos(prompt) or packAnchorPos(prompt)
+			if pPos then
+				Helpers.MoveTo(pPos, function()
+					return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
+				end, { precise = true, arriveDist = 2.5, evadeEnemies = true })
+			end
+			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
+
+			if Helpers.IsPromptAvailable(prompt) and not Helpers.IsCarrying() then
+				local hrp = Helpers.GetRoot()
+				local pNow = promptPos(prompt) or packAnchorPos(prompt)
+				if hrp and pNow and (hrp.Position - pNow).Magnitude > 4.5 then
+					Helpers.Teleport(CFrame.new(pNow + Vector3.new(0, 1.5, 0)))
+					task.wait(0.05)
+				end
+				usePrompt(prompt, "auto", stageFolder)
+				local got = waitUntil(Helpers.IsCarrying, 0.6)
+				if not got and Helpers.IsPromptAvailable(prompt) and Core.Flags.AutoSteal and Helpers.IsAlive() then
+					usePrompt(prompt, "hold_only", stageFolder)
+					got = waitUntil(Helpers.IsCarrying, 0.8)
+				end
+			end
+			if Helpers.IsCarrying() then
+				logAction("ขโมย", "เก็บแพ็คที่ตกคืนสำเร็จ! กำลังนำส่งต่อ...", true)
+				return true
+			end
+			-- ถูกคนอื่นหยิบ/หาย -> วนหาใบถัดไป (skip กันวนซ้ำ)
 		end
 
-		if not prompt then
-			return false, "แพ็คหลุดกลางทางและหาไม่พบ"
-		end
-
-		logAction("ขโมย", "แพ็คหลุด! กำลังเดินกลับไปเก็บ...", true)
-
-		local pPos = promptPos(prompt) or packAnchorPos(prompt)
-		if pPos then
-			Helpers.MoveTo(pPos, function()
-				return not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying()
-			end, { precise = true, arriveDist = 2.5, evadeEnemies = true })
-		end
-
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
-			return false, "ยกเลิก/ตัวละครตายขณะเก็บแพ็คที่ตก"
-		end
-
-		if not prompt.Parent or not prompt.Enabled then
-			return false, "แพ็คที่ตกถูกเก็บไปแล้วหรือหายไป"
-		end
-
-		local hrp = Helpers.GetRoot()
-		local pNow = promptPos(prompt) or packAnchorPos(prompt)
-		if hrp and pNow and (hrp.Position - pNow).Magnitude > 4.5 then
-			Helpers.Teleport(CFrame.new(pNow + Vector3.new(0, 1.5, 0)))
-			task.wait(0.05)
-		end
-
-		local holdDiag = usePrompt(prompt, "auto", stageFolder)
-		local got = waitUntil(Helpers.IsCarrying, 0.6)
-		if not got and prompt.Parent and Core.Flags.AutoSteal and Helpers.IsAlive() then
-			usePrompt(prompt, "hold_only", stageFolder)
-			got = waitUntil(Helpers.IsCarrying, 0.8)
-		end
-
-		if got or Helpers.IsCarrying() then
-			logAction("ขโมย", "เก็บแพ็คที่ตกคืนสำเร็จ! กำลังนำส่งต่อ...", true)
-			return true
-		end
-
-		return false, "เก็บแพ็คที่ตกไม่สำเร็จ"
+		if Helpers.IsCarrying() then return true end
+		return false, "แพ็คที่ตกถูกคนอื่นหยิบ/หาไม่พบ -> ไปขโมยใบถัดไปในด่านที่ตั้งค่า"
 	end
 
 	local function deliver(stageFolder)
@@ -2000,16 +2014,18 @@ local function main()
 				return true, "DELIVERED"
 			end
 			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then
+				Helpers.StealRetry.now = Core.Flags.AutoSteal == true -- ตายตอนแบก: เกิดใหม่แล้วออกขโมยต่อทันที
 				return false, "ยกเลิก/ตัวละครตายขณะเดินกลับ"
 			end
 			local recovered, err = recoverDroppedPack(stageFolder)
 			if recovered and Helpers.IsCarrying() then
 				return false, "RECOVERED"
 			end
+			Helpers.StealRetry.now = true -- เก็บใบที่ตกไม่ได้ -> ไปหาใบถัดไป ไม่กลับฐาน
 			return false, err or "โดนตี/แพ็คหลุดกลางทาง"
 		end
 
-		for pass = 1, 3 do
+		for pass = 1, 5 do
 			local livePos = Helpers.GetPlotSpawnPos() or pos
 			local hrp = Helpers.GetRoot()
 			local atBase = hrp and livePos and (hrp.Position - livePos).Magnitude <= 35
@@ -2072,61 +2088,25 @@ local function main()
 		return packs and packs:FindFirstChild("Stage" .. i)
 	end
 
-	local function checkStageHasPacks(i)
+	local function checkStageHasPacks(i, noStream)
 		local folder = getStageFolder(i)
 		local basePos = STAGE_CENTERS[i]
-
-		-- 1. ตรวจสอบโฟลเดอร์ของด่าน ถ้ายังไม่โหลด (StreamingEnabled) ให้เรียก StreamAround อย่างทั่วถึง
-		if not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0 then
-			if basePos then
-				Helpers.StreamAround(basePos, 2.0)
-				task.wait(0.2)
-			end
+		if not noStream and basePos and (not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0) then
+			Helpers.StreamAround(basePos, 2.0)
+			task.wait(0.2)
 			folder = getStageFolder(i)
 		end
 
-		-- 2. ค้นหาแพ็คในด่าน
-		local prompt = findStealPrompt(folder)
-		if prompt then return prompt, nil end
+		local prompt, cand = findStealPrompt(folder, i)
+		if prompt then return prompt, nil, cand end
 
-		-- 3. ตรวจหาแพ็คที่หลุดตกค้างในด่าน (เช่น โดนตีตกแต่ยังไม่ถูกเก็บ)
-		if basePos then
-			local bestDropped = nil
-			local okTagged, taggedPacks = pcall(function()
-				return CollectionService:GetTagged("SpawnedPack")
-			end)
-			if okTagged and type(taggedPacks) == "table" then
-				local bestScore = -1
-				for _, packModel in ipairs(taggedPacks) do
-					if packModel and packModel.Parent and isPackRarityAllowed(packModel) then
-						local p = packModel:FindFirstChild("StealPrompt", true)
-						if p and p:IsA("ProximityPrompt") and p.Enabled then
-							local pPos = promptPos(p) or packAnchorPos(p)
-							if pPos and (pPos - basePos).Magnitude <= 120 then
-								local mult, odd, weight = getPackScore(packModel)
-								local _, rank = getModelRarity(packModel)
-								local score = (rank or 1) * 10000 + (mult or 1) * 100 + (weight or 0)
-								if score > bestScore then
-									bestScore = score
-									bestDropped = p
-								end
-							end
-						end
-					end
-				end
-			end
-			if bestDropped then return bestDropped, nil end
-		end
-
-		-- 4. หากไม่พบแพ็คที่ตรงตามเกรด ให้รวบรวมข้อมูลเกรดที่พบในด่านเพื่อแจ้งเตือน
 		local diagReason = "ยังไม่มีแพ็คเกิดในด่าน"
 		local root = folder and folder:FindFirstChild("SpawnedPacks")
 		if root then
-			local count = 0
-			local rarityCounts = {}
+			local count, rarityCounts = 0, {}
 			for _, model in ipairs(root:GetChildren()) do
 				local p = model:FindFirstChild("StealPrompt", true)
-				if p and p:IsA("ProximityPrompt") and p.Enabled then
+				if Helpers.IsPromptAvailable(p) then
 					count = count + 1
 					local rName = getModelRarity(model) or "ไม่ทราบเกรด"
 					rarityCounts[rName] = (rarityCounts[rName] or 0) + 1
@@ -2140,7 +2120,6 @@ local function main()
 				diagReason = string.format("พบแพ็ค %d ใบแต่เกรดไม่ตรงเมนู (%s)", count, table.concat(parts, ", "))
 			end
 		end
-
 		return nil, diagReason
 	end
 
@@ -2162,13 +2141,16 @@ local function main()
 
 		Helpers.GetPlotSpawnPos() -- แคชพิกัดฐานก่อนออกจากฐาน (กัน Plot stream out)
 		moveToCenterLane(function()
-			return not Core.Flags.AutoSteal or not prompt.Parent
+			return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt)
 		end)
 		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then return false, "ยกเลิก/ตัวละครตาย" end
 
-		if not prompt.Parent then
-			prompt = findStealPrompt(getStageFolder(i))
-			if not prompt then return false, "แพ็คถูกหยิบไปแล้ว/ด่านปิด" end
+		if Helpers.PromptLost(prompt) then
+			prompt = findStealPrompt(getStageFolder(i), i)
+			if not prompt then
+				Helpers.StealRetry.now = true
+				return false, "แพ็คถูกหยิบไปแล้ว/ด่านปิด"
+			end
 		end
 
 		local pos = promptPos(prompt)
@@ -2188,7 +2170,7 @@ local function main()
 				return not ragLocked and not char:GetAttribute("TrapImmobilized")
 			end, 3)
 		end
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
 			return false, "ยกเลิก/ตัวละครตาย"
 		end
 
@@ -2208,11 +2190,11 @@ local function main()
 		if stageCenter and i > 1 and hrpRun and hrpRun.Position.X < (stageCenter.X - 50) then
 			local corridorTarget = Vector3.new(stageCenter.X - 45, stageCenter.Y, corridorZ)
 			Helpers.MoveTo(corridorTarget, function()
-				return not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying()
+				return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
 			end, { precise = false, arriveDist = 8, evadeEnemies = false })
 		end
 
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
 			return false, "ยกเลิก/ตัวละครตาย"
 		end
 
@@ -2222,7 +2204,7 @@ local function main()
 
 		-- วิ่งตรงเข้าไปยืนตำแหน่งประชิด 2.0 studs พร้อม Pre-trigger คว้าการ์ดทันทีขณะวิ่งเข้าถึง
 		Helpers.MoveTo(standTarget, function()
-			if not Core.Flags.AutoSteal or not prompt.Parent or Helpers.IsCarrying() then
+			if not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying() then
 				return true
 			end
 			local r = Helpers.GetRoot()
@@ -2237,7 +2219,7 @@ local function main()
 			return Helpers.IsCarrying()
 		end, { precise = true, arriveDist = 2.0, evadeEnemies = false })
 
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or not prompt.Parent then
+		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
 			return false, "ยกเลิก/ตัวละครตาย"
 		end
 
@@ -2262,7 +2244,7 @@ local function main()
 		local got = waitUntil(Helpers.IsCarrying, 0.4)
 
 		-- หากยังไม่หยิบ และ prompt ยังอยู่ ให้ลองซ้ำอีก 1 ครั้งด้วย hold_only
-		if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and prompt.Parent then
+		if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and Helpers.IsPromptAvailable(prompt) then
 			local fallDiag = usePrompt(prompt, "hold_only", stageFolder)
 			got = waitUntil(Helpers.IsCarrying, 0.5)
 			if not got then
@@ -2550,32 +2532,31 @@ local function main()
 		local maxPacks = Core.Flags.MaxStageStealPacks or 4
 
 		-- 2. สแกนหาแพ็คที่ตรงตามเกรดที่เลือกในด่านเป้าหมายทั้งหมด (จากด่านสูงสุดลงไปหาด่านต่ำสุด)
-		local targetStage = nil
-		local targetPrompt = nil
+		local targetStage, targetPrompt, targetCand = nil, nil, nil
 		local lastDiag = nil
 		local anySelectedStageAvailable = false
 
 		for _, cand in ipairs(candidateStages) do
 			local sNum = cand.stage
 			local sCount = StealState.stageStealCounts[sNum] or 0
-			-- หากด่านนี้ขโมยครบโควต้าประจำรอบแล้ว ให้ข้ามไปตรวจด่านถัดไป
 			if not (quotaActive and sCount >= maxPacks) then
 				anySelectedStageAvailable = true
-				local prompt, diag = checkStageHasPacks(sNum)
-				if not prompt then
+				-- เจอแพ็คแล้ว -> ด่านที่เหลือสแกนแบบไม่สตรีม (เร็ว) เพื่อเทียบหาใบที่ดีที่สุด
+				local prompt, diag, pc = checkStageHasPacks(sNum, targetPrompt ~= nil)
+				if not prompt and not targetPrompt then
 					local basePos = STAGE_CENTERS[sNum]
 					if basePos then
 						Helpers.StreamAround(basePos, 1.5)
 						task.wait(0.15)
-						prompt, diag = checkStageHasPacks(sNum)
+						prompt, diag, pc = checkStageHasPacks(sNum, false)
 					end
 				end
-				if prompt then
-					targetStage = sNum
-					targetPrompt = prompt
-					break
-				else
-					if diag then lastDiag = diag end
+				if prompt and pc then
+					if isBetterCandidate(pc, targetCand) then
+						targetStage, targetPrompt, targetCand = sNum, prompt, pc
+					end
+				elseif diag then
+					lastDiag = diag
 				end
 			end
 		end
@@ -2664,6 +2645,7 @@ local function main()
 			StealState.stageStealCounts[i] = (StealState.stageStealCounts[i] or 0) + 1
 			StealState.stageStealCount = StealState.stageStealCounts[i]
 			Stats.stealOk = Stats.stealOk + 1
+			Helpers.StealRetry.streak = 0
 			local cntTxt = quotaActive and string.format("%d/%d", StealState.stageStealCounts[i], maxPacks)
 				or tostring(StealState.stageStealCounts[i])
 			local info = (pName ~= "" and pName ~= rName)
@@ -2713,6 +2695,26 @@ local function main()
 			local reason = res
 			if ok then reason = why or "ไม่ทราบสาเหตุ" end
 			logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
+
+			local retry = Helpers.StealRetry
+			local lostTarget = ok and Core.Flags.AutoSteal and Helpers.PromptLost(prompt)
+			if (retry.now or lostTarget) and Core.Flags.AutoSteal and retry.streak < 6 then
+				retry.now = false
+				retry.streak = retry.streak + 1
+				logAction("ขโมย", "แพ็คหลุด/ถูกคนอื่นหยิบ/โดนตี -> หาแพ็คที่ดีที่สุดถัดไปในด่านที่ตั้งค่าทันที", true)
+				waitUntil(function()
+					local c = LocalPlayer.Character
+					local h = c and c:FindFirstChildOfClass("Humanoid")
+					return c and h and h.Health > 0
+				end, 3.0)
+				Core.Busy = false
+				StealState.holdBusy = false
+				task.wait(0.1)
+				return
+			end
+			retry.now = false
+			retry.streak = 0
+
 			-- รอให้ตัวละครฟื้นตัว/เกิดใหม่สมบูรณ์ก่อนเริ่มรอบถัดไป
 			task.wait(1.2)
 			waitUntil(function()
