@@ -1799,8 +1799,12 @@ local function main()
 		if hrp then
 			pcall(function()
 				hrp.Anchored = false
-				-- ขยับตัวละครไปข้างหน้า 10 studs ออกจากเครื่องวิ่งไปยังพื้นที่โล่งของฐาน
-				hrp.CFrame = hrp.CFrame * CFrame.new(0, 2, 10)
+				local spawnPos = Helpers.GetPlotSpawnPos()
+				if spawnPos then
+					hrp.CFrame = CFrame.new(spawnPos + Vector3.new(0, 2, 0))
+				else
+					hrp.CFrame = hrp.CFrame * CFrame.new(0, 2, 10)
+				end
 				hrp.AssemblyLinearVelocity = Vector3.zero
 			end)
 		end
@@ -2068,6 +2072,7 @@ local function main()
 		if not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0 then
 			if basePos then
 				Helpers.StreamAround(basePos, 2.0)
+				task.wait(0.2)
 			end
 			folder = getStageFolder(i)
 		end
@@ -2309,11 +2314,45 @@ local function main()
 		bossSpeedCache = {},
 		lastOrderSig = "",
 		stageStealCount = 0,
+		stageStealCounts = {},
 		currentTargetStage = nil,
 		waitingForNightReset = false,
 		lastResetNightCycle = 0,
+		lastNightActive = nil,
 		lastQuotaLogTime = 0,
 	}
+
+	StealState.resetCycle = function(reason)
+		StealState.waitingForNightReset = false
+		StealState.stageStealCount = 0
+		table.clear(StealState.stageStealCounts)
+		if reason then
+			logAction("ขโมย", tostring(reason), true)
+		end
+	end
+
+	StealState.initListener = function()
+		local nf = Workspace:FindFirstChild("Night")
+		if nf then
+			pcall(function()
+				nf:GetAttributeChangedSignal("NightActive"):Connect(function()
+					local active = nf:GetAttribute("NightActive") == true
+					StealState.lastNightActive = active
+					local info = active
+						and "🌙 เซิร์ฟเวอร์เข้าสู่เวลากลางคืน (Night Active)! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ -> เริ่มรอบขโมยใหม่"
+						or "☀️ เข้าสู่รอบกลางวันใหม่ -> ปลดล็อกโควต้าพร้อมเริ่มขโมยแพ็คชุดใหม่ทันที"
+					StealState.resetCycle(info)
+				end)
+				nf:GetAttributeChangedSignal("NightPhaseEndsAt"):Connect(function()
+					local endsAt = tonumber(nf:GetAttribute("NightPhaseEndsAt")) or 0
+					if endsAt > 0 and endsAt ~= StealState.lastResetNightCycle then
+						StealState.lastResetNightCycle = endsAt
+						StealState.resetCycle("🔄 ตรวจพบการเปลี่ยนรอบเวลาเซิร์ฟเวอร์ (Phase Reset) -> ปลดล็อกโควต้าและพร้อมเริ่มรอบใหม่")
+					end
+				end)
+			end)
+		end
+	end
 
 	local function getStageBossSpeed(i)
 		if StealState.bossSpeedCache[i] then return StealState.bossSpeedCache[i] end
@@ -2408,7 +2447,38 @@ local function main()
 		return math.max(0, math.ceil(endsAt - now))
 	end
 
+	StealState.initListener()
+	pcall(function()
+		Workspace.ChildAdded:Connect(function(child)
+			if child.Name == "Night" then
+				task.wait(0.5)
+				StealState.initListener()
+			end
+		end)
+	end)
+
 	local function stealCycle()
+		-- 0. ตรวจจับการรีเซ็ตเฟสกลางคืน/กลางวันของเซิร์ฟเวอร์ที่บนสุดของลูป
+		local isNight = isNightActive()
+		local currentPhaseEndsAt = getNightPhaseEndsAt()
+		local phaseChanged = (currentPhaseEndsAt > 0 and StealState.lastResetNightCycle > 0 and currentPhaseEndsAt ~= StealState.lastResetNightCycle)
+		local nightToggled = (StealState.lastNightActive ~= nil and StealState.lastNightActive ~= isNight)
+
+		if StealState.lastResetNightCycle == 0 and currentPhaseEndsAt > 0 then
+			StealState.lastResetNightCycle = currentPhaseEndsAt
+		end
+
+		if phaseChanged or nightToggled then
+			StealState.lastNightActive = isNight
+			StealState.lastResetNightCycle = currentPhaseEndsAt
+			local info = isNight
+				and "🌙 เซิร์ฟเวอร์เข้าสู่เวลากลางคืน (Night Active)! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ -> เริ่มรอบขโมยใหม่"
+				or "☀️ เข้าสู่รอบกลางวันใหม่ -> ปลดล็อกโควต้าพร้อมเริ่มขโมยแพ็คชุดใหม่ทันที"
+			StealState.resetCycle(info)
+		elseif isNight and StealState.waitingForNightReset then
+			StealState.resetCycle("🌙 อยู่ในช่วงเวลากลางคืน -> ปลดล็อกโควต้าและเริ่มรอบขโมยใหม่")
+		end
+
 		-- 1. ค้นหาด่านทั้งหมดที่ผู้ใช้ติ๊กเลือกและตัวละครวิ่งหนีบอสทัน
 		local candidateStages = getSelectedCandidateStages()
 		if #candidateStages == 0 then
@@ -2443,104 +2513,72 @@ local function main()
 			return
 		end
 
+		local quotaActive = (Core.Flags.MaxStageStealPacks ~= nil and Core.Flags.MaxStageStealPacks < 999)
+		local maxPacks = Core.Flags.MaxStageStealPacks or 4
+
 		-- 2. สแกนหาแพ็คที่ตรงตามเกรดที่เลือกในด่านเป้าหมายทั้งหมด (จากด่านสูงสุดลงไปหาด่านต่ำสุด)
 		local targetStage = nil
 		local targetPrompt = nil
 		local lastDiag = nil
+		local anySelectedStageAvailable = false
 
 		for _, cand in ipairs(candidateStages) do
 			local sNum = cand.stage
-			local prompt, diag = checkStageHasPacks(sNum)
-			if not prompt then
-				local basePos = STAGE_CENTERS[sNum]
-				if basePos then
-					Helpers.StreamAround(basePos, 1.2)
-					prompt, diag = checkStageHasPacks(sNum)
+			local sCount = StealState.stageStealCounts[sNum] or 0
+			-- หากด่านนี้ขโมยครบโควต้าประจำรอบแล้ว ให้ข้ามไปตรวจด่านถัดไป
+			if not (quotaActive and sCount >= maxPacks) then
+				anySelectedStageAvailable = true
+				local prompt, diag = checkStageHasPacks(sNum)
+				if not prompt then
+					local basePos = STAGE_CENTERS[sNum]
+					if basePos then
+						Helpers.StreamAround(basePos, 1.5)
+						task.wait(0.15)
+						prompt, diag = checkStageHasPacks(sNum)
+					end
+				end
+				if prompt then
+					targetStage = sNum
+					targetPrompt = prompt
+					break
+				else
+					if diag then lastDiag = diag end
 				end
 			end
-			if prompt then
-				targetStage = sNum
-				targetPrompt = prompt
-				break
-			else
-				if diag then lastDiag = diag end
-			end
 		end
 
-		-- 3. หากไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านใดเลย -> เข้าลู่วิ่งฝึกซ้อมทันที
+		-- 3. หากไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านใดเลย หรือครบโควต้าทุกด่านแล้ว -> เข้าลู่วิ่งฝึกซ้อม
 		if not targetStage or not targetPrompt then
 			local now = os.clock()
-			if now - StealState.lastQuotaLogTime > 15 then
-				StealState.lastQuotaLogTime = now
-				local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
-				logAction("ขโมย", string.format("%s -> พักบนลู่วิ่งฝึกซ้อม (รอแพ็คเกิดใหม่)", reason), false)
-			end
-			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
-				returnToSafeRest(true)
-			end
-			task.wait(1.5)
-			return
-		end
-
-		local i = targetStage
-		local maxPacks = Core.Flags.MaxStageStealPacks or 4
-		local currentPending = (getPacksToPlace and #getPacksToPlace()) or 0
-
-		-- หากสลับด่านเป้าหมาย ให้รีเซ็ตตัวนับรอบ
-		if StealState.currentTargetStage ~= i then
-			StealState.currentTargetStage = i
-			StealState.stageStealCount = 0
-			StealState.waitingForNightReset = false
-		end
-
-		local isNight = isNightActive()
-		local currentPhaseEndsAt = getNightPhaseEndsAt()
-
-		-- ตรวจจับการรีเซ็ตแพ็คการ์ดทุกด่านเมื่อเข้าสู่ช่วงเวลากลางคืน (Night Active)
-		if isNight and StealState.lastResetNightCycle ~= currentPhaseEndsAt then
-			StealState.lastResetNightCycle = currentPhaseEndsAt
-			if StealState.waitingForNightReset or StealState.stageStealCount > 0 then
-				StealState.waitingForNightReset = false
-				StealState.stageStealCount = 0
-				logAction("ขโมย", string.format("🌙 ด่าน %d: กลางคืนมาถึงแล้ว! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ทั้งหมด -> เริ่มรอบขโมยการ์ด 4 ใบใหม่", i), true)
-			end
-		end
-
-		-- ตรวจสอบโควต้าการขโมย:
-		-- หากเปิดระบบจำกัดโควต้า (MaxStageStealPacks < 999) และขโมยในรอบนี้ครบจำนวนแล้ว (stageStealCount >= maxPacks) หรือรอเวลากลางคืน
-		local quotaActive = (Core.Flags.MaxStageStealPacks ~= nil and Core.Flags.MaxStageStealPacks < 999)
-		local quotaReached = quotaActive and (StealState.waitingForNightReset or (StealState.stageStealCount >= maxPacks))
-
-		if quotaReached then
-			-- หากถึงเวลากลางคืนแล้ว ให้ปลดสถานะรอเริ่มรอบใหม่
-			if isNight then
-				StealState.waitingForNightReset = false
-				StealState.stageStealCount = 0
-			else
-				local now = os.clock()
+			if not anySelectedStageAvailable and quotaActive then
+				StealState.waitingForNightReset = true
 				if now - StealState.lastQuotaLogTime > 15 then
 					StealState.lastQuotaLogTime = now
 					local secUntilNight = getTimeUntilNight()
 					local timeStr = isNight and "กำลังอยู่ในช่วงกลางคืน (แพ็ครีเซ็ตแล้ว)"
 						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
 							or string.format("เหลืออีก %d วิ", secUntilNight))
-
-					local reason = string.format("ขโมยครบโควต้า %d/%d ใบแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ตตอนกลางคืน (%s)", StealState.stageStealCount, maxPacks, timeStr)
-					logAction("ขโมย", reason .. " -> พักบนลู่วิ่งฝึกซ้อม", false)
+					logAction("ขโมย", string.format("ขโมยครบโควต้า %d ใบในทุกด่านที่เลือกแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ต (%s)", maxPacks, timeStr), false)
 				end
-
-				if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
-					returnToSafeRest(true)
+			else
+				if now - StealState.lastQuotaLogTime > 15 then
+					StealState.lastQuotaLogTime = now
+					local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
+					logAction("ขโมย", string.format("%s -> พักบนลู่วิ่งฝึกซ้อม (รอแพ็คเกิดใหม่)", reason), false)
 				end
-
-				if runBaseMaintenance then
-					pcall(runBaseMaintenance)
-				end
-
-				task.wait(1.0)
-				return
 			end
+
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				returnToSafeRest(true)
+			end
+			if runBaseMaintenance then pcall(runBaseMaintenance) end
+			task.wait(1.5)
+			return
 		end
+
+		local i = targetStage
+		StealState.currentTargetStage = i
+		StealState.waitingForNightReset = false
 
 		if not Core.Flags["Stage" .. i] or not Helpers.IsAlive() then
 			return
@@ -2589,11 +2627,12 @@ local function main()
 		stopPin()
 
 		if ok and res then
-			StealState.stageStealCount = StealState.stageStealCount + 1
+			StealState.stageStealCounts[i] = (StealState.stageStealCounts[i] or 0) + 1
+			StealState.stageStealCount = StealState.stageStealCounts[i]
 			Stats.stealOk = Stats.stealOk + 1
 			local info = (pName ~= "" and pName ~= rName)
-				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), StealState.stageStealCount, maxPacks)
-				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), StealState.stageStealCount, maxPacks)
+				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), StealState.stageStealCounts[i], maxPacks)
+				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), StealState.stageStealCounts[i], maxPacks)
 			logAction("ขโมย", info, true)
 
 			-- จัดการนำแพ็คไปรวม/วางที่ฐาน (Core.Busy ยังคงล็อกเป็น true ป้องกันคำสั่งอื่นชนกัน)
@@ -2607,16 +2646,29 @@ local function main()
 				runBaseMaintenance()
 			end
 
-			-- หากขโมยในรอบนี้ครบโควต้าแล้ว ให้กลับฐานขึ้นลู่วิ่งและรอการรีเซ็ตตอนกลางคืน
-			if quotaActive and StealState.stageStealCount >= maxPacks then
-				StealState.waitingForNightReset = true
-				local secUntilNight = getTimeUntilNight()
-				local timeStr = secUntilNight > 60
-					and string.format("%d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
-					or string.format("%d วิ", secUntilNight)
-				logAction("ขโมย", string.format("ขโมยการ์ดที่ดีที่สุดครบ %d/%d ใบในด่าน %d แล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ตทุกด่านตอนกลางคืน (เหลืออีก %s)", StealState.stageStealCount, maxPacks, i, timeStr), true)
-				if runBaseMaintenance then pcall(runBaseMaintenance) end
-				returnToSafeRest(true)
+			-- ตรวจสอบโควต้าของด่านนี้
+			if quotaActive and StealState.stageStealCounts[i] >= maxPacks then
+				local otherAvailable = false
+				for _, cand in ipairs(candidateStages) do
+					local cNum = cand.stage
+					if cNum ~= i and (StealState.stageStealCounts[cNum] or 0) < maxPacks then
+						otherAvailable = true
+						break
+					end
+				end
+
+				if not otherAvailable then
+					StealState.waitingForNightReset = true
+					local secUntilNight = getTimeUntilNight()
+					local timeStr = secUntilNight > 60
+						and string.format("%d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
+						or string.format("%d วิ", secUntilNight)
+					logAction("ขโมย", string.format("ขโมยครบโควต้า %d ใบในทุกด่านที่เลือกแล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ต (เหลืออีก %s)", maxPacks, timeStr), true)
+					if runBaseMaintenance then pcall(runBaseMaintenance) end
+					returnToSafeRest(true)
+				else
+					logAction("ขโมย", string.format("ด่าน %d ครบโควต้า %d ใบแล้ว -> สลับไปหาแพ็คในด่านอื่นที่เลือกไว้ต่อ", i, maxPacks), true)
+				end
 			end
 		else
 			Stats.stealFail = Stats.stealFail + 1
