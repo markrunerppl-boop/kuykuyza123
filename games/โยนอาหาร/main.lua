@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v2.6 (Auto Buy & Equip Best Food Robust Engine + Direct Array Cache + Pre-Check Guards)
+-- เวอร์ชัน: v2.7 (Complete Teardown & Action Cancellation Engine + Force Character Recovery)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -370,10 +370,17 @@ function Helpers.IsAlive()
 end
 
 -- ระบบฟื้นฟูตัวละครและแก้ค้างฉุกเฉิน (Unstick / Watchdog Recovery)
-function Helpers.RecoverCharacter()
+function Helpers.RecoverCharacter(force)
     local hrp = Helpers.GetRoot()
-    if hrp and hrp.Anchored and not Core.Busy then
+    if hrp and (force or not Core.Busy) then
         hrp.Anchored = false
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+    end
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        if hum.WalkSpeed <= 0 then hum.WalkSpeed = 16 end
+        if hum.PlatformStand then hum.PlatformStand = false end
     end
     if Movement and Movement.Unlock then
         pcall(Movement.Unlock)
@@ -381,12 +388,19 @@ function Helpers.RecoverCharacter()
     if CameraRig and CameraRig.Release then
         pcall(CameraRig.Release)
     end
+    local cam = Workspace.CurrentCamera
+    if cam and (force or cam.CameraType ~= Enum.CameraType.Custom) then
+        pcall(function()
+            cam.CameraType = Enum.CameraType.Custom
+            if hum then cam.CameraSubject = hum end
+        end)
+    end
     if ScreenFX and ScreenFX.Reset then
         pcall(ScreenFX.Reset)
     end
     if ClientState and ClientState.Busy then
         local busyStr = tostring(ClientState.Busy)
-        if busyStr == "Throw" or busyStr == "KuykuyThrow" or busyStr == "KuykuyTrain" then
+        if force or busyStr == "Throw" or busyStr == "KuykuyThrow" or busyStr == "KuykuyTrain" then
             ClientState.Busy = nil
         end
     end
@@ -473,25 +487,63 @@ function Helpers.GetLaunchCFrame()
 end
 
 function Core:Destroy()
-    pcall(Config.Save)
-    Helpers.RecoverCharacter()
-    self._alive = false
+    -- 1. ปิดการทำงานของ Flags ทั้งหมดทันที เพื่อป้องกันคำสั่งหรือลูปทำงานต่อ
+    if self.Flags then
+        for k in pairs(self.Flags) do
+            self.Flags[k] = false
+        end
+    end
+    self.Busy = false
+
+    -- 2. ยกเลิกลูปและคอรูทีนทั้งหมดทันที
     for name in pairs(self._loops) do
         self:StopLoop(name)
     end
-    for _, c in ipairs(self._conns) do
-        pcall(function() c:Disconnect() end)
+    self._loops = {}
+
+    -- 3. ยิงคำสั่งยกเลิกไปยังเซิร์ฟเวอร์โดยตรงทันที (หยุดฝึกซ้อม + ยกเลิกการโยนอาหาร)
+    if remotes.Training_Stop then
+        pcall(function() remotes.Training_Stop:InvokeServer() end)
     end
+    if remotes.Throw_Cancel then
+        pcall(function() remotes.Throw_Cancel:InvokeServer("Unload") end)
+    end
+
+    -- 4. รัน Cleanup Handlers ที่ลงทะเบียนไว้ทั้งหมด
     for _, fn in ipairs(self._cleanups) do
         pcall(fn)
     end
-    if self._gui then
-        pcall(function() self._gui:Destroy() end)
+    self._cleanups = {}
+
+    -- 5. ปลดการเชื่อมต่อ Events ทั้งหมด
+    for _, c in ipairs(self._conns) do
+        pcall(function() c:Disconnect() end)
     end
     self._conns = {}
-    self._cleanups = {}
+
+    -- 6. ฟื้นฟูตัวละคร กล้อง และการเคลื่อนที่สู่สภาวะปกติ 100%
+    Helpers.RecoverCharacter(true)
+
+    -- 7. ตั้งค่าสถานะ Dead และล้างตัวแปร Global
+    self._alive = false
     if ENV.__KUY == self then
         ENV.__KUY = nil
+    end
+
+    -- 8. ทำลายหน้าต่าง UI Kuykuy Hub ทั้งหมดอย่างหมดจด
+    if self._gui then
+        pcall(function() self._gui:Destroy() end)
+        self._gui = nil
+    end
+
+    local guiTargets = { CoreGui, (LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")) }
+    for _, parent in ipairs(guiTargets) do
+        if parent then
+            for _, name in ipairs({ "KUYKUY_FeedAnimals_Gui", "KUYKUY_FloatButton" }) do
+                local old = parent:FindFirstChild(name)
+                if old then pcall(function() old:Destroy() end) end
+            end
+        end
     end
 end
 
@@ -1049,7 +1101,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.6</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v2.7</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1578,12 +1630,12 @@ CreateButton(SettingsPage, "🗑️ ล้างประวัติบัน�
 end)
 
 CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิน (Unload / Destroy Kuykuy Hub)", UIColors.Danger, function()
-    logAction("ระบบ", "ปิดการทำงานสคริปต์ Kuykuy Hub เรียบร้อยแล้ว", true)
-    task.wait(0.2)
-    Core:Destroy()
+    task.spawn(function()
+        Core:Destroy()
+    end)
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v2.6 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v2.7 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.6 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v2.7 โหลดสำเร็จ 100%")
