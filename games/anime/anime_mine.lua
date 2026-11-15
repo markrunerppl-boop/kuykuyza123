@@ -690,6 +690,8 @@ TradeState = {
         AutoLoopUntilEmpty = true,  -- 🔁 ส่งวนซ้ำอัตโนมัติจนกว่าของที่เลือกจะหมดกระเป๋า
         AutoTradeThresholdEnabled = false, -- 📦 เริ่มเทรดอัตโนมัติเมื่อยอดของสะสมครบตามที่กำหนด
         AutoTradeThresholdAmount = 50,     -- 🔢 ยอดรวมไอเทมที่เลือกขั้นต่ำก่อนยิงคำขอเทรด
+        TargetBusyUntil = 0,        -- ⏳ เวลาสิ้นสุด Cooldown เมื่ออีกฝ่ายติดเทรด ป้องกันการยิงซ้ำ
+        LastRequestSentTime = 0,    -- ⏱️ เวลาล่าสุดที่ยิงคำขอเทรด (Debounce ป้องกันคำสั่งซ้ำซ้อน)
         AutoAccept = true,
         AutoReady = true,
         AutoConfirm = true,
@@ -834,26 +836,49 @@ TradeState = {
         end
     
         local list = {}
-    
+        local keyExists = {}
+
         -- 1. ตัวละครคนขุด (Miners / Characters)
         if type(mg.Characters) == "table" then
             for charKey, count in pairs(mg.Characters) do
                 local total = tonumber(count) or 0
                 local inUse = assignedChars[charKey] or 0
                 local spare = math.max(0, total - inUse)
-                if spare > 0 then
-                    local cleanName = tostring(charKey):match("^([^|]+)") or tostring(charKey)
-                    if CanTradeItem(charKey) or CanTradeItem(cleanName) then
-                        table.insert(list, {
-                            Key = charKey,
-                            Name = cleanName,
-                            Count = spare,
-                            Total = total,
-                            Kind = "Miners",
-                            Category = "Miners",
-                            Emoji = "👤",
-                            MaxCap = TradeTimingConfig.MaxStackCap
-                        })
+                local cleanName = tostring(charKey):match("^([^|]+)") or tostring(charKey)
+                if (CanTradeItem(charKey) or CanTradeItem(cleanName)) and not keyExists[charKey] then
+                    keyExists[charKey] = true
+                    table.insert(list, {
+                        Key = charKey,
+                        Name = cleanName,
+                        Count = spare,
+                        Total = total,
+                        Kind = "Miners",
+                        Category = "Miners",
+                        Emoji = "👤",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        -- เพิ่มตัวละครจาก Pool ของโซนต่างๆ ที่ผู้เล่นยังไม่มีในกระเป๋า (เพื่อให้สามารถติ๊กเปิดไว้รอได้)
+        if MineConfig and type(MineConfig.Zones) == "table" then
+            for _, z in pairs(MineConfig.Zones) do
+                if z and type(z.CharacterPool) == "table" then
+                    for _, charName in ipairs(z.CharacterPool) do
+                        if charName and CanTradeItem(charName) and not keyExists[charName] then
+                            keyExists[charName] = true
+                            table.insert(list, {
+                                Key = charName,
+                                Name = charName,
+                                Count = 0,
+                                Total = 0,
+                                Kind = "Miners",
+                                Category = "Miners",
+                                Emoji = "👤",
+                                MaxCap = TradeTimingConfig.MaxStackCap
+                            })
+                        end
                     end
                 end
             end
@@ -865,12 +890,32 @@ TradeState = {
                 local total = tonumber(count) or 0
                 local inUse = assignedPicks[pickName] or 0
                 local spare = math.max(0, total - inUse)
-                if spare > 0 and CanTradeItem(pickName) then
+                if CanTradeItem(pickName) and not keyExists[pickName] then
+                    keyExists[pickName] = true
                     table.insert(list, {
                         Key = pickName,
                         Name = pickName,
                         Count = spare,
                         Total = total,
+                        Kind = "Pickaxe",
+                        Category = "Pickaxes",
+                        Emoji = "⛏️",
+                        MaxCap = TradeTimingConfig.MaxStackCap
+                    })
+                end
+            end
+        end
+
+        -- เพิ่มขวานทั้งหมดจาก MineConfig ที่ยังไม่มีในกระเป๋า (เพื่อให้สามารถติ๊กเปิดไว้รอได้)
+        if MineConfig and type(MineConfig.Pickaxes) == "table" then
+            for _, p in ipairs(MineConfig.Pickaxes) do
+                if p and p.Name and CanTradeItem(p.Name) and not keyExists[p.Name] then
+                    keyExists[p.Name] = true
+                    table.insert(list, {
+                        Key = p.Name,
+                        Name = p.Name,
+                        Count = 0,
+                        Total = 0,
                         Kind = "Pickaxe",
                         Category = "Pickaxes",
                         Emoji = "⛏️",
@@ -887,7 +932,8 @@ TradeState = {
         else
             gemCount = tonumber(mg.Gems) or 0
         end
-        if (gemCount > 0 or TradeState.CurrentCategory == "Gems") and CanTradeItem("Gems") then
+        if CanTradeItem("Gems") and not keyExists["Gems"] then
+            keyExists["Gems"] = true
             table.insert(list, {
                 Key = "Gems",
                 Name = "Gems (อัญมณี)",
@@ -907,7 +953,8 @@ TradeState = {
         else
             diceCount = tonumber(mg.EnchantDice) or 0
         end
-        if diceCount > 0 and CanTradeItem("Enchanted Dice") then
+        if CanTradeItem("Enchanted Dice") and not keyExists["Enchanted Dice"] then
+            keyExists["Enchanted Dice"] = true
             table.insert(list, {
                 Key = "Enchanted Dice",
                 Name = "Enchanted Dice",
@@ -926,7 +973,8 @@ TradeState = {
         else
             scrollCount = tonumber(mg.SummonScrolls) or 0
         end
-        if scrollCount > 0 and CanTradeItem("Summon Scroll") then
+        if CanTradeItem("Summon Scroll") and not keyExists["Summon Scroll"] then
+            keyExists["Summon Scroll"] = true
             table.insert(list, {
                 Key = "Summon Scroll",
                 Name = "Summon Scroll",
@@ -943,7 +991,8 @@ TradeState = {
         if type(mg.Potions) == "table" then
             for potName, count in pairs(mg.Potions) do
                 local num = tonumber(count) or 0
-                if num > 0 and CanTradeItem(potName) then
+                if CanTradeItem(potName) and not keyExists[potName] then
+                    keyExists[potName] = true
                     table.insert(list, {
                         Key = potName,
                         Name = potName,
@@ -962,7 +1011,8 @@ TradeState = {
         if type(mg.EnchantItems) == "table" then
             for enchName, count in pairs(mg.EnchantItems) do
                 local num = tonumber(count) or 0
-                if num > 0 and CanTradeItem(enchName) then
+                if CanTradeItem(enchName) and not keyExists[enchName] then
+                    keyExists[enchName] = true
                     table.insert(list, {
                         Key = enchName,
                         Name = enchName,
@@ -981,7 +1031,8 @@ TradeState = {
         if type(mg.GearItems) == "table" then
             for gearName, count in pairs(mg.GearItems) do
                 local num = tonumber(count) or 0
-                if num > 0 and CanTradeItem(gearName) then
+                if CanTradeItem(gearName) and not keyExists[gearName] then
+                    keyExists[gearName] = true
                     table.insert(list, {
                         Key = gearName,
                         Name = gearName,
@@ -1000,7 +1051,8 @@ TradeState = {
         if type(mg.Ores) == "table" then
             for oreName, count in pairs(mg.Ores) do
                 local num = tonumber(count) or 0
-                if num > 0 and CanTradeItem(oreName) then
+                if CanTradeItem(oreName) and not keyExists[oreName] then
+                    keyExists[oreName] = true
                     table.insert(list, {
                         Key = oreName,
                         Name = oreName,
@@ -1019,7 +1071,8 @@ TradeState = {
         if type(mg.Items) == "table" then
             for itName, count in pairs(mg.Items) do
                 local num = tonumber(count) or 0
-                if num > 0 and CanTradeItem(itName) then
+                if CanTradeItem(itName) and not keyExists[itName] then
+                    keyExists[itName] = true
                     table.insert(list, {
                         Key = itName,
                         Name = itName,
@@ -1033,8 +1086,54 @@ TradeState = {
                 end
             end
         end
-    
-        table.sort(list, function(a, b) return a.Name < b.Name end)
+
+        -- 10. ไอเทมที่ถูกบันทึกไว้ใน SavedTradeItems หรือ TradeState.SelectedItems
+        for savedKey, _ in pairs(SavedTradeItems or {}) do
+            if not keyExists[savedKey] and CanTradeItem(savedKey) then
+                keyExists[savedKey] = true
+                table.insert(list, {
+                    Key = savedKey,
+                    Name = savedKey,
+                    Count = 0,
+                    Total = 0,
+                    Kind = "Saved",
+                    Category = "Other",
+                    Emoji = "📦",
+                    MaxCap = TradeTimingConfig.MaxStackCap
+                })
+            end
+        end
+        for selKey, selData in pairs(TradeState.SelectedItems or {}) do
+            if not keyExists[selKey] and CanTradeItem(selKey) then
+                keyExists[selKey] = true
+                local name = (type(selData) == "table" and selData.Name) or selKey
+                local cap = (type(selData) == "table" and selData.MaxCap) or TradeTimingConfig.MaxStackCap
+                table.insert(list, {
+                    Key = selKey,
+                    Name = name,
+                    Count = 0,
+                    Total = 0,
+                    Kind = "Selected",
+                    Category = "Other",
+                    Emoji = "📦",
+                    MaxCap = cap
+                })
+            end
+        end
+
+        -- เรียงลำดับ: เลือกแล้วขึ้นก่อน -> มีของขึ้นก่อน -> เรียงตามชื่อ
+        table.sort(list, function(a, b)
+            local aSel = (TradeState.SelectedItems and TradeState.SelectedItems[a.Key]) and 1 or 0
+            local bSel = (TradeState.SelectedItems and TradeState.SelectedItems[b.Key]) and 1 or 0
+            if aSel ~= bSel then return aSel > bSel end
+
+            local aHas = a.Count > 0 and 1 or 0
+            local bHas = b.Count > 0 and 1 or 0
+            if aHas ~= bHas then return aHas > bHas end
+
+            return a.Name < b.Name
+        end)
+
         return list
     end
     
@@ -2918,15 +3017,17 @@ RenderInventoryList = function()
     ItemScrollBox.CanvasSize = UDim2.new(0, 0, 0, #items * 32 + 8)
 
     for _, it in ipairs(items) do
-        local maxAllowed = math.min(it.Count, it.MaxCap or TradeTimingConfig.MaxStackCap)
-        if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and it.Count > 0 and not TradeState.SelectedItems[it.Key] then
-            local savedAmt = TradeState.SendAllAlways and maxAllowed or math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, math.max(1, maxAllowed))
+        local maxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+        local maxAllowed = it.Count > 0 and math.min(it.Count, maxCap) or maxCap
+
+        if SavedTradeItems and SavedTradeItems[it.Key] and CountSelected() < 8 and not TradeState.SelectedItems[it.Key] then
+            local savedAmt = TradeState.SendAllAlways and maxCap or math.clamp(tonumber(SavedTradeItems[it.Key]) or 1, 1, maxCap)
             TradeState.SelectedItems[it.Key] = {
                 Key = it.Key,
                 Name = it.Name,
                 Amount = savedAmt,
                 MaxCount = maxAllowed,
-                MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                MaxCap = maxCap
             }
         end
 
@@ -2958,8 +3059,13 @@ RenderInventoryList = function()
         nameLbl.Size = UDim2.new(1, -145, 1, 0)
         nameLbl.Position = UDim2.new(0, 28, 0, 0)
         nameLbl.BackgroundTransparency = 1
-        nameLbl.Text = string.format("%s %s (มี %d)", it.Emoji or "📦", it.Name, it.Count)
-        nameLbl.TextColor3 = Color3.fromRGB(235, 235, 240)
+        if it.Count > 0 then
+            nameLbl.Text = string.format("%s %s (มี %d)", it.Emoji or "📦", it.Name, it.Count)
+            nameLbl.TextColor3 = Color3.fromRGB(235, 235, 240)
+        else
+            nameLbl.Text = string.format("%s %s (หมด - ติ๊กเปิดรอได้)", it.Emoji or "📦", it.Name)
+            nameLbl.TextColor3 = Color3.fromRGB(175, 175, 190)
+        end
         nameLbl.Font = Enum.Font.GothamMedium
         nameLbl.TextSize = 10
         nameLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -2972,7 +3078,8 @@ RenderInventoryList = function()
         amtBox.TextColor3 = Color3.fromRGB(240, 200, 90)
         amtBox.Font = Enum.Font.GothamBold
         amtBox.TextSize = 9.5
-        amtBox.Text = tostring((TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or (maxAllowed > 0 and 1 or 0))
+        local initAmt = (TradeState.SelectedItems[it.Key] and TradeState.SelectedItems[it.Key].Amount) or (it.Count > 0 and maxAllowed or 1)
+        amtBox.Text = tostring(initAmt)
         amtBox.ClearTextOnFocus = false
         amtBox.Parent = row
 
@@ -2983,7 +3090,7 @@ RenderInventoryList = function()
         local function SyncAmount()
             local num = tonumber(amtBox.Text)
             if num then
-                local clamped = math.clamp(math.floor(num), 1, math.max(1, maxAllowed))
+                local clamped = math.clamp(math.floor(num), 1, maxCap)
                 if TradeState.SelectedItems[it.Key] then
                     TradeState.SelectedItems[it.Key].Amount = clamped
                 end
@@ -3012,17 +3119,17 @@ RenderInventoryList = function()
         mxCorner.Parent = maxBtn
 
         maxBtn.MouseButton1Click:Connect(function()
-            amtBox.Text = tostring(maxAllowed)
+            amtBox.Text = tostring(maxCap)
             SyncAmount()
-            if not TradeState.SelectedItems[it.Key] and CountSelected() < 8 and it.Count > 0 then
+            if not TradeState.SelectedItems[it.Key] and CountSelected() < 8 then
                 TradeState.SelectedItems[it.Key] = {
                     Key = it.Key,
                     Name = it.Name,
-                    Amount = maxAllowed,
+                    Amount = maxCap,
                     MaxCount = maxAllowed,
-                    MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                    MaxCap = maxCap
                 }
-                SavedTradeItems[it.Key] = maxAllowed
+                SavedTradeItems[it.Key] = maxCap
                 SaveTradeConfig()
                 checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
                 checkBtn.Text = "✓"
@@ -3040,27 +3147,26 @@ RenderInventoryList = function()
                 checkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
                 checkBtn.Text = ""
             else
-                if it.Count <= 0 then
-                    TradeNotify("ไม่มีไอเทม", "ไอเทมนี้มีจำนวนเป็น 0 ไม่สามารถเลือกได้ครับ", 2)
-                    return
-                end
                 if CountSelected() >= 8 then
                     TradeNotify("ขีดจำกัดไอเทม", "สามารถเลือกส่งได้สูงสุด 8 กองต่อครั้งครับ", 3)
                     return
                 end
-                local sendNum = TradeState.SendAllAlways and maxAllowed or (tonumber(amtBox.Text) or maxAllowed)
-                sendNum = math.clamp(sendNum, 1, maxAllowed)
+                local sendNum = TradeState.SendAllAlways and maxCap or (tonumber(amtBox.Text) or 1)
+                sendNum = math.clamp(math.floor(sendNum), 1, maxCap)
                 TradeState.SelectedItems[it.Key] = {
                     Key = it.Key,
                     Name = it.Name,
                     Amount = sendNum,
                     MaxCount = maxAllowed,
-                    MaxCap = it.MaxCap or TradeTimingConfig.MaxStackCap
+                    MaxCap = maxCap
                 }
                 SavedTradeItems[it.Key] = sendNum
                 SaveTradeConfig()
                 checkBtn.BackgroundColor3 = Color3.fromRGB(45, 170, 95)
                 checkBtn.Text = "✓"
+                if it.Count <= 0 then
+                    TradeNotify("เลือกไอเทมรอไว้", string.format("เลือก %s ไว้ล่วงหน้า (เมื่อของเข้ากระเป๋าจะเริ่มเทรดให้อัตโนมัติ)", it.Name), 3)
+                end
             end
             local curCount = CountSelected()
             ItemCountLabel.Text = string.format("เลือกแล้ว: %d / 8 กอง", curCount)
@@ -3337,6 +3443,27 @@ end)
         StatusBar.TextColor3 = Color3.fromRGB(240, 100, 100)
         TradeNotify("Trade Aborted", reason, 4)
     end
+
+    -- 🛡️ ตรวจสอบสถานะว่าอีกฝ่ายกำลังติดเทรดอยู่หรือไม่ (Attributes, Cooldown, Values) ป้องกันการยิงซ้ำซ้อน
+    local function CheckTargetBusy(target)
+        if not target then return false, 0 end
+        if TradeState.TargetBusyUntil and tick() < TradeState.TargetBusyUntil then
+            return true, math.max(1, math.ceil(TradeState.TargetBusyUntil - tick()))
+        end
+        if target:GetAttribute("Trading") == true
+            or target:GetAttribute("InTrade") == true
+            or target:GetAttribute("Busy") == true
+            or target:GetAttribute("TradeActive") == true
+            or target:GetAttribute("TradeSession") ~= nil then
+            TradeState.TargetBusyUntil = tick() + 15
+            return true, 15
+        end
+        if target:FindFirstChild("Trading") or target:FindFirstChild("InTrade") or target:FindFirstChild("Busy") then
+            TradeState.TargetBusyUntil = tick() + 15
+            return true, 15
+        end
+        return false, 0
+    end
     
     -- รับการซิงค์ข้อมูล Snapshot ของเซสชันเทรด
     pcall(function()
@@ -3356,6 +3483,65 @@ end)
             end
         end)
     end)
+
+    -- 🛡️ ตรวจจับการแจ้งเตือนจากระบบเกม (เช่น อีกฝ่ายติดเทรด, ไม่ว่าง, ปฏิเสธ)
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        local function checkNotificationText(text)
+            if not text or type(text) ~= "string" then return end
+            local s = string.lower(text)
+            if string.find(s, "busy")
+                or string.find(s, "already in a trade")
+                or string.find(s, "in a trade")
+                or string.find(s, "currently trading")
+                or string.find(s, "already trading")
+                or string.find(s, "declined")
+                or string.find(s, "cancelled")
+                or string.find(s, "canceled")
+                or string.find(s, "ติดเทรด")
+                or string.find(s, "กำลังเทรด")
+                or string.find(s, "ไม่ว่าง")
+                or string.find(s, "ปฏิเสธ") then
+                
+                TradeState.TargetBusyUntil = tick() + 20
+                if TradeState.IsTradeActive then
+                    AbortTransfer("อีกฝ่ายกำลังติดเทรดอยู่ (หน่วงเวลา 20 วิ ก่อนตรวจสอบใหม่)")
+                end
+            end
+        end
+
+        local notifs = pg and (pg:FindFirstChild("NotificationsGui") or pg:FindFirstChild("MineGui"))
+        if notifs then
+            for _, desc in ipairs(notifs:GetDescendants()) do
+                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    checkNotificationText(desc.Text)
+                    desc:GetPropertyChangedSignal("Text"):Connect(function()
+                        checkNotificationText(desc.Text)
+                    end)
+                end
+            end
+            notifs.DescendantAdded:Connect(function(desc)
+                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    checkNotificationText(desc.Text)
+                    desc:GetPropertyChangedSignal("Text"):Connect(function()
+                        checkNotificationText(desc.Text)
+                    end)
+                end
+            end)
+        end
+    end)
+
+    -- ฟัง Event การยกเลิก/ปฏิเสธเทรดจากเซิร์ฟเวอร์
+    for _, evName in ipairs({"MineTradeCancel", "MineTradeDecline", "MineTradeReject", "MineTradeError"}) do
+        pcall(function()
+            GameState.ListenToEvent(evName, function()
+                TradeState.TargetBusyUntil = tick() + 15
+                if TradeState.IsTradeActive then
+                    AbortTransfer("คำขอเทรดสิ้นสุดหรือถูกยกเลิก (อีกฝ่ายอาจติดเทรด)")
+                end
+            end)
+        end)
+    end
     
     -- 🛡️ Receiver Watchdog Loop: ตรวจจับและยืนยันการเทรดแบบ Real-time ตลอดเวลา
     task.spawn(function()
@@ -3424,6 +3610,17 @@ end)
         while TradeState.IsTradeActive do
             roundCount = roundCount + 1
 
+            -- 🛑 ตรวจสอบว่าอีกฝ่ายกำลังติดเทรดอยู่หรือไม่ ป้องกันการยิงคำสั่งซ้ำซ้อน
+            local isBusy, waitSec = CheckTargetBusy(TradeState.TargetReceiver)
+            if isBusy then
+                StatusBar.Text = string.format("⏳ อีกฝ่ายกำลังติดเทรดอยู่ (รออีก %d วิ)...", waitSec)
+                StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
+                TradeNotify("อีกฝ่ายติดเทรด", string.format("%s กำลังติดเทรดอยู่ ระบบจะรอให้อีกฝ่ายว่างก่อน", TradeState.TargetReceiver.Name), 3)
+                TradeState.IsTradeActive = false
+                UpdateTradeUIState(false)
+                break
+            end
+
             -- ตรวจสอบคลังไอเทมจริงล่าสุด ณ ปัจจุบัน
             local ownedMap = GetAvailableCountMap()
             local itemsToSendList = {}
@@ -3448,10 +3645,10 @@ end)
 
             if #itemsToSendList == 0 then
                 if roundCount > 1 then
-                    TradeNotify("ส่งครบ 100%", "ส่งไอเทมที่เลือกทั้งหมดทุกชิ้นเรียบร้อยแล้ว (ของหมดกระเป๋า)!")
-                    StatusBar.Text = "✅ ส่งไอเทมที่เลือกทั้งหมดทุกชิ้นเรียบร้อย (ของหมดกระเป๋า)"
+                    TradeNotify("ส่งครบ 100%", "ส่งไอเทมที่มีในกระเป๋าครบทุกชิ้นเรียบร้อยแล้ว (ไอเทมที่เหลืออยู่ระหว่างรอฟาร์ม)!")
+                    StatusBar.Text = "✅ ส่งไอเทมที่มีครบเรียบร้อย (ไอเทมอื่นรอสะสม)"
                 else
-                    AbortTransfer("ไม่พบไอเทมที่เลือกในกระเป๋า หรือจำนวนเป็น 0")
+                    AbortTransfer("ยังไม่มีไอเทมที่เลือกในกระเป๋า (รอสะสมของตามเป้าหมาย)")
                 end
                 StatusBar.TextColor3 = Color3.fromRGB(120, 230, 160)
                 TradeState.IsTradeActive = false
@@ -3459,6 +3656,14 @@ end)
                 RenderInventoryList()
                 break
             end
+
+            -- Debounce ป้องกันการยิงคำสั่งซ้ำซ้อนในเวลาใกล้เคียงกัน (เว้นระยะอย่างน้อย 5 วินาที)
+            local now = tick()
+            if now - (TradeState.LastRequestSentTime or 0) < 5 then
+                local sleepTime = 5 - (now - (TradeState.LastRequestSentTime or 0))
+                task.wait(sleepTime)
+            end
+            TradeState.LastRequestSentTime = tick()
 
             StatusBar.Text = string.format("⏳ [รอบที่ %d] กำลังส่งคำขอเทรดไปยัง: %s", roundCount, TradeState.TargetReceiver.Name)
             StatusBar.TextColor3 = Color3.fromRGB(240, 200, 90)
@@ -3474,10 +3679,18 @@ end)
                     AbortTransfer("ผู้รับเป้าหมายหลุดออกจากเซิร์ฟเวอร์")
                     return
                 end
+
+                -- ตรวจสอบว่าอีกฝ่ายติดเทรดหรือไม่ (จาก Notification หรือ Cooldown)
+                if TradeState.TargetBusyUntil and tick() < TradeState.TargetBusyUntil then
+                    AbortTransfer("อีกฝ่ายกำลังติดเทรดอยู่ (หน่วงเวลารอให้อีกฝ่ายว่าง)")
+                    return
+                end
+
                 task.wait(0.5)
                 elapsed = elapsed + 0.5
                 if elapsed >= TradeTimingConfig.RequestTimeout then
-                    AbortTransfer("หมดเวลารอ (Timeout 20s) ผู้รับไม่ตอบรับคำขอ")
+                    TradeState.TargetBusyUntil = tick() + 20 -- หน่วงเวลา 20 วิ ป้องกันการสแปมคำขอซ้ำซ้อน
+                    AbortTransfer("หมดเวลารอ (อีกฝ่ายอาจติดเทรดหรือไม่ว่าง) พัก 20 วิ ก่อนตรวจสอบใหม่")
                     return
                 end
             end
@@ -3700,6 +3913,11 @@ end)
                     and not TradeState.IsTradeActive
                     and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "closed" or TradeState.CurrentSession.Stage == "saving") then
 
+                    -- 🛑 ป้องกันการยิงคำขอซ้ำซ้อน: หากอีกฝ่ายกำลังติดเทรดหรืออยู่ในช่วง Cooldown ให้รอจนกว่าจะว่าง
+                    if TradeState.TargetBusyUntil and tick() < TradeState.TargetBusyUntil then
+                        return
+                    end
+
                     local targetPlayer = TradeState.TargetReceiver
                     if not targetPlayer and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
                         targetPlayer = Players:FindFirstChild(TradeState.SavedReceiverName)
@@ -3707,6 +3925,11 @@ end)
                     end
 
                     if targetPlayer and targetPlayer.Parent == Players then
+                        local isBusy, waitSec = CheckTargetBusy(targetPlayer)
+                        if isBusy then
+                            return
+                        end
+
                         local ownedMap = GetAvailableCountMap()
                         local totalMatchingCount = 0
                         local hasAnySelected = false

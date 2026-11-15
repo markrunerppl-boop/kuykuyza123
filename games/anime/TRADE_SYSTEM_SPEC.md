@@ -26,6 +26,8 @@ TradeState = {
     -- [ฟังก์ชัน Auto Trade เมื่อของครบยอด]:
     AutoTradeThresholdEnabled = false, -- สวิตช์เปิด/ปิด ส่งเทรดอัตโนมัติเมื่อของครบยอด
     AutoTradeThresholdAmount = 50,     -- ยอดสะสมรวมของไอเทมที่เลือกที่ต้องถึงก่อนส่งเทรด
+    TargetBusyUntil = 0,               -- เวลาสิ้นสุด Cooldown เมื่ออีกฝ่ายติดเทรด
+    LastRequestSentTime = 0,           -- เวลาล่าสุดที่ยิงคำขอเทรด (Debounce 5s ป้องกันสแปมคำสั่งซ้ำซ้อน)
 }
 ```
 
@@ -34,15 +36,15 @@ TradeState = {
 ## 2. ลำดับขั้นตอนการทำงานของโหมดผู้ส่ง (Sender Execution Flow)
 
 ```
-[1. ตรวจสอบเป้าหมาย] -> TargetReceiver ต้องอยู่ในเซิร์ฟเวอร์
-[2. ตรวจสอบเงื่อนไขยอดสะสม] -> รวมจำนวนของในกระเป๋า (GetAvailableCountMap) ที่ตรงกับ SelectedItems
-[3. ส่งคำขอเทรด]     -> SafeSendEvent("MineTradeRequest", TargetReceiver.UserId)
-[4. รอเปิดเซสชัน]    -> รอสัญญาณ MineTradeSync จากเซิร์ฟเวอร์
-[5. ใส่ไอเทมลงช่อง] -> วนส่ง SafeSendEvent("MineTradeSetItem", itemKey, sendAmount, sessionId, rev)
-[6. กด Ready]        -> SafeSendEvent("MineTradeReady", true, sessionId, rev)
-[7. กด Confirm]      -> SafeSendEvent("MineTradeConfirm", sessionId, rev)
-[8. วนซ้ำ (Loop)]    -> หากเปิด AutoLoopUntilEmpty และยังมีของเหลือ จะเริ่มส่งรอบถัดไป
-[9. คืนสู่โหมดฟาร์ม] -> เมื่อของถูกส่งหมด หรือปิดการเทรด ระบบฟาร์มหลักจะทำงานต่ออัตโนมัติ
+[1. ตรวจสอบเป้าหมาย & สถานะติดเทรด] -> TargetReceiver ออนไลน์ และไม่ติดเทรด (CheckTargetBusy)
+[2. ตรวจสอบเงื่อนไขยอดสะสม]        -> รวมจำนวนของในกระเป๋า (GetAvailableCountMap) ที่ตรงกับ SelectedItems (ไอเทมที่หมดแล้ว/มี 0 สามารถติ๊กเปิดรอไว้ได้)
+[3. ส่งคำขอเทรด (Debounce 5s)]     -> SafeSendEvent("MineTradeRequest", TargetReceiver.UserId)
+[4. รอเปิดเซสชัน / ดักจับ Busy]      -> รอสัญญาณ MineTradeSync หากอีกฝ่ายติดเทรดจะพัก 20 วิ ไม่ยิงซ้ำ
+[5. ใส่ไอเทมลงช่อง]                -> วนส่ง SafeSendEvent("MineTradeSetItem", itemKey, sendAmount, sessionId, rev)
+[6. กด Ready]                       -> SafeSendEvent("MineTradeReady", true, sessionId, rev)
+[7. กด Confirm]                     -> SafeSendEvent("MineTradeConfirm", sessionId, rev)
+[8. วนซ้ำ (Loop)]                   -> หากเปิด AutoLoopUntilEmpty และยังมีของเหลือ จะเริ่มส่งรอบถัดไป
+[9. คืนสู่โหมดฟาร์ม]                -> เมื่อของถูกส่งหมด หรือปิดการเทรด ระบบฟาร์มหลักจะทำงานต่ออัตโนมัติ (ไอเทมที่หมดจะคงสถานะติ๊กถูกไว้รอสะสมใหม่)
 ```
 
 ---
