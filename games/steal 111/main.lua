@@ -1476,27 +1476,43 @@ local function main()
 	end
 
 	local function getModelRarity(model)
-		if not model then return "Common", 1 end
+		if not model then return nil, 0 end
 		local r = model:GetAttribute("Rarity")
 			or model:GetAttribute("ItemRarity")
 			or model:GetAttribute("PackRarity")
+			or model:GetAttribute("Grade")
+			or model:GetAttribute("PackGrade")
+			or model:GetAttribute("Tier")
 		local sr = tonumber(model:GetAttribute("SortRarity"))
 
+		-- ค้นหาบน ProximityPrompt เพิ่มเติม
 		if not r or r == "" then
-			local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model.Name
+			local prompt = model:FindFirstChildWhichIsA("ProximityPrompt", true)
+			if prompt then
+				r = prompt:GetAttribute("Rarity") or prompt:GetAttribute("ItemRarity")
+					or prompt:GetAttribute("Grade") or prompt:GetAttribute("PackGrade")
+			end
+		end
+
+		if not r or r == "" then
+			local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model:GetAttribute("CardName") or model.Name
 			local cc = getCharacterConfig()
 			local charCfg = cc and cc.Get and cc.Get(packName)
 			if charCfg then
-				r = charCfg.Rarity or charCfg.ItemRarity or charCfg.Tier
+				r = charCfg.Rarity or charCfg.ItemRarity or charCfg.Grade or charCfg.Tier
 			end
 			if not r or r == "" then
 				local pc = getPacksConfig()
 				local cfg = pc and pc.Get and pc.Get(packName)
 				if cfg then
-					r = cfg.Rarity or cfg.ItemRarity or cfg.Tier
+					r = cfg.Rarity or cfg.ItemRarity or cfg.Grade or cfg.Tier
 					sr = sr or tonumber(cfg.SortRarity)
 				end
 			end
+		end
+
+		if not r or r == "" then
+			return nil, 0
 		end
 
 		local pc = getPacksConfig()
@@ -1517,12 +1533,11 @@ local function main()
 			Secret = 14,
 		}
 
-		local rank = sr or (r and ranks[r]) or 1
-		local rName = r or "Common"
-
-		if type(rName) == "string" then
+		local rName = tostring(r)
+		if type(rName) == "string" and #rName > 0 then
 			rName = rName:sub(1,1):upper() .. rName:sub(2):lower()
 		end
+		local rank = sr or (ranks[rName]) or 1
 
 		return rName, rank
 	end
@@ -1530,8 +1545,9 @@ local function main()
 	local function isPackRarityAllowed(model)
 		if not model then return false end
 		local rName, rank = getModelRarity(model)
+		if not rName then return false end
 
-		-- 1. ตรวจสอบจากชื่อ Rarity โดยตรง
+		-- 1. ตรวจสอบจากชื่อ Rarity/Grade โดยตรง
 		local flagKey = "Rarity_" .. tostring(rName)
 		if Core.Flags[flagKey] == true then
 			return true
@@ -1556,18 +1572,6 @@ local function main()
 		}
 		local fallbackName = rankNames[rank]
 		if fallbackName and Core.Flags["Rarity_" .. fallbackName] == true then
-			return true
-		end
-
-		-- 3. ตรวจสอบว่าผู้ใช้เปิดเกรดใดไว้บ้างหรือไม่ หากปิดทุกเกรดให้ยอมรับทั้งหมด (Safety Fallback)
-		local anyRarityActive = false
-		for _, k in ipairs(STEAL_RARITY_KEYS) do
-			if Core.Flags["Rarity_" .. k] == true then
-				anyRarityActive = true
-				break
-			end
-		end
-		if not anyRarityActive then
 			return true
 		end
 
@@ -2347,7 +2351,7 @@ local function main()
 		return spd
 	end
 
-	local function buildStageOrder()
+	local function getSelectedCandidateStages()
 		local mySpeed = Helpers.GetMoveSpeed()
 		local margin = Core.Flags.OutrunMargin or 1.0
 
@@ -2367,33 +2371,7 @@ local function main()
 			end
 		end
 
-		-- หากความเร็วตัวละครยังต่ำกว่าบอสทุกด่านที่เลือก
-		if #candidates == 0 then
-			local lowestSelected = nil
-			for i = 1, 12 do
-				if Core.Flags["Stage" .. i] then
-					lowestSelected = i
-					break
-				end
-			end
-			if lowestSelected then
-				local minSpd = getStageBossSpeed(lowestSelected) or 16
-				local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
-				if sig ~= StealState.lastOrderSig then
-					StealState.lastOrderSig = sig
-					logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) กำลังวิ่งลู่วิ่งเพื่อปั๊ม Speed...", mySpeed, lowestSelected, minSpd), true)
-				end
-			else
-				local sig = "NO_STAGE_SELECTED"
-				if sig ~= StealState.lastOrderSig then
-					StealState.lastOrderSig = sig
-					logAction("ด่านเป้าหมาย", "ยังไม่ได้เลือกด่านที่ต้องการขโมยในเมนู (กรุณาติ๊กเลือกอย่างน้อย 1 ด่าน)", false)
-				end
-			end
-			return {}
-		end
-
-		-- เรียงลำดับหาด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน (bossSpeed สูงสุด)
+		-- เรียงลำดับจากด่านสูงสุด/บอสเร็วสุดลงไปหาด่านต่ำสุด
 		table.sort(candidates, function(a, b)
 			if a.bossSpeed ~= b.bossSpeed then
 				return a.bossSpeed > b.bossSpeed
@@ -2401,17 +2379,7 @@ local function main()
 			return a.stage > b.stage
 		end)
 
-		local best = candidates[1]
-		local sig = string.format("S%d(B=%.0f,M=%.0f)", best.stage, best.bossSpeed, mySpeed)
-		if sig ~= StealState.lastOrderSig then
-			StealState.lastOrderSig = sig
-			local info = (best.stage == 1 and mySpeed < best.bossSpeed)
-				and string.format("เลือกด่าน 1 (ด่านเริ่มต้น/เควสต์สอนเล่น | เราเร็ว %.0f)", mySpeed)
-				or string.format("เลือกด่าน %d (บอสเร็วที่สุดที่วิ่งทัน %.0f | เราเร็ว %.0f)", best.stage, best.bossSpeed, mySpeed)
-			logAction("ด่านเป้าหมาย", info, true)
-		end
-
-		return { best.stage }
+		return candidates
 	end
 
 	-----------------------------------------------------------------
@@ -2441,17 +2409,80 @@ local function main()
 	end
 
 	local function stealCycle()
-		-- 1. ตรวจสอบด่านเป้าหมายเพียงด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
-		local targetStages = buildStageOrder()
-		if #targetStages == 0 then
+		-- 1. ค้นหาด่านทั้งหมดที่ผู้ใช้ติ๊กเลือกและตัวละครวิ่งหนีบอสทัน
+		local candidateStages = getSelectedCandidateStages()
+		if #candidateStages == 0 then
+			local mySpeed = Helpers.GetMoveSpeed()
+			local lowestSelected = nil
+			for s = 1, 12 do
+				if Core.Flags["Stage" .. s] then
+					lowestSelected = s
+					break
+				end
+			end
+			if lowestSelected then
+				local minSpd = getStageBossSpeed(lowestSelected) or 16
+				local sig = string.format("TRAIN(M=%.0f,Req=%.0f)", mySpeed, minSpd)
+				if sig ~= StealState.lastOrderSig then
+					StealState.lastOrderSig = sig
+					logAction("ฝึกซ้อม", string.format("ความเร็วเรา (%.0f) ยังต่ำกว่าด่าน %d (ต้องการ %.0f) -> เข้าลู่วิ่งปั๊ม Speed", mySpeed, lowestSelected, minSpd), true)
+				end
+			else
+				local sig = "NO_STAGE_SELECTED"
+				if sig ~= StealState.lastOrderSig then
+					StealState.lastOrderSig = sig
+					logAction("ด่านเป้าหมาย", "ยังไม่ได้เลือกด่านที่ต้องการขโมยในเมนู (กรุณาติ๊กเลือกอย่างน้อย 1 ด่าน)", false)
+				end
+			end
+
+			-- เข้าลู่วิ่งทันที
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			task.wait(1.0)
+			task.wait(1.5)
 			return
 		end
 
-		local i = targetStages[1]
+		-- 2. สแกนหาแพ็คที่ตรงตามเกรดที่เลือกในด่านเป้าหมายทั้งหมด (จากด่านสูงสุดลงไปหาด่านต่ำสุด)
+		local targetStage = nil
+		local targetPrompt = nil
+		local lastDiag = nil
+
+		for _, cand in ipairs(candidateStages) do
+			local sNum = cand.stage
+			local prompt, diag = checkStageHasPacks(sNum)
+			if not prompt then
+				local basePos = STAGE_CENTERS[sNum]
+				if basePos then
+					Helpers.StreamAround(basePos, 1.2)
+					prompt, diag = checkStageHasPacks(sNum)
+				end
+			end
+			if prompt then
+				targetStage = sNum
+				targetPrompt = prompt
+				break
+			else
+				if diag then lastDiag = diag end
+			end
+		end
+
+		-- 3. หากไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านใดเลย -> เข้าลู่วิ่งฝึกซ้อมทันที
+		if not targetStage or not targetPrompt then
+			local now = os.clock()
+			if now - StealState.lastQuotaLogTime > 15 then
+				StealState.lastQuotaLogTime = now
+				local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
+				logAction("ขโมย", string.format("%s -> พักบนลู่วิ่งฝึกซ้อม (รอแพ็คเกิดใหม่)", reason), false)
+			end
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				returnToSafeRest(true)
+			end
+			task.wait(1.5)
+			return
+		end
+
+		local i = targetStage
 		local maxPacks = Core.Flags.MaxStageStealPacks or 4
 		local currentPending = (getPacksToPlace and #getPacksToPlace()) or 0
 
@@ -2532,28 +2563,15 @@ local function main()
 			end
 		end
 
-		local prompt, diagReason = checkStageHasPacks(i)
-		if not prompt then
-			-- ลอง Stream ซ้ำอีกครั้งก่อนตัดสินใจพัก
-			local basePos = STAGE_CENTERS[i]
-			if basePos then
-				Helpers.StreamAround(basePos, 1.5)
-				prompt, diagReason = checkStageHasPacks(i)
-			end
+		local prompt = targetPrompt
+		if not prompt or not prompt.Parent then
+			prompt = checkStageHasPacks(i)
 		end
-
 		if not prompt then
-			-- ในด่านยังไม่มีแพ็คตามเกรดที่เลือกเกิดใหม่ ให้กลับขึ้นลู่วิ่งรอ
-			local now = os.clock()
-			if now - StealState.lastQuotaLogTime > 15 then
-				StealState.lastQuotaLogTime = now
-				local reason = diagReason or "ยังไม่มีแพ็คเกิดในด่าน"
-				logAction("ขโมย", string.format("ด่าน %d: %s -> พักบนลู่วิ่งรอเกรดที่เลือกเกิดใหม่", i, reason), false)
-			end
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			task.wait(1.5)
+			task.wait(1.0)
 			return
 		end
 
