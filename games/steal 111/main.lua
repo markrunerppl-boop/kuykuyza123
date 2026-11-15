@@ -148,7 +148,7 @@ local function main()
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
 	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
-	Core.Flags.MaxStageStealPacks = 4      -- โควต้าขโมยการ์ดที่ดีที่สุดรอบละ 4 ใบในด่านเดียว
+	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าค่อยเป็น 4)
 	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
 	for i = 1, 12 do
 		Core.Flags["Stage" .. i] = true
@@ -2564,7 +2564,7 @@ local function main()
 				if now - StealState.lastQuotaLogTime > 15 then
 					StealState.lastQuotaLogTime = now
 					local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
-					logAction("ขโมย", string.format("%s -> พักบนลู่วิ่งฝึกซ้อม (รอแพ็คเกิดใหม่)", reason), false)
+					logAction("ขโมย", string.format("%s -> เก็บครบทุกใบแล้ว พักบนลู่วิ่ง รอแพ็ครีเซ็ต (ด่านใหม่)", reason), false)
 				end
 			end
 
@@ -2630,9 +2630,11 @@ local function main()
 			StealState.stageStealCounts[i] = (StealState.stageStealCounts[i] or 0) + 1
 			StealState.stageStealCount = StealState.stageStealCounts[i]
 			Stats.stealOk = Stats.stealOk + 1
+			local cntTxt = quotaActive and string.format("%d/%d", StealState.stageStealCounts[i], maxPacks)
+				or tostring(StealState.stageStealCounts[i])
 			local info = (pName ~= "" and pName ~= rName)
-				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), tostring(pName), StealState.stageStealCounts[i], maxPacks)
-				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %d/%d)", i, tostring(rName), StealState.stageStealCounts[i], maxPacks)
+				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %s)", i, tostring(rName), tostring(pName), cntTxt)
+				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %s)", i, tostring(rName), cntTxt)
 			logAction("ขโมย", info, true)
 
 			-- จัดการนำแพ็คไปรวม/วางที่ฐาน (Core.Busy ยังคงล็อกเป็น true ป้องกันคำสั่งอื่นชนกัน)
@@ -4990,6 +4992,8 @@ local function main()
 
 		CreateToggle(pFarm, "จำกัดรอบละ 4 ใบที่ดีที่สุด (Quota 4 Best Packs/Round)", Core.Flags.MaxStageStealPacks == 4, function(v)
 			Core.Flags.MaxStageStealPacks = v and 4 or 999
+			StealState.stageStealCount = 0
+			table.clear(StealState.stageStealCounts)
 		end)
 
 		CreateToggle(pFarm, "ขโมยเฉพาะด่านที่วิ่งหนีบอสทัน (Outrun Boss Only)", Core.Flags.OutrunOnly, function(v)
