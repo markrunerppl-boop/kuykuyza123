@@ -2120,7 +2120,7 @@ local function main()
 				local p = model:FindFirstChild("StealPrompt", true)
 				if p and p:IsA("ProximityPrompt") and p.Enabled then
 					count = count + 1
-					local rName = getModelRarity(model)
+					local rName = getModelRarity(model) or "ไม่ทราบเกรด"
 					rarityCounts[rName] = (rarityCounts[rName] or 0) + 1
 				end
 			end
@@ -2320,12 +2320,17 @@ local function main()
 		lastResetNightCycle = 0,
 		lastNightActive = nil,
 		lastQuotaLogTime = 0,
+		holdBusy = false,
 	}
 
 	StealState.resetCycle = function(reason)
 		StealState.waitingForNightReset = false
 		StealState.stageStealCount = 0
 		table.clear(StealState.stageStealCounts)
+		if StealState.holdBusy then
+			StealState.holdBusy = false
+			Core.Busy = false
+		end
 		if reason then
 			logAction("ขโมย", tostring(reason), true)
 		end
@@ -2457,7 +2462,7 @@ local function main()
 		end)
 	end)
 
-	local function stealCycle()
+	StealState.cycleInner = function()
 		-- 0. ตรวจจับการรีเซ็ตเฟสกลางคืน/กลางวันของเซิร์ฟเวอร์ที่บนสุดของลูป
 		local isNight = isNightActive()
 		local currentPhaseEndsAt = getNightPhaseEndsAt()
@@ -2614,6 +2619,7 @@ local function main()
 		end
 
 		Core.Busy = true
+		StealState.holdBusy = true
 		leaveTreadmill()
 		local curHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if curHum then pcall(function() curHum:UnequipTools() end) end
@@ -2645,7 +2651,7 @@ local function main()
 					if count > 0 then break end
 					task.wait(0.15)
 				end
-				runBaseMaintenance()
+				pcall(runBaseMaintenance)
 			end
 
 			-- ตรวจสอบโควต้าของด่านนี้
@@ -2667,6 +2673,8 @@ local function main()
 						or string.format("%d วิ", secUntilNight)
 					logAction("ขโมย", string.format("ขโมยครบโควต้า %d ใบในทุกด่านที่เลือกแล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ต (เหลืออีก %s)", maxPacks, timeStr), true)
 					if runBaseMaintenance then pcall(runBaseMaintenance) end
+					Core.Busy = false
+					StealState.holdBusy = false
 					returnToSafeRest(true)
 				else
 					logAction("ขโมย", string.format("ด่าน %d ครบโควต้า %d ใบแล้ว -> สลับไปหาแพ็คในด่านอื่นที่เลือกไว้ต่อ", i, maxPacks), true)
@@ -2685,16 +2693,46 @@ local function main()
 				return char and hum and hum.Health > 0
 			end, 3.0)
 			if runBaseMaintenance then pcall(runBaseMaintenance) end
+			Core.Busy = false
+			StealState.holdBusy = false
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
 		end
 
 		Core.Busy = false
+		StealState.holdBusy = false
 		task.wait(Core.Flags.StealDelay)
 	end
 
+	local function stealCycle()
+		-- ล้างล็อก Busy ที่ค้างจากรอบที่ถูก cancel/พัง (เฉพาะที่ลูปขโมยล็อกเอง)
+		if StealState.holdBusy then
+			StealState.holdBusy = false
+			Core.Busy = false
+		end
+		local ok, err = pcall(StealState.cycleInner)
+		if StealState.holdBusy then
+			StealState.holdBusy = false
+			Core.Busy = false
+		end
+		if not ok then
+			logAction("ขโมย", "รอบขโมยพัง: " .. tostring(err) .. " -> ปลดล็อกแล้วกลับลู่วิ่ง", false)
+			pcall(function()
+				if Core._alive and Core.Flags.AutoSteal and Helpers.IsAlive()
+					and not Helpers.IsCarrying() and LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+					returnToSafeRest(true)
+				end
+			end)
+			task.wait(1.0)
+		end
+	end
+
 	function Loops.Steal()
+		if StealState.holdBusy then
+			StealState.holdBusy = false
+			Core.Busy = false
+		end
 		Core:Loop("steal", "AutoSteal", 0.5, stealCycle)
 	end
 
