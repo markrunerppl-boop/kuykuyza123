@@ -1341,242 +1341,130 @@ end
 
 -- Helper สำหรับเปิด Colossus Crates (Petalfall Crate, Tidewreck Crate ฯลฯ)
 local function TriggerOpenPetalfallCrate()
-    local d1 = SafeGetData()
-    local d2 = SafeGetData2()
-    local mg = d2 and d2.MineGame
+    if TradeState and TradeState.IsTradeActive then return end
 
-    local cratesToOpen = {}
-    local processedKeys = {}
-
-    local function isCrateMatch(name)
-        if type(name) ~= "string" then return false end
-        local lk = name:lower()
-        return lk:find("crate") ~= nil 
-            or lk:find("petalfall") ~= nil 
-            or lk:find("tidewreck") ~= nil 
-            or lk:find("colossus") ~= nil 
-            or lk:find("shipwreck") ~= nil
-            or lk:find("box") ~= nil
-            or name:find("กล่อง") ~= nil
-            or name:find("ซากเรือ") ~= nil
-            or name:find("โกโลซัส") ~= nil
-            or name:find("บอส") ~= nil
-    end
+    local openEvent = (Config.Events and Config.Events.OpenColossusCrate) or "MineOpenColossusCrate"
 
     local function extractCount(v)
         if type(v) == "number" then return v end
         local n = tonumber(v)
         if n then return n end
         if type(v) == "table" then
-            return tonumber(v.Count) or tonumber(v.Amount) or tonumber(v.Value) or tonumber(v.Quantity) or tonumber(v.Total) or tonumber(v[1]) or 0
+            return tonumber(v.Count) or tonumber(v.Amount) or tonumber(v.Value)
+                or tonumber(v.Quantity) or tonumber(v.Total) or 0
         end
         return 0
     end
 
-    local function extractName(k, v)
-        if type(v) == "table" and (v.Name or v.Key or v.Id or v.Item or v.Type or v.CrateName) then
-            return tostring(v.Name or v.Key or v.Id or v.Item or v.Type or v.CrateName)
+    -- อ่านเฉพาะ mg.ColossusCrates สดๆ ทุกครั้ง -> { [crateName] = count }
+    local function readCrates()
+        local result = {}
+        local d2 = SafeGetData2()
+        local mg = d2 and d2.MineGame
+        local cc = mg and mg.ColossusCrates
+        if type(cc) == "table" then
+            for k, v in pairs(cc) do
+                local name
+                if type(k) == "string" then
+                    name = k
+                elseif type(v) == "table" then
+                    name = v.Name or v.Key or v.Id or v.CrateName
+                end
+                local cnt = extractCount(v)
+                if type(name) == "string" and cnt > 0 then
+                    result[name] = cnt
+                end
+            end
         end
-        if type(k) == "string" then return k end
+        -- Fallback ตรวจสอบ mg.Crates หากใน ColossusCrates ว่างเปล่า
+        if next(result) == nil and mg and type(mg.Crates) == "table" then
+            for k, v in pairs(mg.Crates) do
+                local name = (type(k) == "string" and k) or (type(v) == "table" and (v.Name or v.Key or v.Id or v.CrateName))
+                local cnt = extractCount(v)
+                if type(name) == "string" and cnt > 0 then
+                    result[name] = cnt
+                end
+            end
+        end
+        return result
+    end
+
+    -- ยิง Remote พร้อม Timeout Guard 3.5 วิ
+    local function sendOpen(name, amount)
+        local done = false
+        task.spawn(function()
+            pcall(SafeSendEvent, openEvent, name, amount)
+            -- รองรับ Alias ภาษาไทย/อังกฤษ
+            local alias = (name == "กล่องซากเรือจากกระแสน้ำ" and "Tidewreck Crate")
+                or (name == "Tidewreck Crate" and "กล่องซากเรือจากกระแสน้ำ")
+                or (name == "Petalfall Crate" and "Petalfall")
+                or (name == "Petalfall" and "Petalfall Crate")
+            if alias then
+                pcall(SafeSendEvent, openEvent, alias, amount)
+            end
+            done = true
+        end)
+        local t = 0
+        while not done and t < 3.5 do
+            task.wait(0.1)
+            t = t + 0.1
+        end
+        return done
+    end
+
+    -- รอจนจำนวนกล่องลดลงจากค่าเดิม (ยืนยันว่าเซิร์ฟเวอร์เปิดจริง)
+    local function waitDecrease(name, before, timeout)
+        local t = 0
+        while t < timeout do
+            task.wait(0.15)
+            t = t + 0.15
+            local now = readCrates()[name] or 0
+            if now < before then return now end
+        end
         return nil
     end
 
-    local function inspectTable(tbl, forceAll)
-        if type(tbl) ~= "table" then return end
-        for k, v in pairs(tbl) do
-            local itemName = extractName(k, v)
-            local count = extractCount(v)
-            if itemName and count > 0 and not processedKeys[itemName] then
-                if forceAll or isCrateMatch(itemName) then
-                    processedKeys[itemName] = true
-                    table.insert(cratesToOpen, { Key = itemName, Count = count })
-                end
-            end
-        end
-    end
+    local totalOpened = 0
+    local crates = readCrates()
 
-    -- สแกนทุก Table ใน mg
-    if mg and type(mg) == "table" then
-        inspectTable(mg.ColossusCrates, true)
-        inspectTable(mg.Crates, false)
-        inspectTable(mg.Items, false)
-        inspectTable(mg.Inventory, false)
-        inspectTable(mg.Bag, false)
-        inspectTable(mg.Bags, false)
-        inspectTable(mg.Storage, false)
-        inspectTable(mg.Boxes, false)
-        inspectTable(mg.Loot, false)
-        inspectTable(mg.Drops, false)
-        inspectTable(mg.RewardItems, false)
-        inspectTable(mg.EnchantItems, false)
-        inspectTable(mg.GearItems, false)
+    for crateName, startCount in pairs(crates) do
+        local remaining = startCount
+        local fails = 0
+        local guard = 0
 
-        -- วนตรวจ sub-tables อื่นๆ ใน mg เผื่อเก็บไว้ในชื่อเฉพาะ
-        for tName, subTbl in pairs(mg) do
-            if type(subTbl) == "table" and not tName:find("Pickaxe") and not tName:find("Character") and not tName:find("Zone") and not tName:find("Skill") and not tName:find("Holder") then
-                inspectTable(subTbl, false)
-            end
-        end
-    end
+        while remaining > 0 and fails < 2 and guard < 30 do
+            guard = guard + 1
+            if TradeState and TradeState.IsTradeActive then break end
 
-    -- สแกนใน d2 และ d1 เผื่ออยู่นอก mg
-    if d2 and type(d2) == "table" then
-        inspectTable(d2.ColossusCrates, true)
-        inspectTable(d2.Crates, false)
-        inspectTable(d2.Items, false)
-        inspectTable(d2.Inventory, false)
-    end
-    if d1 and type(d1) == "table" then
-        inspectTable(d1.ColossusCrates, true)
-        inspectTable(d1.Crates, false)
-        inspectTable(d1.Items, false)
-        inspectTable(d1.Inventory, false)
-    end
+            local amount = (fails == 0) and math.clamp(remaining, 1, 50) or 1
+            UpdateStatus(string.format("📦 เปิด %s x%d (เหลือ %d)...", crateName, amount, remaining))
 
-    -- ตรวจสอบ Candidate Keys ที่รู้จักทั้งหมด
-    local candidateKeys = {
-        "Tidewreck Crate",
-        "กล่องซากเรือจากกระแสน้ำ",
-        "Tidewreck",
-        "TidewreckCrate",
-        "Petalfall Crate",
-        "Petalfall",
-        "กล่องบอส Petalfall",
-        "Shipwreck Crate",
-        "Shipwreck",
-        "Colossus XI",
-        "ColossusXI",
-        "Colossus 11"
-    }
-    for _, cKey in ipairs(candidateKeys) do
-        if not processedKeys[cKey] then
-            local cnt = 0
-            if mg then
-                if mg.ColossusCrates and extractCount(mg.ColossusCrates[cKey]) > 0 then
-                    cnt = extractCount(mg.ColossusCrates[cKey])
-                elseif mg.Crates and extractCount(mg.Crates[cKey]) > 0 then
-                    cnt = extractCount(mg.Crates[cKey])
-                elseif mg.Items and extractCount(mg.Items[cKey]) > 0 then
-                    cnt = extractCount(mg.Items[cKey])
-                elseif mg.Inventory and extractCount(mg.Inventory[cKey]) > 0 then
-                    cnt = extractCount(mg.Inventory[cKey])
-                end
-            end
-            if cnt > 0 then
-                processedKeys[cKey] = true
-                table.insert(cratesToOpen, { Key = cKey, Count = cnt })
-            end
-        end
-    end
+            sendOpen(crateName, amount)
+            local after = waitDecrease(crateName, remaining, 2.5)
 
-    -- Layer 1 & 2: ยิงผ่าน Remote Events
-    local primaryEvent = (MineCrateConfig and MineCrateConfig.Events and (MineCrateConfig.Events.Open or MineCrateConfig.Events.OpenColossusCrate or MineCrateConfig.Events.OpenCrate or MineCrateConfig.Events.Use)) 
-        or (Config.Events and Config.Events.OpenColossusCrate) 
-        or "MineOpenColossusCrate"
-
-    local openedAny = false
-    for _, crateData in ipairs(cratesToOpen) do
-        local crateName = crateData.Key
-        local count = crateData.Count
-        if count > 0 then
-            openedAny = true
-            local openAmount = math.clamp(count, 1, 50)
-            UpdateStatus(string.format("📦 เปิด %s (%d/%d กล่อง)...", tostring(crateName), openAmount, count))
-
-            local nameVariants = { crateName }
-            if crateName:find("ซากเรือ") or crateName:lower():find("tidewreck") then
-                table.insert(nameVariants, "Tidewreck Crate")
-                table.insert(nameVariants, "กล่องซากเรือจากกระแสน้ำ")
-                table.insert(nameVariants, "Tidewreck")
-                table.insert(nameVariants, "Colossus XI")
-            elseif crateName:find("Petalfall") or crateName:find("กล่องบอส Petalfall") then
-                table.insert(nameVariants, "Petalfall Crate")
-                table.insert(nameVariants, "Petalfall")
-                table.insert(nameVariants, "กล่องบอส Petalfall")
-            end
-
-            local eventList = {
-                primaryEvent,
-                "MineOpenColossusCrate",
-                "MineOpenCrate",
-                "MineCrateOpen",
-                "MineUseItem",
-                "MineUse",
-                "MineOpen"
-            }
-
-            for _, targetName in ipairs(nameVariants) do
-                for _, ev in ipairs(eventList) do
-                    SafeSendEvent(ev, targetName, openAmount)
-                    SafeSendEvent(ev, targetName)
-                    SafeSendEvent(ev, openAmount, targetName)
-                    SafeSendEvent(ev, targetName, 1)
-                end
-                if MineInventory then
-                    pcall(function() if MineInventory.OpenCrate then MineInventory:OpenCrate(targetName, openAmount) end end)
-                    pcall(function() if MineInventory.UseItem then MineInventory:UseItem(targetName, openAmount) end end)
-                    pcall(function() if MineInventory.Use then MineInventory:Use(targetName, openAmount) end end)
-                end
-            end
-
-            HumanWait(0.3, 0.5)
-            UpdateStatus(string.format("✅ เปิด %s %d กล่องสำเร็จ!", tostring(crateName), openAmount))
-        end
-    end
-
-    -- Layer 3: ตรวจสอบและสั่งเปิดผ่าน PlayerGui Direct Clicker (กรณีหน้าต่างคลังสินค้าเปิดอยู่)
-    pcall(function()
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if not pg then return end
-
-        local targetCrateBtn = nil
-        for _, desc in ipairs(pg:GetDescendants()) do
-            if desc:IsA("GuiObject") and desc.Visible then
-                local txt = (desc:IsA("TextLabel") or desc:IsA("TextButton")) and desc.Text or ""
-                if txt:find("กล่องซากเรือ") or txt:find("ซากเรือ") or txt:find("Tidewreck") or txt:find("Petalfall") or (txt:find("Colossus") and txt:find("Crate")) then
-                    local clickBtn = desc:IsA("GuiButton") and desc or desc:FindFirstAncestorWhichIsA("GuiButton") or (desc.Parent and desc.Parent:FindFirstChildWhichIsA("GuiButton"))
-                    if clickBtn and clickBtn.Visible then
-                        targetCrateBtn = clickBtn
-                        break
-                    end
-                end
+            if after then
+                totalOpened = totalOpened + (remaining - after)
+                remaining = after
+                fails = 0
+                HumanWait(0.3, 0.5)
+            else
+                fails = fails + 1 -- ครั้งแรกพลาด -> ลองใหม่ด้วย amount = 1
             end
         end
 
-        if targetCrateBtn then
-            openedAny = true
-            if getconnections then
-                for _, c in ipairs(getconnections(targetCrateBtn.MouseButton1Click)) do c:Fire() end
-                for _, c in ipairs(getconnections(targetCrateBtn.Activated)) do c:Fire() end
-            end
-            pcall(function() firesignal(targetCrateBtn.MouseButton1Click) end)
-            pcall(function() firesignal(targetCrateBtn.Activated) end)
-            HumanWait(0.2, 0.3)
-
-            -- หาปุ่มคำสั่ง "เปิด" / "Open" / "ใช้" / "Use"
-            for _, desc in ipairs(pg:GetDescendants()) do
-                if desc:IsA("GuiButton") and desc.Visible then
-                    local btnTxt = desc:FindFirstChildWhichIsA("TextLabel") and desc:FindFirstChildWhichIsA("TextLabel").Text or (desc:IsA("TextButton") and desc.Text or "")
-                    local bLow = btnTxt:lower()
-                    if btnTxt == "เปิด" or bLow == "open" or btnTxt == "ใช้" or bLow == "use" or btnTxt:find("เปิด") or bLow:find("open") then
-                        if getconnections then
-                            for _, c in ipairs(getconnections(desc.MouseButton1Click)) do c:Fire() end
-                            for _, c in ipairs(getconnections(desc.Activated)) do c:Fire() end
-                        end
-                        pcall(function() firesignal(desc.MouseButton1Click) end)
-                        pcall(function() firesignal(desc.Activated) end)
-                        UpdateStatus("📦 คลิกเปิดกล่องผ่านเมนูคลังสินค้าสำเร็จ!")
-                        break
-                    end
-                end
-            end
+        if remaining > 0 then
+            UpdateStatus(string.format("⚠️ เปิด %s ไม่สำเร็จ (เหลือ %d)", crateName, remaining))
         end
-    end)
+        if logAction then
+            pcall(logAction, string.format("OpenColossusCrate %s: เปิดแล้ว %d / เหลือ %d", crateName, startCount - remaining, remaining))
+        end
+    end
 
-    if not openedAny then
+    if totalOpened > 0 then
+        UpdateStatus(string.format("✅ เปิด Colossus Crate รวม %d กล่อง", totalOpened))
+        if Config.AutoEquipBest then TriggerEquipBest() end
+    elseif next(crates) == nil then
         UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
-    elseif Config.AutoEquipBest then
-        TriggerEquipBest()
     end
 end
 

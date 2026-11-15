@@ -1,6 +1,6 @@
 # ARCHITECTURE.md - ดัชนีโครงสร้างและแผนผังสคริปต์ (Anime Mine)
 
-ไฟล์สคริปต์หลัก: `games/anime/anime_mine.lua` (ความยาวประมาณ 5,230 บรรทัด)
+ไฟล์สคริปต์หลัก: `games/anime/anime_mine.lua` (ความยาวประมาณ 5,120 บรรทัด)
 
 ---
 
@@ -14,23 +14,23 @@
 | **💰 ระบบขายของรวม (Auto Sell)** | `GetUnifiedSellKeys` | ~370 - 450 | `local function GetUnifiedSellKeys` |
 | **⚙️ ค่าคอนฟิกเริ่มต้นของสคริปต์** | `Config = { ... }` | ~460 - 550 | `Config = {` |
 | **🎒 ระบบสแกนคลังไอเทมเพื่อเทรด** | `FetchOwnedInventory` | ~828 - 1220 | `local function FetchOwnedInventory` |
-| **📦 ระบบเปิดกล่องบอส Colossus** | `TriggerOpenPetalfallCrate` | ~1343 - 1580 | `local function TriggerOpenPetalfallCrate` |
-| **🎨 โครงสร้างหน้าต่าง UI (Kuykuy Hub)** | UI Construction & Tabs | ~1585 - 2800 | `Kuykuy Hub Framework` |
-| **🔘 การผูกปุ่มและ Event บนหน้า UI** | UI Bindings & Action Buttons | ~2801 - 3680 | `AddToggle("AutoMine"` |
-| **🤝 ระบบส่งของเทรดอัตโนมัติ** | `RunTransferWorker` | ~4053 - 4350 | `local function RunTransferWorker` |
-| **[TASK 1] เก็บหีบบนแปลง** | Auto Take Chest Loop | ~4506 | `[TASK 1]` |
-| **[TASK 2] ขายของอัตโนมัติในลูป** | Unified Auto Sell Loop | ~4525 | `[TASK 2]` |
-| **[TASK 3] อัปเกรดผังสกิลโซน** | Zone Skill Tree & Core | ~4569 | `[TASK 3]` |
-| **[TASK 4] ซื้อขวานที่ดีที่สุด** | Auto Buy Best Pickaxe | ~4642 | `[TASK 4]` |
-| **[TASK 5] อัปเกรดสเตตัสคนงาน** | Auto Upgrade Stats (Base DMG) | ~4715 | `[TASK 5]` |
-| **[TASK 6] สุ่มกลายพันธุ์คนงาน** | Auto Mutation & Auto-Lock | ~4785 | `[TASK 6]` |
-| **[TASK 7] ทอยลูกเต๋าบัฟ** | Auto Roll Dice (Enchant/HW) | ~4888 | `[TASK 7]` |
-| **[TASK 8] สุ่มม้วนตัวละคร** | Auto Summon Scrolls | ~4916 | `[TASK 8]` |
-| **[TASK 9] รับรางวัล Index & Events** | Auto Claim Index & Events | ~4940 | `[TASK 9]` |
-| **[TASK 10] ลง Infinity Trial** | Auto Infinity Trial | ~5017 | `[TASK 10]` |
-| **[TASK 11] เปิดกล่อง Colossus ในลูป** | Auto Open Colossus Crates | ~5066 | `[TASK 11]` |
-| **[TASK 11.5] เลื่อนระดับโกโลซัส** | Auto Next Colossus Tier | ~5080 | `[TASK 11.5]` |
-| **[TASK 12] ขุดหินในแปลง / ซื้อโซน** | Auto Mine & Unlock Zones | ~5112 | `[TASK 12]` |
+| **📦 ระบบเปิดกล่องบอส Colossus** | `TriggerOpenPetalfallCrate` | ~1343 - 1469 | `local function TriggerOpenPetalfallCrate` |
+| **🎨 โครงสร้างหน้าต่าง UI (Kuykuy Hub)** | UI Construction & Tabs | ~1475 - 2690 | `Kuykuy Hub Framework` |
+| **🔘 การผูกปุ่มและ Event บนหน้า UI** | UI Bindings & Action Buttons | ~2691 - 3570 | `AddToggle("AutoMine"` |
+| **🤝 ระบบส่งของเทรดอัตโนมัติ** | `RunTransferWorker` | ~3941 - 4250 | `local function RunTransferWorker` |
+| **[TASK 1] เก็บหีบบนแปลง** | Auto Take Chest Loop | ~4394 | `[TASK 1]` |
+| **[TASK 2] ขายของอัตโนมัติในลูป** | Unified Auto Sell Loop | ~4413 | `[TASK 2]` |
+| **[TASK 3] อัปเกรดผังสกิลโซน** | Zone Skill Tree & Core | ~4457 | `[TASK 3]` |
+| **[TASK 4] ซื้อขวานที่ดีที่สุด** | Auto Buy Best Pickaxe | ~4530 | `[TASK 4]` |
+| **[TASK 5] อัปเกรดสเตตัสคนงาน** | Auto Upgrade Stats (Base DMG) | ~4603 | `[TASK 5]` |
+| **[TASK 6] สุ่มกลายพันธุ์คนงาน** | Auto Mutation & Auto-Lock | ~4673 | `[TASK 6]` |
+| **[TASK 7] ทอยลูกเต๋าบัฟ** | Auto Roll Dice (Enchant/HW) | ~4776 | `[TASK 7]` |
+| **[TASK 8] สุ่มม้วนตัวละคร** | Auto Summon Scrolls | ~4804 | `[TASK 8]` |
+| **[TASK 9] รับรางวัล Index & Events** | Auto Claim Index & Events | ~4828 | `[TASK 9]` |
+| **[TASK 10] ลง Infinity Trial** | Auto Infinity Trial | ~4905 | `[TASK 10]` |
+| **[TASK 11] เปิดกล่อง Colossus ในลูป** | Auto Open Colossus Crates | ~4954 | `[TASK 11]` |
+| **[TASK 11.5] เลื่อนระดับโกโลซัส** | Auto Next Colossus Tier | ~4968 | `[TASK 11.5]` |
+| **[TASK 12] ขุดหินในแปลง / ซื้อโซน** | Auto Mine & Unlock Zones | ~5000 | `[TASK 12]` |
 
 ---
 
