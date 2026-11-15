@@ -688,6 +688,8 @@ TradeState = {
         SelectedItems = {},
         SendAllAlways = true,       -- ⚡ ส่งไอเทมที่เลือกทั้งหมดทุกครั้ง (Auto-Max Always)
         AutoLoopUntilEmpty = true,  -- 🔁 ส่งวนซ้ำอัตโนมัติจนกว่าของที่เลือกจะหมดกระเป๋า
+        AutoTradeThresholdEnabled = false, -- 📦 เริ่มเทรดอัตโนมัติเมื่อยอดของสะสมครบตามที่กำหนด
+        AutoTradeThresholdAmount = 50,     -- 🔢 ยอดรวมไอเทมที่เลือกขั้นต่ำก่อนยิงคำขอเทรด
         AutoAccept = true,
         AutoReady = true,
         AutoConfirm = true,
@@ -716,8 +718,10 @@ TradeState = {
                     AutoReady = TradeState.AutoReady,
                     AutoConfirm = TradeState.AutoConfirm,
                     CurrentCategory = TradeState.CurrentCategory or "All",
-                SendAllAlways = TradeState.SendAllAlways ~= false,
-                AutoLoopUntilEmpty = TradeState.AutoLoopUntilEmpty ~= false,
+                    SendAllAlways = TradeState.SendAllAlways ~= false,
+                    AutoLoopUntilEmpty = TradeState.AutoLoopUntilEmpty ~= false,
+                    AutoTradeThresholdEnabled = TradeState.AutoTradeThresholdEnabled == true,
+                    AutoTradeThresholdAmount = tonumber(TradeState.AutoTradeThresholdAmount) or 50,
                     SelectedItems = itemsToSave
                 }
                 writefile(TRADE_CONFIG_FILE, HttpService:JSONEncode(data))
@@ -737,13 +741,17 @@ TradeState = {
                     if decoded.Mode then TradeState.Mode = decoded.Mode end
                     if decoded.TargetReceiverName and #decoded.TargetReceiverName > 0 then
                         TradeState.SavedReceiverName = decoded.TargetReceiverName
+                        local p = Players:FindFirstChild(decoded.TargetReceiverName)
+                        if p then TradeState.TargetReceiver = p end
                     end
                     if decoded.AutoAccept ~= nil then TradeState.AutoAccept = decoded.AutoAccept end
                     if decoded.AutoReady ~= nil then TradeState.AutoReady = decoded.AutoReady end
                     if decoded.AutoConfirm ~= nil then TradeState.AutoConfirm = decoded.AutoConfirm end
                     if decoded.CurrentCategory then TradeState.CurrentCategory = decoded.CurrentCategory end
-                if decoded.SendAllAlways ~= nil then TradeState.SendAllAlways = decoded.SendAllAlways end
-                if decoded.AutoLoopUntilEmpty ~= nil then TradeState.AutoLoopUntilEmpty = decoded.AutoLoopUntilEmpty end
+                    if decoded.SendAllAlways ~= nil then TradeState.SendAllAlways = decoded.SendAllAlways end
+                    if decoded.AutoLoopUntilEmpty ~= nil then TradeState.AutoLoopUntilEmpty = decoded.AutoLoopUntilEmpty end
+                    if decoded.AutoTradeThresholdEnabled ~= nil then TradeState.AutoTradeThresholdEnabled = decoded.AutoTradeThresholdEnabled end
+                    if decoded.AutoTradeThresholdAmount ~= nil then TradeState.AutoTradeThresholdAmount = tonumber(decoded.AutoTradeThresholdAmount) or 50 end
                     if type(decoded.SelectedItems) == "table" then
                         SavedTradeItems = decoded.SelectedItems
                     end
@@ -3086,7 +3094,7 @@ end)
 AddSectionHeader("⚡ 4. คำสั่งเปิด-ปิดการเทรด (Trade Controls)", TabTrade, 12)
 
 local SendAllToggleFrame = Instance.new("Frame")
-SendAllToggleFrame.Size = UDim2.new(1, 0, 0, 58)
+SendAllToggleFrame.Size = UDim2.new(1, 0, 0, 126)
 SendAllToggleFrame.BackgroundTransparency = 1
 SendAllToggleFrame.LayoutOrder = 13
 SendAllToggleFrame.Parent = TabTrade
@@ -3104,6 +3112,58 @@ end)
 CreateSmallToggle(SendAllToggleFrame, "🔁 ส่งวนซ้ำจนกว่าของจะหมดกระเป๋า (Auto-Loop)", TradeState.AutoLoopUntilEmpty, function(v)
     TradeState.AutoLoopUntilEmpty = v
     SaveTradeConfig()
+end)
+
+CreateSmallToggle(SendAllToggleFrame, "📦 ส่งเทรดอัตโนมัติเมื่อของครบยอด (Auto Trade on Threshold)", TradeState.AutoTradeThresholdEnabled, function(v)
+    TradeState.AutoTradeThresholdEnabled = v
+    SaveTradeConfig()
+    if v then
+        TradeNotify("เปิด Auto Trade", string.format("จะเริ่มเทรดอัตโนมัติเมื่อสะสมไอเทมที่เลือกครบ %d ชิ้น", TradeState.AutoTradeThresholdAmount or 50), 3)
+    end
+end)
+
+local ThresholdInputRow = Instance.new("Frame")
+ThresholdInputRow.Size = UDim2.new(1, 0, 0, 28)
+ThresholdInputRow.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
+ThresholdInputRow.Parent = SendAllToggleFrame
+
+local tiCorner = Instance.new("UICorner")
+tiCorner.CornerRadius = UDim.new(0, 6)
+tiCorner.Parent = ThresholdInputRow
+
+local ThresholdLabel = Instance.new("TextLabel")
+ThresholdLabel.Size = UDim2.new(1, -75, 1, 0)
+ThresholdLabel.Position = UDim2.new(0, 10, 0, 0)
+ThresholdLabel.BackgroundTransparency = 1
+ThresholdLabel.Text = "🔢 ยอดรวมไอเทมที่เลือกขั้นต่ำเพื่อเริ่มส่ง:"
+ThresholdLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
+ThresholdLabel.Font = Enum.Font.GothamMedium
+ThresholdLabel.TextSize = 10
+ThresholdLabel.TextXAlignment = Enum.TextXAlignment.Left
+ThresholdLabel.Parent = ThresholdInputRow
+
+local ThresholdBox = Instance.new("TextBox")
+ThresholdBox.Size = UDim2.new(0, 60, 0, 20)
+ThresholdBox.Position = UDim2.new(1, -66, 0.5, -10)
+ThresholdBox.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+ThresholdBox.Text = tostring(TradeState.AutoTradeThresholdAmount or 50)
+ThresholdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThresholdBox.Font = Enum.Font.GothamBold
+ThresholdBox.TextSize = 11
+ThresholdBox.ClearTextOnFocus = false
+ThresholdBox.Parent = ThresholdInputRow
+
+local tbCorner = Instance.new("UICorner")
+tbCorner.CornerRadius = UDim.new(0, 4)
+tbCorner.Parent = ThresholdBox
+
+ThresholdBox.FocusLost:Connect(function()
+    local num = tonumber(ThresholdBox.Text) or 50
+    num = math.max(1, math.floor(num))
+    ThresholdBox.Text = tostring(num)
+    TradeState.AutoTradeThresholdAmount = num
+    SaveTradeConfig()
+    TradeNotify("ตั้งค่ายอดเทรด", string.format("ตั้งค่ายอดรวมขั้นต่ำเป็น %d ชิ้น", num), 2)
 end)
 
 StartTradeBtn = Instance.new("TextButton")
@@ -3622,6 +3682,49 @@ end)
     
     _G.ToggleTrade = ToggleTrade
     _G.IsTradeActive = function() return TradeState.IsTradeActive end
+
+    -- 🛡️ Sender Threshold Watchdog: ตรวจเช็กยอดรวมไอเทมที่เลือก และเริ่มส่งเทรดอัตโนมัติเมื่อสะสมถึงยอด
+    task.spawn(function()
+        while true do
+            task.wait(2.0)
+            if getgenv and (getgenv()._AnimeMineWorkerActive == false or getgenv()._AnimeMineSessionId ~= scriptSessionId) then
+                break
+            end
+            if ScreenGui and not ScreenGui.Parent then
+                break
+            end
+
+            pcall(function()
+                if TradeState.Mode == "Sender"
+                    and TradeState.AutoTradeThresholdEnabled
+                    and not TradeState.IsTradeActive
+                    and (not TradeState.CurrentSession or TradeState.CurrentSession.Stage == "closed" or TradeState.CurrentSession.Stage == "saving") then
+
+                    local targetPlayer = TradeState.TargetReceiver
+                    if not targetPlayer and TradeState.SavedReceiverName and #TradeState.SavedReceiverName > 0 then
+                        targetPlayer = Players:FindFirstChild(TradeState.SavedReceiverName)
+                        if targetPlayer then TradeState.TargetReceiver = targetPlayer end
+                    end
+
+                    if targetPlayer and targetPlayer.Parent == Players then
+                        local ownedMap = GetAvailableCountMap()
+                        local totalMatchingCount = 0
+                        local hasAnySelected = false
+                        for key, _ in pairs(TradeState.SelectedItems or {}) do
+                            hasAnySelected = true
+                            totalMatchingCount = totalMatchingCount + (ownedMap[key] or 0)
+                        end
+
+                        local requiredThreshold = tonumber(TradeState.AutoTradeThresholdAmount) or 50
+                        if hasAnySelected and totalMatchingCount >= requiredThreshold then
+                            TradeNotify("ยอดสะสมครบตามเป้าหมาย!", string.format("พบไอเทมที่เลือกสะสมครบ %d/%d ชิ้น เริ่มระบบเทรดส่งให้ %s ทันที!", totalMatchingCount, requiredThreshold, targetPlayer.Name), 4)
+                            ToggleTrade(true)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
     
     TradeNotify("Trade Suite V7.1 Pro", "หน้าต่างควบคุมการเทรด V7.1 Pro พร้อมใช้งานแล้ว!", 3)
 
