@@ -2,7 +2,7 @@
 -- KUYKUY HUB | โยนอาหารให้สัตว์ (PlaceId: 120219252362013)
 -- โครงสร้าง: Core(State/Cleanup) -> Config(Auto Save/Load) -> Net -> Helpers -> Features -> UI
 -- มาตรฐาน: Kuykuy Hub Universal Architecture (7 Core Pillars)
--- เวอร์ชัน: v3.0 (Zero-Pushback Throw Engine + AreaUtil Official Launch Sync + Seamless Hybrid Farm)
+-- เวอร์ชัน: v3.1 (Forward Declaration Scope Fix + Seamless Hybrid Farm)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -696,6 +696,9 @@ local function runTrainCycle()
     end
 end
 
+-- [Forward Declaration]: ประกาศตัวแปร local ล่วงหน้าเพื่อให้ runCycleFarm เรียกใช้งานได้
+local runThrowCycle
+
 -- [ฟังก์ชันหลัก 1.5]: ลูปฟาร์มไฮบริด (Auto Cycle: ฝึกพลัง 20s สลับโยนอาหาร 6 ครั้ง อัตโนมัติ)
 local function runCycleFarm()
     if not Core.Flags.AutoCycle or not Core._alive then return end
@@ -751,7 +754,7 @@ local function runCycleFarm()
 end
 
 -- [ฟังก์ชันหลัก 2]: ลูปโยนอาหารคะแนนเต็ม 100% ไวที่สุดในเซิร์ฟเวอร์ (Ultra-Fast Adaptive Pipeline + Zero-Freeze Guard)
-local function runThrowCycle()
+function runThrowCycle()
     if Core.Busy then return false end
     if not Helpers.IsAlive() then return false end
     if not remotes.Throw_Start or not remotes.Throw_Resolve or not remotes.Throw_Complete then
@@ -1254,7 +1257,7 @@ TitleLabel.TextSize = 14
 TitleLabel.TextColor3 = UIColors.TextPrimary
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.RichText = true
-TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v3.0</font>"
+TitleLabel.Text = "KUYKUY HUB <font color=\"#38D9A9\">โยนอาหารให้สัตว์</font> <font color=\"#FF922B\">v3.1</font>"
 TitleLabel.Parent = Header
 
 local CloseBtn = Instance.new("TextButton")
@@ -1831,6 +1834,6 @@ CreateButton(SettingsPage, "⛔ ปิดสคริปต์ฉุกเฉิ
 end)
 
 -- เริ่มต้นระบบ
-logAction("ระบบ", string.format("Kuykuy Hub v3.0 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
+logAction("ระบบ", string.format("Kuykuy Hub v3.1 โหลดสำเร็จ (การตั้งค่า: %s)", loadedFromDisk and "โหลดการตั้งค่าเดิมแล้ว" or "ค่าเริ่มต้น"), true)
 
-print("[Kuykuy Hub] โยนอาหารให้สัตว์ v3.0 โหลดสำเร็จ 100%")
+print("[Kuykuy Hub] โยนอาหารให้สัตว์ v3.1 โหลดสำเร็จ 100%")
