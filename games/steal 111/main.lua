@@ -24,10 +24,17 @@ local ENV = (getgenv and getgenv()) or _G
 local TELEPORT_LOADER = [[
 task.spawn(function()
 	task.wait(1.5)
-	local ok, src = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/main.lua")
+	local ok, src = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua")
 	if ok and type(src) == "string" and #src > 100 then
 		loadstring(src)()
-	elseif getgenv and getgenv().__KUY_RAW_SOURCE then
+		return
+	end
+	local okDirect, srcDirect = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/steal%20111/main.lua")
+	if okDirect and type(srcDirect) == "string" and #srcDirect > 100 then
+		loadstring(srcDirect)()
+		return
+	end
+	if getgenv and getgenv().__KUY_RAW_SOURCE then
 		loadstring(getgenv().__KUY_RAW_SOURCE)()
 	end
 end)

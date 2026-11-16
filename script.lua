@@ -112,6 +112,11 @@ local SupportedGames = {
         Category = "Steal / Simulator",
         Path = "steal 111/main.lua"
     },
+    [135412798316370] = {
+        Name = "ขโมยแพ็คอนิเมะ - ห้องดันเจี้ยน (Steal Anime Packs - Dungeon)",
+        Category = "Steal / Dungeon",
+        Path = "steal 111/main.lua"
+    },
 
     -- --------------------------------------------------------------------
     -- 🍖 9. โยนอาหารให้สัตว์ (Feed Animals Simulator)
@@ -125,6 +130,11 @@ local SupportedGames = {
 
 -- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/ดันเจี้ยน/วาป
 local SupportedUniverses = {
+    [10701622575] = {
+        Name = "ขโมยแพ็คอนิเมะ (Steal Anime Packs)",
+        Category = "Steal / Simulator",
+        Path = "steal 111/main.lua"
+    },
     [3183403065] = {
         Name = "การผจญภัยอนิเมะ (Anime Adventures)",
         Category = "Tower Defense / QA",
@@ -232,6 +242,8 @@ task.spawn(function()
             gameInfo = SupportedGames[93898234979111]
         elseif (rep:FindFirstChild("Remotes") and rep.Remotes:FindFirstChild("Throw_Start")) or workspace:FindFirstChild("StarterArea") then
             gameInfo = SupportedGames[120219252362013]
+        elseif (rep:FindFirstChild("Remotes") and (rep.Remotes:FindFirstChild("Towers") or rep.Remotes:FindFirstChild("DungeonParty") or rep.Remotes:FindFirstChild("Packs"))) or workspace:FindFirstChild("DungeonRoom") or workspace:FindFirstChild("Game") then
+            gameInfo = SupportedGames[135412798316370] or SupportedGames[133151378618377]
         end
     end
 
