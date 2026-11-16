@@ -1036,19 +1036,47 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local sf = ts and ts:FindFirstChild("ScrollingFrame")
 			-- เลือกการ์ด "Double Dugeons" (วนทุก Template ตามชื่อ TowerName) ถ้าไม่เจอใช้ Template แรก
 			local tmpl
+			Helpers._dgPickedName = nil
 			if sf then
 				for _, c in ipairs(sf:GetChildren()) do
 					local tn = c:FindFirstChild("TowerName", true)
-					local txt = string.lower((tn and tn:IsA("TextLabel") and tn.Text) or c.Name)
-					if txt:find("double") then tmpl = c break end
+					local txt = string.lower((tn and tn:IsA("TextLabel") and tn.Text) or "")
+					local attrName = c:GetAttribute("TowerName") or c:GetAttribute("Name") or c:GetAttribute("Tower")
+					if txt == "" then txt = string.lower(tostring(attrName or c.Name)) end
+					if txt:find("double") then
+						tmpl = c
+						Helpers._dgPickedName = (tn and tn:IsA("TextLabel") and tn.Text ~= "" and tn.Text) or (type(attrName) == "string" and attrName) or nil
+						break
+					end
 				end
 				tmpl = tmpl or sf:FindFirstChild("Template")
 			end
 			local playBtn = tmpl and tmpl:FindFirstChild("Play")
-			if playBtn and playBtn:IsA("GuiButton") and firesignal then
-				pcall(firesignal, playBtn.Activated)
-				task.wait(0.3)
+			local function clickBtn(b)
+				if not (b and b:IsA("GuiButton")) then return end
+				if Helpers.ClickButton then pcall(Helpers.ClickButton, b) end
+				if firesignal then
+					pcall(firesignal, b.Activated)
+					pcall(firesignal, b.MouseButton1Click)
+					pcall(firesignal, b.MouseButton1Down)
+					pcall(firesignal, b.MouseButton1Up)
+				end
+				if getconnections then
+					pcall(function()
+						for _, cn in ipairs(getconnections(b.Activated)) do pcall(cn.Fire, cn) end
+						for _, cn in ipairs(getconnections(b.MouseButton1Click)) do pcall(cn.Fire, cn) end
+					end)
+				end
 			end
+			local function selectCard()
+				if not tmpl then return end
+				clickBtn(tmpl) -- ตัวการ์ดเอง (ถ้าเป็นปุ่ม)
+				for _, b in ipairs(tmpl:GetDescendants()) do
+					if b:IsA("GuiButton") then clickBtn(b) end -- ปุ่มลูก Select/Play/Click
+				end
+			end
+			selectCard()
+			task.wait(0.3)
 
 			-- 3.1 หาและกดปุ่ม "View" (ค้นหาตามชื่อ/ข้อความ) เพื่อไปหน้า Party/Team ต่อ
 			local function findViewButton(root)
@@ -1085,19 +1113,19 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					break
 				end
 				-- บางครั้ง Play ยังไม่ถูกกด ลองกดซ้ำจนกว่าจะเจอ View
-				if playBtn and playBtn.Parent and firesignal then pcall(firesignal, playBtn.Activated) end
+				selectCard()
 				task.wait(0.3)
 			end
 			holder = dui and dui:FindFirstChild("Holder")
 
-			-- ดึงชื่อดันเจี้ยน
-			local dungeonTargetName = "Double Dugeons"
+			-- ดึงชื่อดันเจี้ยนจริงจากการ์ดที่เลือก (Attribute/Text) ถ้าไม่ได้ใช้ fallback
+			local dungeonTargetName = Helpers._dgPickedName or "Double Dugeons"
 
-			-- 4. เปิดปาร์ตี้ด้วยชื่อที่ Dump จับได้จริง "Double Dugeons" (fallback สะกดอื่น)
+			-- 4. เปิดปาร์ตี้ด้วยชื่อจริง (fallback สะกดอื่น)
 			if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
 				local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
 				if not ok or (type(res) == "table" and res.Success == false) then
-					Net.Invoke(Net.Paths.DungeonPartyOpen, "Double Dungeons")
+					Net.Invoke(Net.Paths.DungeonPartyOpen, (dungeonTargetName == "Double Dungeons") and "Double Dugeons" or "Double Dungeons")
 				end
 			end
 
@@ -1242,27 +1270,29 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 	function Helpers.GetCurrentDungeonFloor()
 		-- อ่านชั้นปัจจุบันจาก DungeonHud → Top.WaveLabel (หรือ TextLabel ที่แสดง "Wave X")
 		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-		local hud = pgui and pgui:FindFirstChild("DungeonHud")
-		if not hud then return 0 end
-		-- ค้นหา TextLabel ที่มีข้อความ "Wave" (รองรับทั้ง path ตรงและ recursive)
-		local function findWaveLabel(parent)
-			for _, child in ipairs(parent:GetChildren()) do
-				if child:IsA("TextLabel") or child:IsA("TextButton") then
-					local txt = child.Text or ""
-					if txt:match("[Ww]ave%s*%d") or txt:match("ชั้น%s*%d") then
-						return child
+		local function parseFloor(txt)
+			txt = tostring(txt or "")
+			txt = txt:gsub("<[^>]->", ""):gsub(",", "")
+			return txt:match("[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)") or txt:match("[Ff][Ll][Oo][Oo][Rr]%s*:?%s*(%d+)")
+				or txt:match("[Ss][Tt][Aa][Gg][Ee]%s*:?%s*(%d+)") or txt:match("[Ll][Ee][Vv][Ee][Ll]%s*:?%s*(%d+)")
+				or txt:match("ชั้น%s*:?%s*(%d+)") or txt:match("เวฟ%s*:?%s*(%d+)")
+		end
+		local best = 0
+		for _, rootName in ipairs({ "DungeonHud", "TowerUi", "DungeonUi", "TowerHud" }) do
+			local root = pgui and pgui:FindFirstChild(rootName)
+			if root then
+				for _, d in ipairs(root:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible then
+						local n = tonumber(parseFloor(d.Text))
+						if n and n > best then best = n end
 					end
 				end
-				local found = findWaveLabel(child)
-				if found then return found end
+				if best > 0 then break end
 			end
 		end
-		local label = findWaveLabel(hud)
-		if not label then return 0 end
-		-- parse เลขชั้นจากข้อความ เช่น "Wave 202 • 63 LEFT" → 202 (จับเลขหลังคำว่า Wave/ชั้นก่อน)
-		local txt = label.Text or ""
-		local n = txt:match("[Ww]ave%s*(%d+)") or txt:match("ชั้น%s*(%d+)") or txt:match("%d+")
-		return tonumber(n) or 0
+		if best > 0 then return best end
+		local wv = LocalPlayer:GetAttribute("Wave") or LocalPlayer:GetAttribute("Floor") or workspace:GetAttribute("Wave") or workspace:GetAttribute("Floor")
+		return tonumber(wv) or 0
 	end
 
 	function Helpers.CheckDungeonResultAndExit()
@@ -1322,10 +1352,40 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					end
 					local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 					if best and hrp then
+						hrp.Anchored = false
 						hrp.CFrame = best.CFrame + Vector3.new(0, 3, 0)
 						local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 						if hum then hum:MoveTo(best.Position) end
 						task.wait(0.3)
+						-- ทุกช่องทาง: firetouchinterest กับ Part ลู่วิ่งทั้งโมเดล
+						local root = best.Parent or best
+						local parts = { best }
+						if root and root ~= Workspace then
+							for _, p in ipairs(root:GetDescendants()) do
+								if p:IsA("BasePart") and #parts < 12 then table.insert(parts, p) end
+							end
+						end
+						if firetouchinterest then
+							for _, p in ipairs(parts) do
+								pcall(firetouchinterest, hrp, p, 0)
+								pcall(firetouchinterest, hrp, p, 1)
+							end
+						end
+						-- fireproximityprompt (ถ้ามี) บริเวณลู่วิ่ง
+						if fireproximityprompt then
+							for _, pp in ipairs(root:GetDescendants()) do
+								if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
+							end
+						end
+						-- Seat → นั่งบังคับ
+						if hum and best:IsA("Seat") then pcall(function() best:Sit(hum) end) end
+						-- Remote เสริม: Treadmill.JoinShared / Treadmill.Boost
+						pcall(function()
+							local js = ReplicatedStorage:FindFirstChild("JoinShared", true)
+							if js and js:IsA("RemoteEvent") then js:FireServer({ Look = hrp.CFrame.LookVector, Position = best.Position }) end
+							if js and js:IsA("RemoteFunction") then task.spawn(pcall, js.InvokeServer, js, { Look = hrp.CFrame.LookVector, Position = best.Position }) end
+						end)
+						if Net and Net.Paths and Net.Paths.Boost then pcall(Net.Fire, Net.Paths.Boost, 0) end
 						-- ยิง remote ขึ้นลู่วิ่งของดันเจี้ยน (Dump: {Look, Position})
 						if Net and Net.Paths and Net.Paths.TowersTreadmill then
 							Net.Fire(Net.Paths.TowersTreadmill, 1.0, { Look = hrp.CFrame.LookVector, Position = best.Position })
@@ -1342,22 +1402,55 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 
 			-- 5. ถึงชั้น/เวฟที่ระบุ → ออกดันเจี้ยน แล้ว AutoEnterDungeon เข้าใหม่ (ไม่ต้องพึ่งสวิตช์ Floor Loop)
 			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
-			if (Core.Flags.DungeonFloorLoop or Core.Flags.AutoDungeonExit ~= false) and targetFloor and targetFloor >= 1 then
+			if targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
-				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 3 then
-					Helpers._lastFloorExit = os.clock()
-					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
+				if curFloor > 0 and curFloor >= targetFloor and not Helpers._forceExiting then
+					Helpers._forceExiting = true
+					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → บังคับออกดันเจี้ยน", true)
 					pcall(queueScriptOnTeleport, TELEPORT_LOADER)
-					-- ปลดลู่วิ่งก่อน เพื่อไม่ให้ขวางการออก
-					if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil and Helpers.LeaveTreadmill then
-						pcall(Helpers.LeaveTreadmill)
-						task.wait(0.3)
-					end
-					if Net and Net.Paths then
-						if Net.Paths.TowersExit then pcall(Net.Fire, Net.Paths.TowersExit, 0) end
-						if Net.Paths.DungeonPartyLeave then pcall(Net.Fire, Net.Paths.DungeonPartyLeave, 0) end
-					end
+					task.spawn(function()
+						local t0 = os.clock()
+						-- ยิง Exit/Leave + กดปุ่ม Exit บน UI ซ้ำทุก 1 วินาที จนกว่าจะออกสำเร็จ (สูงสุด 120 วิ)
+						while Helpers.IsDungeonPlace() and os.clock() - t0 < 120 do
+							if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil and Helpers.LeaveTreadmill then
+								pcall(Helpers.LeaveTreadmill)
+							end
+							if Net and Net.Paths then
+								if Net.Paths.TowersExit then pcall(Net.Fire, Net.Paths.TowersExit, 0) end
+								if Net.Paths.DungeonPartyLeave then pcall(Net.Fire, Net.Paths.DungeonPartyLeave, 0) end
+							end
+							pcall(function()
+								local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+								if not pg then return end
+								for _, d in ipairs(pg:GetDescendants()) do
+									if d:IsA("GuiButton") then
+										local nm = string.lower(d.Name)
+										local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
+										if nm == "exit" or nm == "leave" or tx:match("^%s*exit%s*$") or tx:match("^%s*leave%s*$") then
+											if firesignal then
+												pcall(firesignal, d.Activated)
+												pcall(firesignal, d.MouseButton1Click)
+											end
+											if getconnections then
+												pcall(function()
+													for _, cn in ipairs(getconnections(d.Activated)) do pcall(cn.Fire, cn) end
+													for _, cn in ipairs(getconnections(d.MouseButton1Click)) do pcall(cn.Fire, cn) end
+												end)
+											end
+										end
+									end
+								end
+							end)
+							task.wait(1)
+						end
+						Helpers._forceExiting = false
+						-- ออกมาที่ล็อบบี้แล้ว → เข้าดันเจี้ยนใหม่ทันที
+						if not Helpers.IsDungeonPlace() then
+							task.wait(1.5)
+							pcall(Helpers.EnterDungeon)
+						end
+					end)
 				end
 			end
 			return

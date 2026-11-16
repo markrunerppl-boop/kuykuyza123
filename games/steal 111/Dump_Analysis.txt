@@ -1,0 +1,23 @@
+# โครงสร้างเกม ขโมยแพ็คอนิเมะ (Quick Reference สำหรับ AI)
+
+## 1. โครงสร้าง Map & Plots
+- พื้นที่ผู้เล่น: `Workspace.Plots.[1-5]`
+- ลู่วิ่ง (Treadmill): `Workspace.Plots.[1-5].Treadmil.PlayerTreadmill`
+  - ปุ่มอัปเกรดลู่วิ่ง: `Workspace.Plots.[1-5].Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy` (ProximityPrompt)
+  - ปุ่มข้าม (Robux): `Workspace.Plots.[1-5].Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy`
+- แพ็คที่วางในบ้าน: `Workspace.Plots.[1-5].PlotModel.PlacedPacks.HatcheryModel` (มี `OpenPrompt` และ `StealPrompt`)
+- แพ็คที่เกิดตามด่าน: `Workspace.Game.Packs.Stage[1-12].SpawnedPacks.[ชื่อตัวละคร].Sphere.CustomPromptProxyAttachment` (มี `OpenPrompt` และ `StealPrompt`)
+
+## 2. Remotes ที่สำคัญ (`ReplicatedStorage.Remotes`)
+- **Packs:** `EquipBest`, `PlaceOwned`, `Open`, `OpenOwned`, `Merge`, `CarryAction`, `SelectGrowthSkip`
+- **Treadmill:** `Upgrade` (RemoteFunction), `Boost`, `ExitRequest`, `JoinShared`, `LevelReward`, `Lucky`
+- **Economy:** `SellHeld`, `SellInventory`, `SellItems`
+- **Tools / Combat:** `Tools.RequestEquip`, `Tools.EquipWeapon`, `Bat.Swing`, `Trap.Place`, `Trap.Recall`
+- **Progression:** `BaseUpgrade.Purchase`, `LuckMachine.Upgrade`, `Rebirth.Request`, `Mutate.Merge`, `Mutate.Fuse`, `Mutate.MergeAll`
+- **Misc:** `Daily.Claim`, `FreeGift.Claim`, `Offline.Claim`, `Codes.Redeem`
+
+## 3. Modules สำคัญ (`ReplicatedStorage.Shared`)
+- `Utilities.PlotUtil` (หา Plot ตัวเอง: `GetPlotByUserId`, `TeleportToPlot`)
+- `Utilities.ToolUtil` (จัดการถือของ/อาวุธ)
+- `Modules.DataReceiver.PlayerData` & `ServerData` (ดึงข้อมูลผู้เล่นด้วย `Get`, `Subscribe`)
+- `Configs.PacksConfig`, `Configs.TreadmillConfig`, `Configs.CharacterConfig`

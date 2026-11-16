@@ -2,87 +2,84 @@
   "GameplayData": {
     "ClickDetectors": [
       {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Global Pulls.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Global Pulls.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 43.13,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Most Completed Index.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 43.13,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Most Completed Index.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 43.13,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Most Waves.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 43.13,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Most Waves.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Money.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Money.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Speed.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Speed.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Steals.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Steals.ArrowRight.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Time.ArrowLeft.ClickDetector"
-      },
-      {
-        "MaxActivationDistance": 45,
-        "Name": "ClickDetector",
-        "Path": "Workspace.Leaderboards.Top Time.ArrowRight.ClickDetector"
-      },
-      {
         "MaxActivationDistance": 40,
         "Name": "UpgradeClick",
-        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgrade.Button.Primary.UpgradeClick"
-      },
-      {
-        "MaxActivationDistance": 40,
-        "Name": "UpgradeClick",
-        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgrade.Button.Primary.UpgradeClick"
+        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgrade.Button.Primary.UpgradeClick"
       }
     ],
     "ProximityPrompts": [
+      {
+        "ActionText": "LIKE👍",
+        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 9.02,
+        "Name": "LikePrompt",
+        "ObjectText": "LIKE",
+        "Path": "Workspace.Plots.3.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 8.27,
+        "Name": "RobuxUpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 10,
+        "Name": "UpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "Steal",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 1.5,
+        "MaxActivationDistance": 9.07,
+        "Name": "StealPrompt",
+        "ObjectText": "Pack",
+        "Path": "Workspace.Plots.3.PlotModel.PlacedPacks.HatcheryModel.Pack.ProxyPart.StealPromptAnchor.StealPrompt"
+      },
+      {
+        "ActionText": "Hi",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 9.5,
+        "Name": "ProximityPrompt",
+        "ObjectText": "",
+        "Path": "Workspace.Plots.3.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 8.27,
+        "Name": "RobuxUpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 10,
+        "Name": "UpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 9.02,
+        "Name": "LikePrompt",
+        "ObjectText": "LIKE",
+        "Path": "Workspace.Plots.1.Sign.ScreenFrame.LikePrompt"
+      },
       {
         "ActionText": "Hi",
         "Attributes": "(ไม่มี Attribute/Value)",
@@ -99,16 +96,7 @@
         "MaxActivationDistance": 9.02,
         "Name": "LikePrompt",
         "ObjectText": "LIKE",
-        "Path": "Workspace.Plots.1.Sign.ScreenFrame.LikePrompt"
-      },
-      {
-        "ActionText": "Upgrade",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 10,
-        "Name": "UpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+        "Path": "Workspace.Plots.4.Sign.ScreenFrame.LikePrompt"
       },
       {
         "ActionText": "Skip",
@@ -117,7 +105,52 @@
         "MaxActivationDistance": 8.27,
         "Name": "RobuxUpgradeProxy",
         "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.1.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 10,
+        "Name": "UpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "Hi",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 9.5,
+        "Name": "ProximityPrompt",
+        "ObjectText": "",
+        "Path": "Workspace.Plots.4.PlotModel.Multiplier.Core.ProximityPrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 8.27,
+        "Name": "RobuxUpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+      },
+      {
+        "ActionText": "Upgrade",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 10,
+        "Name": "UpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
+      },
+      {
+        "ActionText": "LIKE👍",
+        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 9.02,
+        "Name": "LikePrompt",
+        "ObjectText": "LIKE",
+        "Path": "Workspace.Plots.2.Sign.ScreenFrame.LikePrompt"
       },
       {
         "ActionText": "Hi",
@@ -135,124 +168,16 @@
         "MaxActivationDistance": 9.02,
         "Name": "LikePrompt",
         "ObjectText": "LIKE",
-        "Path": "Workspace.Plots.2.Sign.ScreenFrame.LikePrompt"
-      },
-      {
-        "ActionText": "Upgrade",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 10,
-        "Name": "UpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
-      },
-      {
-        "ActionText": "Skip",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 8.27,
-        "Name": "RobuxUpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.2.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
-      },
-      {
-        "ActionText": "Hi",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.5,
-        "Name": "ProximityPrompt",
-        "ObjectText": "",
-        "Path": "Workspace.Plots.3.PlotModel.Multiplier.Core.ProximityPrompt"
-      },
-      {
-        "ActionText": "Steal",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 1.5,
-        "MaxActivationDistance": 11.88,
-        "Name": "StealPrompt",
-        "ObjectText": "Pack",
-        "Path": "Workspace.Plots.3.PlotModel.PlacedPacks.HatcheryModel.Pack.ProxyPart.StealPromptAnchor.StealPrompt"
-      },
-      {
-        "ActionText": "LIKE👍",
-        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.02,
-        "Name": "LikePrompt",
-        "ObjectText": "LIKE",
-        "Path": "Workspace.Plots.3.Sign.ScreenFrame.LikePrompt"
-      },
-      {
-        "ActionText": "Upgrade",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 10,
-        "Name": "UpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
-      },
-      {
-        "ActionText": "Skip",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 8.27,
-        "Name": "RobuxUpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.3.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
-      },
-      {
-        "ActionText": "Hi",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.5,
-        "Name": "ProximityPrompt",
-        "ObjectText": "",
-        "Path": "Workspace.Plots.4.PlotModel.Multiplier.Core.ProximityPrompt"
-      },
-      {
-        "ActionText": "LIKE👍",
-        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.02,
-        "Name": "LikePrompt",
-        "ObjectText": "LIKE",
-        "Path": "Workspace.Plots.4.Sign.ScreenFrame.LikePrompt"
-      },
-      {
-        "ActionText": "Upgrade",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 10,
-        "Name": "UpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
-      },
-      {
-        "ActionText": "Skip",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 8.27,
-        "Name": "RobuxUpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.4.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
-      },
-      {
-        "ActionText": "Hi",
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.5,
-        "Name": "ProximityPrompt",
-        "ObjectText": "",
-        "Path": "Workspace.Plots.5.PlotModel.Multiplier.Core.ProximityPrompt"
-      },
-      {
-        "ActionText": "LIKE👍",
-        "Attributes": "BaseLikePromptBound=true, Type=SinglePrompt",
-        "HoldDuration": 0,
-        "MaxActivationDistance": 9.02,
-        "Name": "LikePrompt",
-        "ObjectText": "LIKE",
         "Path": "Workspace.Plots.5.Sign.ScreenFrame.LikePrompt"
+      },
+      {
+        "ActionText": "Skip",
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "HoldDuration": 0,
+        "MaxActivationDistance": 8.27,
+        "Name": "RobuxUpgradeProxy",
+        "ObjectText": "Treadmill",
+        "Path": "Workspace.Plots.5.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
       },
       {
         "ActionText": "Upgrade",
@@ -264,110 +189,3000 @@
         "Path": "Workspace.Plots.5.Treadmil.TreadmillUpgrade.OverHead.UpgradeProxy"
       },
       {
-        "ActionText": "Skip",
+        "ActionText": "Hi",
         "Attributes": "(ไม่มี Attribute/Value)",
         "HoldDuration": 0,
-        "MaxActivationDistance": 8.27,
-        "Name": "RobuxUpgradeProxy",
-        "ObjectText": "Treadmill",
-        "Path": "Workspace.Plots.5.Treadmil.TreadmillUpgradeRobux.OverHead.RobuxUpgradeProxy"
+        "MaxActivationDistance": 9.5,
+        "Name": "ProximityPrompt",
+        "ObjectText": "",
+        "Path": "Workspace.Plots.5.PlotModel.Multiplier.Core.ProximityPrompt"
       }
     ],
     "Tools_And_Items": [
       {
         "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Anti Magic Blade",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Ape Staff",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Atomic Blade",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Bat",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Divine Axe",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Dragon Dagger",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Fire Katana",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Ice Sword",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Katana",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Mace",
-        "Notice": "Prefab in ReplicatedStorage"
+        "Name": "PackTool",
+        "Path": "ReplicatedStorage.Assets.Tools.PackTool"
       },
       {
         "Attributes": "(ไม่มี Attribute/Value)",
         "Name": "Omni Sword",
-        "Notice": "Prefab in ReplicatedStorage"
+        "Path": "ReplicatedStorage.Assets.Weapons.Omni Sword"
       },
       {
         "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "PackTool",
-        "Notice": "Prefab in ReplicatedStorage"
+        "Name": "Anti Magic Blade",
+        "Path": "ReplicatedStorage.Assets.Weapons.Anti Magic Blade"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Bat",
+        "Path": "ReplicatedStorage.Assets.Weapons.Bat"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Divine Axe",
+        "Path": "ReplicatedStorage.Assets.Weapons.Divine Axe"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Fire Katana",
+        "Path": "ReplicatedStorage.Assets.Weapons.Fire Katana"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Ice Sword",
+        "Path": "ReplicatedStorage.Assets.Weapons.Ice Sword"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Katana",
+        "Path": "ReplicatedStorage.Assets.Weapons.Katana"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Mace",
+        "Path": "ReplicatedStorage.Assets.Weapons.Mace"
       },
       {
         "Attributes": "(ไม่มี Attribute/Value)",
         "Name": "Purple Scythe",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "Thor Hammer",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "(ไม่มี Attribute/Value)",
-        "Name": "War Hammer",
-        "Notice": "Prefab in ReplicatedStorage"
-      },
-      {
-        "Attributes": "WeaponId=ape_staff, WeaponStage=Stage12, WeaponPower=5.5, IsWeapon=true",
-        "Name": "Ape Staff",
-        "Path": "Workspace.markergg7.Ape Staff"
+        "Path": "ReplicatedStorage.Assets.Weapons.Purple Scythe"
       },
       {
         "Attributes": "(ไม่มี Attribute/Value)",
         "Name": "Yoru",
-        "Notice": "Prefab in ReplicatedStorage"
+        "Path": "ReplicatedStorage.Assets.Weapons.Yoru"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Atomic Blade",
+        "Path": "ReplicatedStorage.Assets.Weapons.Atomic Blade"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Dragon Dagger",
+        "Path": "ReplicatedStorage.Assets.Weapons.Dragon Dagger"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Ape Staff",
+        "Path": "ReplicatedStorage.Assets.Weapons.Ape Staff"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "Thor Hammer",
+        "Path": "ReplicatedStorage.Assets.Weapons.Thor Hammer"
+      },
+      {
+        "Attributes": "(ไม่มี Attribute/Value)",
+        "Name": "War Hammer",
+        "Path": "ReplicatedStorage.Assets.Weapons.War Hammer"
+      }
+    ],
+    "UI_Elements": [
+      {
+        "ClassName": "TextButton",
+        "Name": "Skip",
+        "Path": "LocalPlayer.PlayerGui.GameLoadingScreen.Loading.Skip",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "InputBlocker",
+        "Path": "LocalPlayer.PlayerGui.GameLoadingScreen.InputBlocker",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "1",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.1",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "2",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.2",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "3",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.3",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "4",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.4",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "5",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.5",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "6",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.6",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "7",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.7",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "8",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.8",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "9",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.9",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "10",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Hotbar.10",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "VRInventorySelector",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.VRInventorySelector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "X",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.Search.X",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "X",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.Search.X.X",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "UnitsCategory",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.UnitsCategory",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "PacksCategory",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.PacksCategory",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Sort",
+        "Path": "LocalPlayer.PlayerGui.BackpackGui.Backpack.Inventory.Sort",
+        "Text": "Sort: Default",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Left.Inventory.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Left.OverflowLeft.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Left.Settings.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Right.Trade.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Right.Daily.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Right.Codes.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Right.Titles.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ClickRegion",
+        "Path": "LocalPlayer.PlayerGui.TopbarStandard.Holders.Right.OverflowRight.IconButton.Menu.IconSpot.ClickRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "AnswerResponse",
+        "Path": "LocalPlayer.PlayerGui.ClientDialogue.Group.Container.AnswerResponse",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "AnswerResponse",
+        "Path": "LocalPlayer.PlayerGui.ClientDialogue.Group.Response.AnswerResponse",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "AnswerResponse",
+        "Path": "LocalPlayer.PlayerGui.ClientDialogue.Group.Response.AnswerResponse",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "AnswerResponse",
+        "Path": "LocalPlayer.PlayerGui.ClientDialogue.Group.Response.AnswerResponse",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.FRAMES.Trails.Main.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Left",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Left",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Right",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Right",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.CosmeticFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Cosmetic",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Tabs.Cosmetic",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Shop",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Tabs.Shop",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Speed",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Tabs.Speed",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "EssenceBar",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.EssenceBar",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Exchange",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.Exchange",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "SealBar",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.MainFrame.SealBar",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.PlayerSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.ShopGui.PlayerSelection.Header.Back",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot1",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot1",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Equip Best",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Equip Best",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot2",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot2",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot3",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot3",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Fight",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Fight",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CashPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.CashPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "SpeedPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.SpeedPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Gem",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.Gem",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LuckPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.LuckPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.CharacterSelectionFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.CharacterSelectionFrame.CharsTemplate.Template",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TowerSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "InfoFrame",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.InfoFrame",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "You",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.You",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Auto",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Auto",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Exit",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Exit",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Enemy",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Enemy",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.TowerSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Kick",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Slots.Slot1.Kick",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Kick",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Slots.Slot2.Kick",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Kick",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Slots.Slot3.Kick",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Kick",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Slots.Slot4.Kick",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Invite",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Players.PlayerTemplate.Invite",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "InviteFriends",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.InviteFriends",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Start",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.Holder.PartyFrame.Start",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "InfoFrame",
+        "Path": "LocalPlayer.PlayerGui.DungeonUi.InfoFrame",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Accept",
+        "Path": "LocalPlayer.PlayerGui.DungeonInviteUi.Invite.Accept",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Decline",
+        "Path": "LocalPlayer.PlayerGui.DungeonInviteUi.Invite.Decline",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RobuxUpgrade",
+        "Path": "LocalPlayer.PlayerGui.UpgradeSurface.Frame.RobuxUpgrade",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Upgrade",
+        "Path": "LocalPlayer.PlayerGui.UpgradeSurface.Frame.Upgrade",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "FirstUpgrade",
+        "Path": "LocalPlayer.PlayerGui.UpgradeSurface.Frame.FirstUpgrade",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.Holder.Window.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Tile",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.Holder.Window.Templates.Tile",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Items",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.Holder.Tabs.Items",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Gears",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.Holder.Tabs.Gears",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Mounts",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.Holder.Tabs.Mounts",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "InfoFrame",
+        "Path": "LocalPlayer.PlayerGui.BackpackUi.InfoFrame",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Template",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CurrentGrade",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.CurrentGrade",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Roll",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Roll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "AutoRoll",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoRoll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Settings",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Settings",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "CharacterSelection",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.CharacterSelection",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "GemBar",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.GemBar",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.Template",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Robux",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckBoard.Panel.Robux",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.HatchLuckMax.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+500M.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+50M.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+150K.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+10M.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+1M.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.+1B.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Shop.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Index.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Btn",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Slowmode.Btn",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Hitbox",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Slowmode.Hitbox",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Xspeed.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Gift",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Xspeed.Gift",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.Rebirth.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.LeftButtons.SpeedShop.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Button",
+        "Path": "LocalPlayer.PlayerGui.UI.NimbusToggle.Button",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.AnimePack.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.Units.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.RightButtons.Backpack.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "GrowAll",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.GrowAll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Button",
+        "Path": "LocalPlayer.PlayerGui.UI.Button",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Plus",
+        "Path": "LocalPlayer.PlayerGui.UI.BottomLeft.Speed.Plus",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "InvitePlus",
+        "Path": "LocalPlayer.PlayerGui.UI.BottomLeft.FriendBoost.InvitePlus",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "PlusEquip",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Header.PlusEquip",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "EquipBest",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.EquipBest",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Plus",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Plus",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "UnequipAll",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.UnequipAll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Flappy",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Flappy",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Merge",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Merge",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Snake",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Snake",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Conquer",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Conquer",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "XO",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.XO",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Top100",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Home.Apps.Top100",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Field",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Game.Field",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Game.Hud.Back",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Play",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Game.Overlay.Play",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Leave",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Game.Overlay.Leave",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Revive",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Game.Overlay.Revive",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Back",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Tab",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.Tab",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Flappy",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.Flappy",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Merge",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.Merge",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Snake",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.Snake",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Conquer",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.Conquer",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "XO",
+        "Path": "LocalPlayer.PlayerGui.PhoneGui.Main.Screen.Ranks.Tabs.XO",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Right",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Right",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Left",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Left",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LikeButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.CommentsWindow.Comments.Comment.LikeHolder.LikeButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "CloseRegion",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.CommentsWindow.CloseRegion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LikeButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video1.Tray.LikeHolder.LikeButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CommentsButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video1.Tray.CommentsHolder.CommentsButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ShareButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video1.Tray.ShareHolder.ShareButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LikeButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video2.Tray.LikeHolder.LikeButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CommentsButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video2.Tray.CommentsHolder.CommentsButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ShareButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video2.Tray.ShareHolder.ShareButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LikeButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video3.Tray.LikeHolder.LikeButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CommentsButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video3.Tray.CommentsHolder.CommentsButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ShareButton",
+        "Path": "LocalPlayer.PlayerGui.Doomscroll.ViewportFrame.Screen.VideoDisplayer.Video3.Tray.ShareHolder.ShareButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.TopBar.ScrollBtn.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.TopBar.GamesBtn.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.TAPTreadmillBoost.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ActionButton",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Step1.ActionButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ClaimGift",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.ClaimGift",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ActionButton",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Step2.ActionButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "ActionButton",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Step3.ActionButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Content",
+        "Path": "LocalPlayer.PlayerGui.UI.RollingFrame.Content",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Info",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Info",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Rewards",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Rewards",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Claim",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Rewards.Claim",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Speed",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Rewards.Speed",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Cash",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Rewards.Cash",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Boost",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Rewards.Boost",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ClaimAll",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.ClaimAll",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Units/Packs.AnimePack.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Units/Packs.Units.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Units/Packs.Limited.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Golden.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Emerald.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Diamond.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Normal.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Transcendent.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Cursed.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Glitched.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Mutations.Mystic.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "MainFrame",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Bar.MainFrame",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Close",
+        "Text": "×",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion1",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion1",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion2",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion2",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion3",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion3",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion4",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion4",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion5",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion5",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion6",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion6",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion7",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion7",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Suggestion8",
+        "Path": "LocalPlayer.PlayerGui.AdminCommandConsole.Console.Suggestion8",
+        "Text": "Button",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Add",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot1.Add",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RemoveButton",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot1.RemoveButton",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Add",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot2.Add",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RemoveButton",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot2.RemoveButton",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Add",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot3.Add",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RemoveButton",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Slots.Slot3.RemoveButton",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Picker.List.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Picker.Back",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Mutate",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.Mutate",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "MergeAll",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Content.MergeAll",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Modes.Mutate.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.MutateMachineGui.Main.Modes.Merge.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RebirthButton",
+        "Path": "LocalPlayer.PlayerGui.RebirthGui.Main.Content.DownContent.RebirthButton",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CharacterTemplate",
+        "Path": "LocalPlayer.PlayerGui.RebirthGui.Main.Content.UpContent.CharacterTemplate",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LuckBoost",
+        "Path": "LocalPlayer.PlayerGui.RebirthGui.Main.Content.UpContent.LuckBoost",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CashBoost",
+        "Path": "LocalPlayer.PlayerGui.RebirthGui.Main.Content.UpContent.CashBoost",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.RebirthGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Weight",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.Frame.Content.SortBar.Weight",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Value",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.Frame.Content.SortBar.Value",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "SelectAll",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.Frame.Content.SortBar.SelectAll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Sell",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.Frame.Content.Data.Sell",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.SideBarList.Units.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.SideBarList.Packs.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.SellGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Play",
+        "Path": "LocalPlayer.PlayerGui.UpdateLogGui.Main.Frame.Content.Data.Play",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UpdateLogGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "StopTraining",
+        "Path": "LocalPlayer.PlayerGui.StopTrainingGui.StopTraining",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.OfflineRewardsGui.Main.TopBar.Close",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Claim",
+        "Path": "LocalPlayer.PlayerGui.OfflineRewardsGui.Main.Claim",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "RobuxClaim",
+        "Path": "LocalPlayer.PlayerGui.OfflineRewardsGui.Main.RobuxClaim",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Play",
+        "Path": "LocalPlayer.PlayerGui.ChatLogGui.Main.Frame.Content.Data.Play",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.ChatLogGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Frame.Content.Picker.Back",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Max",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Frame.Content.YourOffer.CashBar.Max",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Add",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Frame.Content.YourOffer.CashBar.Add",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Ready",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Frame.Content.Ready",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Decline",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Frame.Content.Decline",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Units.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Packs.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Passes.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Coaches.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Items.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Gears.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Detector",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.SideBarList.Mounts.Detector",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TradeGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TradeListGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "EquipBest",
+        "Path": "LocalPlayer.PlayerGui.PopupPrompt.Thanks.EquipBest",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Yes",
+        "Path": "LocalPlayer.PlayerGui.PopupPrompt.Trade.Yes",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "No",
+        "Path": "LocalPlayer.PlayerGui.PopupPrompt.Trade.No",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.PopupPrompt.Trade.Title.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Claim",
+        "Path": "LocalPlayer.PlayerGui.DailyRewardsGui.Main.Frame.Content.Bottom.Claim",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.DailyRewardsGui.Main.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Top.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Redeem",
+        "Path": "LocalPlayer.PlayerGui.UI.Frame.Redeem",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Button",
+        "Path": "LocalPlayer.PlayerGui.GlobalPoll.MainFrame.Answers.Template.Button",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Plus",
+        "Path": "LocalPlayer.PlayerGui.ShadowsEvent.Window.Souls.Plus",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.ShadowsEvent.Window.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Close",
+        "Text": "X",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Quick",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Quick",
+        "Text": "⭐  QUICK",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Players",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Players",
+        "Text": "👤  PLAYERS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Packs",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Packs",
+        "Text": "📦  PACKS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Events",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Events",
+        "Text": "🎉  EVENTS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Shows",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Shows",
+        "Text": "🚀  SHOWS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Boosts",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Boosts",
+        "Text": "⚡  BOOSTS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Tests",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.Tests",
+        "Text": "🧪  TESTS",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "All",
+        "Path": "LocalPlayer.PlayerGui.AdminPanel.Window.Tabs.All",
+        "Text": "📜  ALL",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CurrentTrait",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.CurrentTrait",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CharacterAdd",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.CharacterAdd",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "TraitInfo",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitInfo",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Nature",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Nature",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Brawler",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Brawler",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Income",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Income",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Tough",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Tough",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Vital",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Vital",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Blazing",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Blazing",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Frozen",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Frozen",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Swift",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Swift",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Lucky",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Lucky",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Magnet",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Magnet",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Venom",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Venom",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Demon",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Demon",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Cursed",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Cursed",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Evolved",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Evolved",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Void",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Void",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Blessed",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.TraitsList.Blessed",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Roll",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.Roll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "AutoRoll",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.AutoRoll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Settings[dis]",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.MainFrame.Settings[dis]",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.CharacterSelectionFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.TraitsUi.CharacterSelectionFrame.CharsTemplate.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "D",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.D",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "C",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.C",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "B",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.B",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "A",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.A",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "A+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.A+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "S",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.S",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "S+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.S+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Z",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Z",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Z+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Z+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "God",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.God",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Infinity",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Infinity",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Omega",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Omega",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Dragon",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Dragon",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Emperor",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Emperor",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Demon",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Demon",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Sigma",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.TraitsList.Sigma",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CurrentGrade",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.CurrentGrade",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Roll",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Roll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "AutoRoll",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoRoll",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Settings",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.Settings",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "CharacterSelection",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.CharacterSelection",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "GemBar",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.GemBar",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "D",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.D",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "C",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.C",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "B",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.B",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "A",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.A",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "A+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.A+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "S",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.S",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "S+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.S+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Z",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Z",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Z+",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Z+",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "God",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.God",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Infinity",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Infinity",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Omega",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Omega",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Dragon",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Dragon",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Emperor",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Emperor",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Demon",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Demon",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "Sigma",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Grid.Sigma",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Back",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.MainFrame.AutoPanel.Back",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "7d464df6-80ca-422a-a12d-94e6cc7f1d64",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.7d464df6-80ca-422a-a12d-94e6cc7f1d64",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "abf93149-4b51-44b7-bea7-a5a46bc8ae95",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.abf93149-4b51-44b7-bea7-a5a46bc8ae95",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "523d32a8-f5ad-4646-b76c-2e994a710332",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.523d32a8-f5ad-4646-b76c-2e994a710332",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "99e57975-1cde-4430-a342-15cbaa1ad079",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.99e57975-1cde-4430-a342-15cbaa1ad079",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "fb972bc5-e2f0-4f85-8d43-3916771de03d",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.fb972bc5-e2f0-4f85-8d43-3916771de03d",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "bd5cf63e-bb37-4ffc-91fe-d321acced264",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.bd5cf63e-bb37-4ffc-91fe-d321acced264",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "57336e29-2816-4be8-9154-c6912969ffb3",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.57336e29-2816-4be8-9154-c6912969ffb3",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "82cb1e1e-837c-4354-a98b-ce11cc6cfa17",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.82cb1e1e-837c-4354-a98b-ce11cc6cfa17",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "c017ce92-60ac-482a-813f-b304462860fc",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.c017ce92-60ac-482a-813f-b304462860fc",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "0f779f51-848f-4611-8e7e-2addca7ec791",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.0f779f51-848f-4611-8e7e-2addca7ec791",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "49d12206-bb6a-45ef-b6b0-f7580a442c84",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.49d12206-bb6a-45ef-b6b0-f7580a442c84",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "2200952c-0ab2-4b90-be2b-4c464ad27d55",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.2200952c-0ab2-4b90-be2b-4c464ad27d55",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "28165594-f670-4698-b5ef-e7b117b11c9e",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.28165594-f670-4698-b5ef-e7b117b11c9e",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "aa299a99-0fab-40cb-88f7-8b3b77e050b7",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.aa299a99-0fab-40cb-88f7-8b3b77e050b7",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "a2c1c7f0-14cf-40ad-9d6c-b94e09447ad7",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.a2c1c7f0-14cf-40ad-9d6c-b94e09447ad7",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "126af43d-822c-48c3-8ec5-d55ebfa5bb3b",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.126af43d-822c-48c3-8ec5-d55ebfa5bb3b",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "9bcabc3c-58eb-411b-a714-a7813ab1c7af",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.9bcabc3c-58eb-411b-a714-a7813ab1c7af",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ff57b883-4f5e-4c3d-b810-99138c2b0279",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.ff57b883-4f5e-4c3d-b810-99138c2b0279",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "e65fdf25-441c-4b4f-a244-17fa299f1d00",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.e65fdf25-441c-4b4f-a244-17fa299f1d00",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "32f2ef47-d090-46ca-96fc-4c9058d580bf",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.32f2ef47-d090-46ca-96fc-4c9058d580bf",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "b8ca8741-fccf-4378-bc5d-89490ff0fe59",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.b8ca8741-fccf-4378-bc5d-89490ff0fe59",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "4d942df0-595b-4915-b029-6fefae4c1d8a",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.4d942df0-595b-4915-b029-6fefae4c1d8a",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ee0e3363-b262-477a-891f-768daa2104fc",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.ee0e3363-b262-477a-891f-768daa2104fc",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "e827e6c6-d9ae-4cdb-8565-f0a51bade692",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.e827e6c6-d9ae-4cdb-8565-f0a51bade692",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "3bf94a7a-d47e-4690-9ce7-03842dcc35fa",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.3bf94a7a-d47e-4690-9ce7-03842dcc35fa",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "e2ccaccf-f44b-49ce-bebf-1175866efd9c",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.e2ccaccf-f44b-49ce-bebf-1175866efd9c",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "ad08eef4-871d-4dec-b7c5-6dd9688c1163",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.ad08eef4-871d-4dec-b7c5-6dd9688c1163",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "691aa79a-7685-475a-ac0a-af2a5a5cf9cb",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.691aa79a-7685-475a-ac0a-af2a5a5cf9cb",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "fb48d313-d33d-4a40-8047-cd18495a536a",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.fb48d313-d33d-4a40-8047-cd18495a536a",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "99bf317a-0809-4163-865d-0c784d37cfeb",
+        "Path": "LocalPlayer.PlayerGui.GradesUi.CharacterSelectionFrame.CharsTemplate.99bf317a-0809-4163-865d-0c784d37cfeb",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot1",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot1",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Equip Best",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Equip Best",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot2",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot2",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Slot3",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Slot3",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Fight",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.Fight",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "CashPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.CashPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "SpeedPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.SpeedPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Gem",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.Gem",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "LuckPotion",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TeamSelection.TowerSelection.Floor1.LuckPotion",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.CharacterSelectionFrame.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Template",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.CharacterSelectionFrame.CharsTemplate.Template",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.TowerSelection.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "InfoFrame",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.InfoFrame",
+        "Text": "",
+        "Visible": false
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "You",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.You",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Auto",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Auto",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Exit",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Exit",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Enemy",
+        "Path": "LocalPlayer.PlayerGui.TowerUi.PvpFrame.Enemy",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "ImageButton",
+        "Name": "Close",
+        "Path": "LocalPlayer.PlayerGui.TitlesUi.Titles.Header.Close",
+        "Text": "",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "✕",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "⚙️ Control",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "🏛 Arch",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "📡 API",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "🌐 Net.json",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.TextButton",
+        "Text": "🎯 POI.json",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.Frame.TextButton",
+        "Text": " [✓] Workspace (เอาของจริง)",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.Frame.TextButton",
+        "Text": " [✓] ReplicatedStorage",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.Frame.TextButton",
+        "Text": " [✓] 🔴 เปิดดัก Remote Spy",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.Frame.TextButton",
+        "Text": "▶ START OPTIMIZED DUMP",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.Frame.TextButton",
+        "Text": "⏹ STOP",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.TextButton",
+        "Text": "📋 COPY TO CLIPBOARD",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.TextButton",
+        "Text": "📋 COPY TO CLIPBOARD",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.TextButton",
+        "Text": "📋 COPY TO CLIPBOARD",
+        "Visible": true
+      },
+      {
+        "ClassName": "TextButton",
+        "Name": "TextButton",
+        "Path": "LocalPlayer.PlayerGui.DumperProV7_UI.Frame.Frame.Frame.TextButton",
+        "Text": "📋 COPY TO CLIPBOARD",
+        "Visible": true
       }
     ]
   },
   "Metadata": {
-    "FileRole": "Gameplay POIs (Workspace Only)",
-    "PlaceId": 133151378618377,
-    "SubPlaceId": 135412798316370,
-    "PlaceIds": [
-      133151378618377,
-      135412798316370
-    ]
+    "FileRole": "Gameplay POIs & UI (Optimized)",
+    "PlaceId": 133151378618377
   }
 }
