@@ -1362,64 +1362,39 @@ local function TriggerOpenPetalfallCrate()
         local d2 = SafeGetData2()
         local mg = d2 and d2.MineGame
         local cc = mg and mg.ColossusCrates
-        if type(cc) == "table" then
-            for k, v in pairs(cc) do
-                local name
-                if type(k) == "string" then
-                    name = k
-                elseif type(v) == "table" then
-                    name = v.Name or v.Key or v.Id or v.CrateName
-                end
-                local cnt = extractCount(v)
-                if type(name) == "string" and cnt > 0 then
-                    result[name] = cnt
-                end
+        if type(cc) ~= "table" then return result end
+
+        for k, v in pairs(cc) do
+            local name = nil
+            if type(k) == "string" then
+                name = k
+            elseif type(v) == "table" then
+                name = v.Name or v.Key or v.Id or v.CrateName
             end
-        end
-        -- Fallback ตรวจสอบ mg.Crates หากใน ColossusCrates ว่างเปล่า
-        if next(result) == nil and mg and type(mg.Crates) == "table" then
-            for k, v in pairs(mg.Crates) do
-                local name = (type(k) == "string" and k) or (type(v) == "table" and (v.Name or v.Key or v.Id or v.CrateName))
-                local cnt = extractCount(v)
-                if type(name) == "string" and cnt > 0 then
-                    result[name] = cnt
-                end
+            local cnt = extractCount(v)
+            if type(name) == "string" and cnt > 0 then
+                result[name] = cnt
             end
         end
         return result
     end
 
-    -- ยิง Remote พร้อม Timeout Guard 3.5 วิ
+    -- ส่ง Remote เปิดกล่องโดยตรง (ไม่ส่ง alias ภาษาไทย ป้องกัน Server Error)
     local function sendOpen(name, amount)
-        local done = false
-        task.spawn(function()
-            pcall(SafeSendEvent, openEvent, name, amount)
-            -- รองรับ Alias ภาษาไทย/อังกฤษ
-            local alias = (name == "กล่องซากเรือจากกระแสน้ำ" and "Tidewreck Crate")
-                or (name == "Tidewreck Crate" and "กล่องซากเรือจากกระแสน้ำ")
-                or (name == "Petalfall Crate" and "Petalfall")
-                or (name == "Petalfall" and "Petalfall Crate")
-            if alias then
-                pcall(SafeSendEvent, openEvent, alias, amount)
-            end
-            done = true
-        end)
-        local t = 0
-        while not done and t < 3.5 do
-            task.wait(0.1)
-            t = t + 0.1
-        end
-        return done
+        return SafeSendEvent(openEvent, name, amount)
     end
 
-    -- รอจนจำนวนกล่องลดลงจากค่าเดิม (ยืนยันว่าเซิร์ฟเวอร์เปิดจริง)
+    -- รอจนจำนวนกล่องลดลงจากค่าเดิม (ยืนยันว่าเซิร์ฟเวอร์ประมวลผลและ Replicate เรียบร้อย)
     local function waitDecrease(name, before, timeout)
         local t = 0
-        while t < timeout do
-            task.wait(0.15)
-            t = t + 0.15
+        local limit = timeout or 3.5
+        while t < limit do
+            task.wait(0.1)
+            t = t + 0.1
             local now = readCrates()[name] or 0
-            if now < before then return now end
+            if now < before then
+                return now
+            end
         end
         return nil
     end
@@ -1432,7 +1407,8 @@ local function TriggerOpenPetalfallCrate()
         local fails = 0
         local guard = 0
 
-        while remaining > 0 and fails < 2 and guard < 30 do
+        -- เปิดแบบ Batch ครั้งละสูงสุด 50 กล่อง (หากติดขัดจะลดเหลือ 1 เพื่อความเสถียร)
+        while remaining > 0 and fails < 3 and guard < 40 do
             guard = guard + 1
             if TradeState and TradeState.IsTradeActive then break end
 
@@ -1440,15 +1416,16 @@ local function TriggerOpenPetalfallCrate()
             UpdateStatus(string.format("📦 เปิด %s x%d (เหลือ %d)...", crateName, amount, remaining))
 
             sendOpen(crateName, amount)
-            local after = waitDecrease(crateName, remaining, 2.5)
+            local after = waitDecrease(crateName, remaining, 3.5)
 
             if after then
                 totalOpened = totalOpened + (remaining - after)
                 remaining = after
                 fails = 0
-                HumanWait(0.3, 0.5)
+                HumanWait(0.25, 0.4)
             else
-                fails = fails + 1 -- ครั้งแรกพลาด -> ลองใหม่ด้วย amount = 1
+                fails = fails + 1
+                HumanWait(0.3, 0.5)
             end
         end
 
