@@ -588,13 +588,13 @@ local function main()
 		local attr = ReplicatedStorage:GetAttribute("DungeonPortalOpenUntil")
 		if type(attr) == "number" then
 			local now = workspace:GetServerTimeNow()
-			return attr > now
+			if attr > now then return true end
 		end
 		local du = Helpers.GetDungeonUtil()
 		if du and type(du.GetPortal) == "function" then
-			local ok, p = pcall(du.GetPortal, workspace:GetServerTimeNow())
-			if ok and type(p) == "table" and p.IsOpen ~= nil then
-				return p.IsOpen
+			local ok, isOpen = pcall(du.GetPortal, workspace:GetServerTimeNow())
+			if ok and isOpen == true then
+				return true
 			end
 		end
 		return false
@@ -611,6 +611,8 @@ local function main()
 			local sp = ls:FindFirstChild("Speed")
 			if sp and type(sp.Value) == "number" then return sp.Value end
 		end
+		local attrSpd = LocalPlayer:GetAttribute("Speed")
+		if type(attrSpd) == "number" then return attrSpd end
 		return 0
 	end
 
@@ -623,6 +625,128 @@ local function main()
 			return false, string.format("ต้องการความเร็ว 50B+ (ปัจจุบัน %.2e)", speed)
 		end
 		return true, "พร้อมลงดันเจี้ยน"
+	end
+
+	function Helpers.GetBestDungeonTeam()
+		local pd = getPlayerData()
+		local inv = pd and type(pd.Get) == "function" and pd.Get("Inventory")
+		local packs = (type(inv) == "table") and inv.Packs or nil
+		if not packs then return {} end
+
+		local pc = getPacksConfig()
+		local cc = safeRequire(function() return ReplicatedStorage.Shared.Configs.CharacterConfig end)
+		local tu = safeRequire(function() return ReplicatedStorage.Shared.Utilities.TowerUtil end)
+		local tc = Helpers.GetTowerConfig()
+		local rarityRank = (pc and pc.RarityRank) or {}
+		local minRank = rarityRank.Cosmic or 7
+
+		local candidates = {}
+		local allChars = {}
+
+		for _, bucketName in ipairs({"Backpack", "Placed"}) do
+			local bucket = packs[bucketName]
+			if type(bucket) == "table" then
+				for id, v in pairs(bucket) do
+					if type(v) == "table" and (pc == nil or (pc.IsCharacter and pc.IsCharacter(v))) and v.OpeningCommittedAt == nil and type(v.CharacterName) == "string" then
+						local cdata = cc and cc.Get and cc.Get(v.CharacterName)
+						local stage = cdata and tostring(cdata.Stage) or ""
+						if cdata and stage ~= "Dungeons" and stage ~= "DungeonPack" then
+							local unitId = v.Id or (type(id) == "string" and id)
+							if unitId then
+								local dmg = 0
+								if tu and type(tu.GetStats) == "function" then
+									local sOk, sRes = pcall(tu.GetStats, v)
+									if sOk and type(sRes) == "table" and type(sRes.Damage) == "number" then
+										dmg = sRes.Damage
+									end
+								end
+								if dmg == 0 then
+									dmg = tonumber(cdata.NumericalOdd) or 1
+								end
+
+								local itemRecord = {
+									Id = unitId,
+									Damage = dmg,
+									Rarity = v.Rarity or cdata.Rarity,
+									Name = v.CharacterName
+								}
+
+								local rRank = rarityRank[itemRecord.Rarity]
+								if rRank and rRank >= minRank then
+									table.insert(candidates, itemRecord)
+								end
+								table.insert(allChars, itemRecord)
+							end
+						end
+					end
+				end
+			end
+		end
+
+		local pool = (#candidates > 0) and candidates or allChars
+		table.sort(pool, function(a, b)
+			return a.Damage > b.Damage
+		end)
+
+		local teamSize = (tc and tc.TeamSize) or 4
+		local team = {}
+		local chosenMap = {}
+		for i = 1, math.min(teamSize, #pool) do
+			local uid = pool[i].Id
+			if uid and not chosenMap[uid] then
+				chosenMap[uid] = true
+				table.insert(team, uid)
+			end
+		end
+		return team
+	end
+
+	function Helpers.EquipBestDungeonTeam()
+		local bestTeam = Helpers.GetBestDungeonTeam()
+		if #bestTeam == 0 then
+			logAction("ดันเจี้ยน", "ไม่พบตัวละครที่สามารถลงดันเจี้ยนได้ (ต้องการ Cosmic+)", false)
+			return false, "NO_UNITS"
+		end
+
+		local okSet = false
+		local setMsg = ""
+		if Net and Net.Paths and Net.Paths.DungeonPartySetTeam then
+			local ok, res = Net.Invoke(Net.Paths.DungeonPartySetTeam, bestTeam)
+			if ok and (res == nil or (type(res) == "table" and res.Success)) then
+				okSet = true
+				logAction("ดันเจี้ยน", string.format("ใส่ตัวดีสุดลงดันเจี้ยนสำเร็จ (%d ตัว)", #bestTeam), true)
+			else
+				setMsg = (type(res) == "table" and (res.Message or res.Reason)) or "SetTeam ไม่สำเร็จ"
+			end
+		end
+
+		pcall(function()
+			local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			local dui = pgui and pgui:FindFirstChild("DungeonUi")
+			local holder = dui and dui:FindFirstChild("Holder")
+			local teamFrame = holder and holder:FindFirstChild("TeamFrame")
+			if teamFrame and teamFrame.Visible then
+				local eb = teamFrame:FindFirstChild("EquipBest")
+				if eb and eb:IsA("GuiButton") and firesignal then
+					firesignal(eb.Activated)
+					task.wait(0.2)
+				end
+				local cont = teamFrame:FindFirstChild("Continue")
+				if cont and cont:IsA("GuiButton") and firesignal then
+					firesignal(cont.Activated)
+					task.wait(0.2)
+				end
+			end
+		end)
+
+		if okSet then
+			return true, "EQUIPPED"
+		else
+			if setMsg ~= "" then
+				logAction("ดันเจี้ยน", "จัดทีมลงดันเจี้ยน: " .. tostring(setMsg), false)
+			end
+			return false, setMsg
+		end
 	end
 
 	function Helpers.EnterDungeon()
@@ -640,13 +764,36 @@ local function main()
 			task.wait(0.5)
 		end
 
+		local dungeonTargetName = "Dugeon"
+		pcall(function()
+			local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			local dui = pgui and pgui:FindFirstChild("DungeonUi")
+			local holder = dui and dui:FindFirstChild("Holder")
+			local ts = holder and holder:FindFirstChild("TowerSelection")
+			local sf = ts and ts:FindFirstChild("ScrollingFrame")
+			local tmpl = sf and sf:FindFirstChild("Template")
+			local diff = tmpl and tmpl:FindFirstChild("Difficulty")
+			local tname = tmpl and tmpl:FindFirstChild("TowerName")
+			local baseName = (tname and tname.Text ~= "") and tname.Text or "Dugeon"
+			if diff and diff:IsA("TextLabel") and diff.Text ~= "" then
+				dungeonTargetName = string.format("%s (%s)", baseName, diff.Text)
+			else
+				dungeonTargetName = baseName
+			end
+		end)
+
 		local partySuccess = false
 		if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
-			local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, "Dugeon")
-			if ok and type(res) == "table" and res.Success then
+			local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
+			if ok and (res == nil or (type(res) == "table" and res.Success)) then
 				partySuccess = true
 			end
 		end
+
+		task.wait(0.3)
+
+		-- จัดทีมใส่ตัวดีที่สุดลงดันเจี้ยน (Equip Best Team for Dungeon)
+		Helpers.EquipBestDungeonTeam()
 
 		task.wait(0.3)
 		if Net and Net.Paths and Net.Paths.DungeonPartyStart then
@@ -656,6 +803,9 @@ local function main()
 			if ok and (res == nil or (type(res) == "table" and res.Success)) then
 				logAction("ดันเจี้ยน", "เริ่มเทเลพอร์ตเข้าสู่ Dungeon สำเร็จ", true)
 				return true, "กำลังเทเลพอร์ต"
+			else
+				local msg = (type(res) == "table" and (res.Message or res.Reason)) or "ไม่สามารถเริ่มดันเจี้ยนได้"
+				logAction("ดันเจี้ยน", "เริ่มดันเจี้ยนไม่สำเร็จ: " .. tostring(msg), false)
 			end
 		end
 
@@ -1518,6 +1668,7 @@ local function main()
 		AurasEquip = RP .. "Auras.Equip",            -- RF: InvokeServer(auraId)
 		ToolsRequestEquip = RP .. "Tools.RequestEquip", -- RE: FireServer({Equipped, Tool})
 		DungeonPartyOpen = RP .. "DungeonParty.Open",   -- RF: InvokeServer("Dugeon")
+		DungeonPartySetTeam = RP .. "DungeonParty.SetTeam", -- RF: InvokeServer(teamArray)
 		DungeonPartyStart = RP .. "DungeonParty.Start", -- RF: InvokeServer()
 		TowersSetAuto = RP .. "Towers.SetAuto",         -- RE: FireServer(true/false)
 		TowersStart = RP .. "Towers.Start",             -- RF: InvokeServer(...)
@@ -5431,6 +5582,19 @@ local function main()
 			Core.Flags.AutoDungeonExit = v
 		end)
 
+		CreateButton(pFarm, "จัดทีมตัวดีสุดลงดันเจี้ยน (Equip Best Team)", function()
+			Helpers.EquipBestDungeonTeam()
+		end)
+
+		CreateButton(pFarm, "ลงดันเจี้ยนทันที (Force Enter Dungeon)", function()
+			task.spawn(function()
+				local ok, msg = Helpers.EnterDungeon()
+				if not ok then
+					logAction("ดันเจี้ยน", "ไม่สามารถเข้าดันเจี้ยนได้: " .. tostring(msg), false)
+				end
+			end)
+		end)
+
 		-- Stage Multi-Select Dropdown
 		local stageOptions = {}
 		for i = 1, 13 do
@@ -5488,6 +5652,12 @@ local function main()
 		CreateToggle(pPack, "วางตัวดีสุดลงฐานอัตโนมัติ (EquipBest)", Core.Flags.AutoEquipBest, function(v)
 			Core.Flags.AutoEquipBest = v
 			if v then Loops.EquipBest() end
+		end)
+
+		CreateButton(pPack, "ใส่ตัวดีสุดลงฐานทันที (Equip Best Now)", function()
+			if autoEquipBestStep then
+				autoEquipBestStep(true)
+			end
 		end)
 
 		CreateToggle(pPack, "รวมแพ็กซ้ำ 2 ชิ้น (Auto Merge Packs)", Core.Flags.AutoMerge, function(v)
