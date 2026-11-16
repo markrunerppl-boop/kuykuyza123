@@ -749,67 +749,143 @@ local function main()
 		end
 	end
 
+	Helpers._enteringDungeon = false
 	function Helpers.EnterDungeon()
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
 			return false, reason
 		end
-		local ring = Helpers.GetDungeonPad()
-		local char = LocalPlayer.Character
-		local hrp = char and char:FindFirstChild("HumanoidRootPart")
-		if ring and hrp and ring:IsA("BasePart") then
-			pcall(function()
-				hrp.CFrame = ring.CFrame + Vector3.new(0, 3, 0)
-			end)
-			task.wait(0.5)
-		end
 
-		local dungeonTargetName = "Dugeon"
-		pcall(function()
+		if Helpers._enteringDungeon then
+			return false, "กำลังดำเนินการเข้าดันเจี้ยนอยู่แล้ว"
+		end
+		Helpers._enteringDungeon = true
+
+		local success, retMsg = pcall(function()
+			-- 1. ออกจากลู่วิ่งทันที และรอให้ Attribute เคลียร์
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
+				if Helpers.LeaveTreadmill then
+					pcall(Helpers.LeaveTreadmill)
+				else
+					if Net and Net.Paths and Net.Paths.ExitRequest then
+						Net.Fire(Net.Paths.ExitRequest, 0.5)
+					end
+				end
+				local char = LocalPlayer.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if hrp then
+					hrp.Anchored = false
+					hrp.AssemblyLinearVelocity = Vector3.zero
+				end
+				if hum then hum.Jump = true end
+
+				local tWait = os.clock()
+				while os.clock() - tWait < 2.0 and LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil do
+					task.wait(0.1)
+				end
+			end
+
+			-- 2. วาร์ปตัวละครไปยังแท่นดันเจี้ยน (DungeonPad / Ring)
+			local ring = Helpers.GetDungeonPad()
+			local char = LocalPlayer.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if ring and hrp and ring:IsA("BasePart") then
+				for attempt = 1, 3 do
+					pcall(function()
+						hrp.Anchored = false
+						hrp.AssemblyLinearVelocity = Vector3.zero
+						hrp.CFrame = ring.CFrame + Vector3.new(0, 3, 0)
+					end)
+					task.wait(0.3)
+					if (hrp.Position - ring.Position).Magnitude <= 15 then
+						break
+					end
+				end
+			end
+
+			task.wait(0.4)
+
+			-- 3. สั่งแสดง UI Dungeons ผ่าน Controller และกด Play บน Template
+			pcall(function()
+				local ctrl = safeRequire(function() return ReplicatedStorage.UI.Controller end)
+				if ctrl and type(ctrl.Show) == "function" then
+					ctrl.Show("Dungeons")
+				end
+			end)
+
 			local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 			local dui = pgui and pgui:FindFirstChild("DungeonUi")
 			local holder = dui and dui:FindFirstChild("Holder")
 			local ts = holder and holder:FindFirstChild("TowerSelection")
 			local sf = ts and ts:FindFirstChild("ScrollingFrame")
 			local tmpl = sf and sf:FindFirstChild("Template")
-			local diff = tmpl and tmpl:FindFirstChild("Difficulty")
-			local tname = tmpl and tmpl:FindFirstChild("TowerName")
-			local baseName = (tname and tname.Text ~= "") and tname.Text or "Dugeon"
-			if diff and diff:IsA("TextLabel") and diff.Text ~= "" then
-				dungeonTargetName = string.format("%s (%s)", baseName, diff.Text)
-			else
-				dungeonTargetName = baseName
+			local playBtn = tmpl and tmpl:FindFirstChild("Play")
+			if playBtn and playBtn:IsA("GuiButton") and firesignal then
+				pcall(firesignal, playBtn.Activated)
+				task.wait(0.3)
 			end
+
+			-- ดึงชื่อดันเจี้ยน
+			local dungeonTargetName = "Double Dugeons"
+			if tmpl then
+				local tname = tmpl:FindFirstChild("TowerName")
+				local diff = tmpl:FindFirstChild("Difficulty")
+				local baseName = (tname and tname.Text ~= "") and tname.Text or "Double Dugeons"
+				if diff and diff:IsA("TextLabel") and diff.Text ~= "" then
+					dungeonTargetName = string.format("%s (%s)", baseName, diff.Text)
+				else
+					dungeonTargetName = baseName
+				end
+			end
+
+			-- 4. เปิดปาร์ตี้ผ่าน Remote (ลองทั้งชื่อจริงจาก UI และ fallback)
+			if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
+				local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
+				if not ok or (type(res) == "table" and not res.Success) then
+					Net.Invoke(Net.Paths.DungeonPartyOpen, "Dugeon")
+				end
+			end
+
+			task.wait(0.4)
+
+			-- 5. สวมใส่ตัวที่ดีที่สุดลงดันเจี้ยน (ทั้ง SetTeam Remote และปุ่มบน TeamFrame)
+			Helpers.EquipBestDungeonTeam()
+
+			task.wait(0.4)
+
+			-- 6. กดปุ่ม Start ใน PartyFrame (UI Fallback)
+			local partyFrame = holder and (holder:FindFirstChild("PartyFrame") or dui:FindFirstChild("PartyFrame", true))
+			if partyFrame and partyFrame.Visible then
+				local startBtn = partyFrame:FindFirstChild("Start")
+				if startBtn and startBtn:IsA("GuiButton") and firesignal then
+					pcall(firesignal, startBtn.Activated)
+					task.wait(0.3)
+				end
+			end
+
+			-- 7. สั่งเริ่มเทเลพอร์ตเข้าดันเจี้ยนผ่าน Remote
+			if Net and Net.Paths and Net.Paths.DungeonPartyStart then
+				queueScriptOnTeleport(TELEPORT_LOADER)
+				local ok, res = Net.Invoke(Net.Paths.DungeonPartyStart)
+				if ok and (res == nil or (type(res) == "table" and res.Success)) then
+					logAction("ดันเจี้ยน", "เริ่มเทเลพอร์ตเข้าสู่ Dungeon สำเร็จ", true)
+					return "กำลังเทเลพอร์ต"
+				else
+					local msg = (type(res) == "table" and (res.Message or res.Reason)) or "ไม่สามารถเริ่มดันเจี้ยนได้"
+					logAction("ดันเจี้ยน", "เริ่มดันเจี้ยนไม่สำเร็จ: " .. tostring(msg), false)
+					error(tostring(msg))
+				end
+			end
+
+			return "ส่งคำขอเข้าดันเจี้ยนแล้ว"
 		end)
 
-		local partySuccess = false
-		if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
-			local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
-			if ok and (res == nil or (type(res) == "table" and res.Success)) then
-				partySuccess = true
-			end
+		Helpers._enteringDungeon = false
+		if not success then
+			return false, tostring(retMsg)
 		end
-
-		task.wait(0.3)
-
-		-- จัดทีมใส่ตัวดีที่สุดลงดันเจี้ยน (Equip Best Team for Dungeon)
-		Helpers.EquipBestDungeonTeam()
-
-		task.wait(0.3)
-		if Net and Net.Paths and Net.Paths.DungeonPartyStart then
-			-- เตรียม Queue สคริปต์ให้รันต่อเนื่องเมื่อถูกเทเลพอร์ตเข้าห้องดันเจี้ยน
-			queueScriptOnTeleport(TELEPORT_LOADER)
-			local ok, res = Net.Invoke(Net.Paths.DungeonPartyStart)
-			if ok and (res == nil or (type(res) == "table" and res.Success)) then
-				logAction("ดันเจี้ยน", "เริ่มเทเลพอร์ตเข้าสู่ Dungeon สำเร็จ", true)
-				return true, "กำลังเทเลพอร์ต"
-			else
-				local msg = (type(res) == "table" and (res.Message or res.Reason)) or "ไม่สามารถเริ่มดันเจี้ยนได้"
-				logAction("ดันเจี้ยน", "เริ่มดันเจี้ยนไม่สำเร็จ: " .. tostring(msg), false)
-			end
-		end
-
-		return partySuccess, "ส่งคำขอเข้าดันเจี้ยนแล้ว"
+		return true, tostring(retMsg)
 	end
 
 	function Helpers.IsUnitUltReady(slot)
@@ -954,20 +1030,15 @@ local function main()
 
 		-- กรณีอยู่ในแมพหลัก (Hub)
 		if not Core.Flags.AutoEnterDungeon then return end
+		if Helpers._enteringDungeon then return end
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
 			return
 		end
 
 		if StealState and StealState.isStealing then
-			return
-		end
-
-		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
-			if Net and Net.Paths and Net.Paths.ExitRequest then
-				Net.Fire(Net.Paths.ExitRequest, 0.5)
-				task.wait(0.5)
-			end
+			StealState.isStealing = false
+			Core.Busy = false
 		end
 
 		logAction("ดันเจี้ยน", "ประตูดันเจี้ยนเปิดอยู่ และ Speed ถึง 50B -> กำลังเข้าดันเจี้ยน...", true)
@@ -1829,7 +1900,7 @@ local function main()
 
 	local lastEnter = 0
 	local function enterTreadmill()
-		if Helpers.IsDungeonPlace() then return end
+		if Helpers.IsDungeonPlace() or Helpers._enteringDungeon then return end
 		if Core.Busy or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
 		if os.clock() - lastEnter < 1.5 or not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 
@@ -2742,6 +2813,7 @@ local function main()
 	end
 
 	local function returnToSafeRest(allowTreadmill)
+		if Helpers._enteringDungeon then return end
 		if not Helpers.IsAlive() or Helpers.IsCarrying() then return end
 		-- หากอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะวิ่ง ไม่ต้องเดินหรือขยับตัว
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
@@ -3211,7 +3283,7 @@ local function main()
 	end
 
 	local function stealCycle()
-		if Helpers.IsDungeonPlace() then return end
+		if Helpers.IsDungeonPlace() or Helpers._enteringDungeon then return end
 		-- ล้างล็อก Busy ที่ค้างจากรอบที่ถูก cancel/พัง (เฉพาะที่ลูปขโมยล็อกเอง)
 		if StealState.holdBusy then
 			StealState.holdBusy = false
