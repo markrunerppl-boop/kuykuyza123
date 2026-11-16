@@ -249,6 +249,8 @@ local function HumanWait(minSec, maxSec)
     task.wait(minSec + math.random() * (maxSec - minSec))
 end
 
+local UpdateStatus -- forward declaration: ถูกกำหนดค่าจริงที่ส่วน UI (~บรรทัด 1931)
+
 local function FormatNumber(n)
     n = tonumber(n) or 0
     if n >= 1e27 then
@@ -1343,8 +1345,7 @@ end
 local function TriggerOpenPetalfallCrate()
     if TradeState and TradeState.IsTradeActive then return end
 
-    -- ใช้ชื่อ Remote ตามเอกสาร (MineOpenColossusCrate) เป็นหลัก ไม่พึ่งค่าจาก MineCrateConfig.Events
-    local openEvent = "MineOpenColossusCrate"
+    local openEvent = (Config.Events and Config.Events.OpenColossusCrate) or "MineOpenColossusCrate"
 
     local function extractCount(v)
         if type(v) == "number" then return v end
@@ -1930,7 +1931,7 @@ local BadgeCorner = Instance.new("UICorner")
 BadgeCorner.CornerRadius = UDim.new(0, 6)
 BadgeCorner.Parent = StatusBadge
 
-local function UpdateStatus(text)
+function UpdateStatus(text)
     if StatusBadge then
         StatusBadge.Text = text
     end
