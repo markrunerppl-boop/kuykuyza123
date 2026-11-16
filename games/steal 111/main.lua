@@ -185,7 +185,8 @@ local function main()
 	Core.Flags.AutoDungeonAttack = true     -- ตีออโต้ในดันเจี้ยน
 	Core.Flags.AutoDungeonExit = true       -- ออกดันเจี้ยนอัตโนมัติเมื่อจบเกม
 	Core.Flags.AutoDungeonSkipIntro = true  -- ข้ามคัตซีนเปิดตัวอัตโนมัติ
-	Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องการออก (1-500, 500 = วนไม่จำกัด)
+Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องการออก (ตัวเลขอะไรก็ได้ >= 1)
+Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี้ยนเมื่อถึงชั้นที่ระบุแล้ววนเข้าใหม่
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
@@ -1219,8 +1220,9 @@ local function main()
 		end
 		local label = findWaveLabel(hud)
 		if not label then return 0 end
-		-- parse เลขแรกในข้อความ เช่น "Wave 202 • 63 LEFT" → 202
-		local n = label.Text:match("%d+")
+		-- parse เลขชั้นจากข้อความ เช่น "Wave 202 • 63 LEFT" → 202 (จับเลขหลังคำว่า Wave/ชั้นก่อน)
+		local txt = label.Text or ""
+		local n = txt:match("[Ww]ave%s*(%d+)") or txt:match("ชั้น%s*(%d+)") or txt:match("%d+")
 		return tonumber(n) or 0
 	end
 
@@ -1265,15 +1267,17 @@ local function main()
 				Helpers.CheckDungeonResultAndExit()
 			end
 
-			-- 5. ตรวจสอบชั้นเป้าหมาย → ถึงชั้นที่กำหนด → ออกดันเจี้ยนแล้ว loop ใหม่
-			local targetFloor = Core.Flags.DungeonTargetFloor
-			if Core.Flags.AutoDungeonExit ~= false and targetFloor and targetFloor < 500 then
+			-- 5. โหมด Floor Loop: ถึงชั้นที่ระบุ (ตัวเลขอะไรก็ได้ >= 1) → ออกดันเจี้ยน แล้วระบบ AutoEnterDungeon เข้าใหม่
+			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
+			if Core.Flags.DungeonFloorLoop and targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
-				if curFloor > 0 and curFloor >= targetFloor then
+				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
+				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 10 then
+					Helpers._lastFloorExit = os.clock()
 					logAction("ดันเจี้ยน", "ถึงชั้น " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
-					queueScriptOnTeleport(TELEPORT_LOADER)
+					pcall(queueScriptOnTeleport, TELEPORT_LOADER)
 					if Net and Net.Paths and Net.Paths.TowersExit then
-						Net.Fire(Net.Paths.TowersExit, 1.0)
+						pcall(Net.Fire, Net.Paths.TowersExit, 1.0)
 					end
 				end
 			end
@@ -5922,83 +5926,68 @@ local function main()
 			Core.Flags.AutoDungeonExit = v
 		end)
 
-		-- Slider ระบุชั้นดันเจี้ยนที่ต้องการออก (1-500, 500 = ไม่จำกัด)
+		-- โหมดออกดันเจี้ยนตามชั้นที่ระบุ แล้ววนเข้าใหม่ (Toggle + ช่องกรอกชั้น + ชั้นสูงสุดเรียลไทม์)
+		CreateToggle(pFarm, "ออกเมื่อถึงชั้นที่ระบุแล้ววนเข้าใหม่ (Floor Loop)", Core.Flags.DungeonFloorLoop, function(v)
+			Core.Flags.DungeonFloorLoop = v
+			pcall(function() if Config and Config.Save then Config.Save() end end)
+		end)
+
 		do
-			local sliderFrame = Instance.new("Frame")
-			sliderFrame.BackgroundTransparency = 1
-			sliderFrame.Size = UDim2.new(1, 0, 0, 44)
-			sliderFrame.Parent = pFarm
+			local floorFrame = Instance.new("Frame")
+			floorFrame.BackgroundTransparency = 1
+			floorFrame.Size = UDim2.new(1, 0, 0, 52)
+			floorFrame.Parent = pFarm
 
 			local lblFloor = Instance.new("TextLabel")
 			lblFloor.BackgroundTransparency = 1
 			lblFloor.Size = UDim2.new(1, -8, 0, 18)
-			lblFloor.Position = UDim2.new(0, 4, 0, 2)
+			lblFloor.Position = UDim2.new(0, 4, 0, 0)
 			lblFloor.TextColor3 = Color3.fromRGB(220, 220, 220)
 			lblFloor.TextSize = 13
 			lblFloor.Font = Enum.Font.GothamMedium
 			lblFloor.TextXAlignment = Enum.TextXAlignment.Left
-			local function updateFloorLabel()
-				local v = Core.Flags.DungeonTargetFloor or 500
-				lblFloor.Text = "🏁 ออกเมื่อถึงชั้น: " .. (v >= 500 and "ไม่จำกัด" or tostring(v))
-			end
-			updateFloorLabel()
-			lblFloor.Parent = sliderFrame
+			lblFloor.Text = "🏁 ชั้นปัจจุบัน: 0 | สูงสุด: 0"
+			lblFloor.Parent = floorFrame
 
-			local track = Instance.new("Frame")
-			track.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-			track.Size = UDim2.new(1, -8, 0, 10)
-			track.Position = UDim2.new(0, 4, 0, 24)
-			track.Parent = sliderFrame
-			Instance.new("UICorner", track).CornerRadius = UDim.new(0, 5)
+			local box = Instance.new("TextBox")
+			box.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			box.TextColor3 = Color3.fromRGB(255, 255, 255)
+			box.PlaceholderText = "ชั้นที่ต้องการออก (ใส่เลขเท่าไหร่ก็ได้)"
+			box.ClearTextOnFocus = false
+			box.Font = Enum.Font.GothamMedium
+			box.TextSize = 13
+			box.Size = UDim2.new(1, -8, 0, 26)
+			box.Position = UDim2.new(0, 4, 0, 22)
+			box.Text = tostring(Core.Flags.DungeonTargetFloor or 500)
+			box.Parent = floorFrame
+			Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
 
-			local fill = Instance.new("Frame")
-			fill.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
-			fill.Size = UDim2.new(1, 0, 1, 0)
-			fill.Parent = track
-			Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
-
-			local knob = Instance.new("TextButton")
-			knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			knob.Size = UDim2.new(0, 14, 0, 14)
-			knob.AnchorPoint = Vector2.new(0.5, 0.5)
-			knob.Position = UDim2.new(1, 0, 0.5, 0)
-			knob.Text = ""
-			knob.Parent = track
-			Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-			local MIN_F, MAX_F = 1, 500
-			local function setFloor(val)
-				val = math.clamp(math.round(val), MIN_F, MAX_F)
-				Core.Flags.DungeonTargetFloor = val
-				local pct = (val - MIN_F) / (MAX_F - MIN_F)
-				fill.Size = UDim2.new(pct, 0, 1, 0)
-				knob.Position = UDim2.new(pct, 0, 0.5, 0)
-				updateFloorLabel()
-				pcall(function()
-					local cfg = {}
-					local ok2, raw = pcall(readfile, "kuykuy_config.json")
-					if ok2 and raw then cfg = game:GetService("HttpService"):JSONDecode(raw) end
-					cfg.DungeonTargetFloor = val
-					writefile("kuykuy_config.json", game:GetService("HttpService"):JSONEncode(cfg))
-				end)
-			end
-
-			-- init pct จาก current value
-			local initPct = ((Core.Flags.DungeonTargetFloor or 500) - MIN_F) / (MAX_F - MIN_F)
-			fill.Size = UDim2.new(initPct, 0, 1, 0)
-			knob.Position = UDim2.new(initPct, 0, 0.5, 0)
-
-			local dragging = false
-			knob.MouseButton1Down:Connect(function() dragging = true end)
-			game:GetService("UserInputService").InputEnded:Connect(function(inp)
-				if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+			box.FocusLost:Connect(function()
+				local n = tonumber(box.Text)
+				if n then
+					n = math.max(1, math.floor(n))
+					Core.Flags.DungeonTargetFloor = n
+					box.Text = tostring(n)
+					pcall(function()
+						local cfg = {}
+						local ok2, raw = pcall(readfile, "kuykuy_config.json")
+						if ok2 and raw then cfg = game:GetService("HttpService"):JSONDecode(raw) end
+						cfg.DungeonTargetFloor = n
+						writefile("kuykuy_config.json", game:GetService("HttpService"):JSONEncode(cfg))
+					end)
+				else
+					box.Text = tostring(Core.Flags.DungeonTargetFloor or 500)
+				end
 			end)
-			game:GetService("RunService").Heartbeat:Connect(function()
-				if not dragging then return end
-				local mx = game:GetService("UserInputService"):GetMouseLocation().X
-				local abs = track.AbsolutePosition
-				local pct2 = math.clamp((mx - abs.X) / track.AbsoluteSize.X, 0, 1)
-				setFloor(MIN_F + pct2 * (MAX_F - MIN_F))
+
+			Core:Loop("dungeonFloorLabel", "UI", 0.5, function()
+				if not Helpers.IsDungeonPlace() then
+					lblFloor.Text = string.format("🏁 ชั้นสูงสุดรอบล่าสุด: %d", Helpers._dungeonMaxFloor or 0)
+					return
+				end
+				local cur = Helpers.GetCurrentDungeonFloor()
+				if cur > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = cur end
+				lblFloor.Text = string.format("🏁 ชั้นปัจจุบัน: %d | สูงสุดตอนนี้: %d", cur, Helpers._dungeonMaxFloor or 0)
 			end)
 		end
 
