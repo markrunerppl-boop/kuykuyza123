@@ -45,7 +45,9 @@ local function queueScriptOnTeleport(scriptSource)
 		or (fluxus and fluxus.queue_on_teleport)
 		or queue_on_teleport
 		or (getgenv and getgenv().queue_on_teleport)
+	if ENV.__KUY_TELEPORT_QUEUED == true then return end
 	if type(qot) == "function" then
+		ENV.__KUY_TELEPORT_QUEUED = true
 		pcall(qot, scriptSource or TELEPORT_LOADER)
 	end
 end
@@ -974,6 +976,10 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		if Helpers._enteringDungeon then
 			return false, "กำลังดำเนินการเข้าดันเจี้ยนอยู่แล้ว"
 		end
+		if os.clock() - (Helpers._lastDungeonAttempt or -100) < 8 then
+			return false, "คูลดาวน์ 8 วินาที"
+		end
+		Helpers._lastDungeonAttempt = os.clock()
 		Helpers._enteringDungeon = true
 
 		local success, retMsg = pcall(function()
@@ -1068,11 +1074,43 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					end)
 				end
 			end
+			local function isSafeBtn(b)
+				local nm = string.lower(b.Name)
+				if nm == "stopview" or nm == "close" or nm == "back" or nm == "cancel" then return false end
+				if b:IsA("TextButton") and string.lower(b.Text or ""):match("^%s*x%s*$") then return false end
+				for _, c in ipairs(b:GetChildren()) do
+					if c:IsA("TextLabel") and string.lower(c.Text or ""):match("^%s*x%s*$") then return false end
+				end
+				if nm == "play" or nm == "view" or nm == "select" then return true end
+				if b:IsA("TextButton") then
+					local bt = string.lower(b.Text or "")
+					if bt:match("^%s*view%s*$") or bt:match("^%s*play%s*$") or bt:match("^%s*select%s*$") then return true end
+				end
+				for _, c in ipairs(b:GetChildren()) do
+					if c:IsA("TextLabel") then
+						local t = string.lower(c.Text or "")
+						if t:match("^%s*view%s*$") or t:match("^%s*play%s*$") then return true end
+					end
+				end
+				return false
+			end
+			local function teamOpen()
+				local pg2 = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+				local d2 = pg2 and pg2:FindFirstChild("DungeonUi")
+				local h2 = d2 and d2:FindFirstChild("Holder")
+				for _, nm in ipairs({ "PartyFrame", "TeamFrame" }) do
+					local f = h2 and h2:FindFirstChild(nm)
+					if f and f:IsA("GuiObject") and f.Visible then return true end
+				end
+				local tu = pg2 and pg2:FindFirstChild("TowerUi")
+				local tsel = tu and tu:FindFirstChild("TeamSelection")
+				if tsel and tsel:IsA("GuiObject") and tsel.Visible then return true end
+				return false
+			end
 			local function selectCard()
-				if not tmpl then return end
-				clickBtn(tmpl) -- ตัวการ์ดเอง (ถ้าเป็นปุ่ม)
+				if not tmpl or teamOpen() then return end
 				for _, b in ipairs(tmpl:GetDescendants()) do
-					if b:IsA("GuiButton") then clickBtn(b) end -- ปุ่มลูก Select/Play/Click
+					if b:IsA("GuiButton") and isSafeBtn(b) then clickBtn(b) end
 				end
 			end
 			selectCard()
@@ -1102,7 +1140,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				return nil
 			end
 			local viewT0 = os.clock()
-			while os.clock() - viewT0 < 4 do
+			while os.clock() - viewT0 < 4 and not teamOpen() do
 				dui = pgui and pgui:FindFirstChild("DungeonUi")
 				local vb = findViewButton(dui)
 				if vb and firesignal then
@@ -1122,7 +1160,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local dungeonTargetName = Helpers._dgPickedName or "Double Dugeons"
 
 			-- 4. เปิดปาร์ตี้ด้วยชื่อจริง (fallback สะกดอื่น)
-			if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
+			if Net and Net.Paths and Net.Paths.DungeonPartyOpen and not teamOpen() then
 				local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
 				if not ok or (type(res) == "table" and res.Success == false) then
 					Net.Invoke(Net.Paths.DungeonPartyOpen, (dungeonTargetName == "Double Dungeons") and "Double Dugeons" or "Double Dungeons")
@@ -1306,7 +1344,6 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 
 		if isDefeat then
 			logAction("ดันเจี้ยน", "ดันเจี้ยนจบลงแล้ว -> ออกจากห้องกลับสู่ Hub", true)
-			queueScriptOnTeleport(TELEPORT_LOADER)
 			if Net and Net.Paths and Net.Paths.TowersExit then
 				Net.Fire(Net.Paths.TowersExit, 1.0)
 			end
@@ -1335,6 +1372,27 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and os.clock() - (Helpers._lastDgTreadmill or -100) > 3 then
 				Helpers._lastDgTreadmill = os.clock()
 				pcall(function()
+					-- เรียกลู่วิ่งออกมาที่ตำแหน่งตัวละครก่อน (ลู่วิ่งในดันเจี้ยนไม่ได้อยู่ใน Workspace ตั้งแต่แรก)
+					local hrp0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+					if hrp0 and Net and Net.Paths and Net.Paths.TowersTreadmill then
+						Net.Fire(Net.Paths.TowersTreadmill, 1.0, { Look = hrp0.CFrame.LookVector, Position = hrp0.Position })
+						-- ปุ่ม UI เรียกลู่วิ่ง (DungeonHud / TowerUi / PlayerGui)
+						local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+						if pg and firesignal then
+							for _, rn in ipairs({ "DungeonHud", "TowerUi" }) do
+								local r = pg:FindFirstChild(rn)
+								if r then
+									for _, d in ipairs(r:GetDescendants()) do
+										if d:IsA("GuiButton") and string.lower(d.Name):find("treadmil") then
+											pcall(firesignal, d.Activated)
+											pcall(firesignal, d.MouseButton1Click)
+										end
+									end
+								end
+							end
+						end
+						task.wait(0.5)
+					end
 					local best, bestScore
 					local plotsFolder = Workspace:FindFirstChild("Plots")
 					for _, d in ipairs(Workspace:GetDescendants()) do
@@ -1408,7 +1466,6 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				if curFloor > 0 and curFloor >= targetFloor and not Helpers._forceExiting then
 					Helpers._forceExiting = true
 					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → บังคับออกดันเจี้ยน", true)
-					pcall(queueScriptOnTeleport, TELEPORT_LOADER)
 					task.spawn(function()
 						local t0 = os.clock()
 						-- ยิง Exit/Leave + กดปุ่ม Exit บน UI ซ้ำทุก 1 วินาที จนกว่าจะออกสำเร็จ (สูงสุด 120 วิ)
@@ -1459,6 +1516,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		-- กรณีอยู่ในแมพหลัก (Hub)
 		if not Core.Flags.AutoEnterDungeon then return end
 		if Helpers._enteringDungeon then return end
+		if os.clock() - (Helpers._lastDungeonAttempt or -100) < 8 then return end
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
 			return

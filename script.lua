@@ -7,10 +7,19 @@
     ========================================================================
 --]]
 
+local env = (getgenv and getgenv()) or _G
+if env.__KUY_LOADER_RUNNING and os.clock() - env.__KUY_LOADER_RUNNING < 5 then return end
+env.__KUY_LOADER_RUNNING = os.clock()
+
 local BaseUrl = "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/"
 
--- ฟังก์ชันแจ้งเตือน (Roblox Notification + F9 Console)
+-- ฟังก์ชันแจ้งเตือน (Roblox Notification + F9 Console) พร้อมคูลดาวน์กันข้อความซ้ำ
+local _lastLog = {}
 local function Log(title, msg, duration)
+    local key = tostring(title) .. "|" .. tostring(msg)
+    local now = os.clock()
+    if _lastLog[key] and now - _lastLog[key] < 10 then return end
+    _lastLog[key] = now
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "⚡ " .. title,
