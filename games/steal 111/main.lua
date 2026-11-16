@@ -944,8 +944,8 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local teamFrame = holder and holder:FindFirstChild("TeamFrame")
 			if teamFrame and teamFrame.Visible then
 				local eb = teamFrame:FindFirstChild("EquipBest")
-				if eb and eb:IsA("GuiButton") and firesignal then
-					firesignal(eb.Activated)
+				if eb and eb:IsA("GuiButton") then
+					Helpers.ForceClickGuiButton(eb)
 					task.wait(0.2)
 				end
 				local cont = teamFrame:FindFirstChild("Continue")
@@ -967,6 +967,153 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 	end
 
 	Helpers._enteringDungeon = false
+	function Helpers.ForceClickGuiButton(btn)
+		if not (btn and btn:IsA("GuiButton")) then return false end
+		local nm0 = string.lower(btn.Name)
+		if nm0 == "stopview" or nm0 == "close" then return false end
+		if getconnections then
+			for _, sn in ipairs({ "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up" }) do
+				pcall(function()
+					for _, cn in ipairs(getconnections(btn[sn])) do
+						if type(cn.Function) == "function" then pcall(cn.Function) end
+						pcall(function() cn:Fire() end)
+					end
+				end)
+			end
+		end
+		if firesignal then
+			pcall(firesignal, btn.Activated)
+			pcall(firesignal, btn.MouseButton1Click)
+			pcall(firesignal, btn.MouseButton1Down)
+			pcall(firesignal, btn.MouseButton1Up)
+		end
+		pcall(function()
+			if btn.AbsoluteSize.X > 0 then
+				local vim = game:GetService("VirtualInputManager")
+				local inset = game:GetService("GuiService"):GetGuiInset()
+				local cx = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2 + inset.X
+				local cy = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2 + inset.Y
+				vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+				task.wait(0.03)
+				vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+			end
+		end)
+		return true
+	end
+
+	function Helpers.ResolveDungeonKey(picked)
+		local foundDouble, foundAny
+		local function scan(t, depth)
+			if type(t) ~= "table" or depth > 3 or foundDouble then return end
+			for k, v in pairs(t) do
+				if type(k) == "string" then
+					local l = string.lower(k)
+					if l:find("double d") then foundDouble = k return end
+					if not foundAny and (l == "dungeon" or l == "dugeon" or l:find("dungeon") or l:find("dugeon")) then foundAny = k end
+				end
+				if type(v) == "table" then scan(v, depth + 1) end
+				if foundDouble then return end
+			end
+		end
+		for _, g in ipairs({ "GetTowerConfig", "GetDungeonUtil" }) do
+			local fn = Helpers[g]
+			if type(fn) == "function" then
+				local ok, t = pcall(fn)
+				if ok then scan(t, 0) end
+			end
+		end
+		return foundDouble or picked or foundAny or "Double Dugeons"
+	end
+
+	function Helpers.SummonDungeonTreadmill(hrp)
+		if not hrp then return end
+		local pos = { Look = hrp.CFrame.LookVector, Position = hrp.Position }
+		-- 1) Controller modules
+		pcall(function()
+			local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+			local cnt = 0
+			for _, m in ipairs(ps and ps:GetDescendants() or {}) do
+				if m:IsA("ModuleScript") and cnt < 40 then
+					local l = string.lower(m.Name)
+					local isTm = l:find("treadmill") or l:find("treadmil")
+					if isTm or l:find("dungeon") or l:find("tower") then
+						cnt = cnt + 1
+						local ok, mod = pcall(require, m)
+						if ok and type(mod) == "table" then
+							for fk, fv in pairs(mod) do
+								if type(fk) == "string" and type(fv) == "function" then
+									local fl = string.lower(fk)
+									local hit = fl:find("treadmill") or fl:find("treadmil")
+									if not hit and isTm then
+										for _, w in ipairs({ "toggle", "start", "spawn", "summon", "enter", "use" }) do
+											if fl == w then hit = true break end
+										end
+									end
+									if hit then pcall(fv, pos) end
+								end
+							end
+						end
+					end
+				end
+			end
+		end)
+		-- 2) UI buttons
+		pcall(function()
+			local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			local clicked = 0
+			for _, d in ipairs(pg and pg:GetDescendants() or {}) do
+				if clicked >= 6 then break end
+				if d:IsA("GuiButton") and d.Visible then
+					local nm = string.lower(d.Name)
+					local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
+					local im = d:IsA("ImageButton") and string.lower(tostring(d.Image or "")) or ""
+					if not (nm:find("close") or nm:find("exit") or nm:find("leave") or nm:find("stop")) then
+						for _, kw in ipairs({ "treadmill", "treadmil", "train", "run", "speed" }) do
+							if nm:find(kw) or tx:find(kw) or im:find(kw) then
+								clicked = clicked + 1
+								Helpers.ForceClickGuiButton(d)
+								break
+							end
+						end
+					end
+				end
+			end
+		end)
+		-- 3) ContextActionService
+		pcall(function()
+			local vim = game:GetService("VirtualInputManager")
+			for an, info in pairs(game:GetService("ContextActionService"):GetAllBoundActionInfo()) do
+				local l = string.lower(tostring(an))
+				if l:find("treadmill") or l:find("treadmil") or l:find("train") then
+					for _, it in ipairs(info.inputTypes or {}) do
+						if typeof(it) == "EnumItem" and it.EnumType == Enum.KeyCode then
+							vim:SendKeyEvent(true, it, false, game)
+							task.wait(0.05)
+							vim:SendKeyEvent(false, it, false, game)
+						end
+					end
+				end
+			end
+		end)
+		-- 4) Remotes ใน Remotes.Towers / Remotes.Treadmill
+		pcall(function()
+			local rem = ReplicatedStorage:FindFirstChild("Remotes")
+			for _, fn in ipairs({ "Towers", "Treadmill" }) do
+				local fd = rem and rem:FindFirstChild(fn)
+				for _, r in ipairs(fd and fd:GetDescendants() or {}) do
+					local l = string.lower(r.Name)
+					if l:find("treadmill") or l:find("treadmil") or l:find("joinshared") or l:find("event") or l:find("state") then
+						if r:IsA("RemoteEvent") then
+							pcall(function() r:FireServer(pos) end)
+						elseif r:IsA("RemoteFunction") then
+							task.spawn(pcall, function() return r:InvokeServer(pos) end)
+						end
+					end
+				end
+			end
+		end)
+	end
+
 	function Helpers.EnterDungeon()
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
@@ -1038,6 +1185,21 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 			local dui = pgui and pgui:FindFirstChild("DungeonUi")
 			local holder = dui and dui:FindFirstChild("Holder")
+			local waitCard = os.clock()
+			while os.clock() - waitCard < 2 do
+				dui = pgui and pgui:FindFirstChild("DungeonUi")
+				holder = dui and dui:FindFirstChild("Holder")
+				local ts0 = holder and holder:FindFirstChild("TowerSelection")
+				local sf0 = ts0 and ts0:FindFirstChild("ScrollingFrame")
+				local ready = false
+				if ts0 and ts0:IsA("GuiObject") and ts0.Visible and sf0 then
+					for _, c in ipairs(sf0:GetChildren()) do
+						if c:IsA("GuiObject") and c.Visible and c.Name ~= "Template" then ready = true break end
+					end
+				end
+				if ready then break end
+				task.wait(0.1)
+			end
 			local ts = holder and holder:FindFirstChild("TowerSelection")
 			local sf = ts and ts:FindFirstChild("ScrollingFrame")
 			-- เลือกการ์ด "Double Dugeons" (วนทุก Template ตามชื่อ TowerName) ถ้าไม่เจอใช้ Template แรก
@@ -1049,7 +1211,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					local txt = string.lower((tn and tn:IsA("TextLabel") and tn.Text) or "")
 					local attrName = c:GetAttribute("TowerName") or c:GetAttribute("Name") or c:GetAttribute("Tower")
 					if txt == "" then txt = string.lower(tostring(attrName or c.Name)) end
-					if txt:find("double") then
+					if txt:find("double") and (not c:IsA("GuiObject") or c.Visible) then
 						tmpl = c
 						Helpers._dgPickedName = (tn and tn:IsA("TextLabel") and tn.Text ~= "" and tn.Text) or (type(attrName) == "string" and attrName) or nil
 						break
@@ -1061,6 +1223,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local function clickBtn(b)
 				if not (b and b:IsA("GuiButton")) then return end
 				if Helpers.ClickButton then pcall(Helpers.ClickButton, b) end
+				Helpers.ForceClickGuiButton(b)
 				if firesignal then
 					pcall(firesignal, b.Activated)
 					pcall(firesignal, b.MouseButton1Click)
@@ -1130,7 +1293,9 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 						if vis then
 							local nm = string.lower(d.Name)
 							local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
-							if nm == "view" or tx:match("^%s*view%s*$") then return d end
+							if nm == "stopview" or nm == "close" then
+								-- ห้ามกด
+							elseif nm == "view" or nm == "play" or tx:match("^%s*view%s*$") then return d end
 							for _, c in ipairs(d:GetChildren()) do
 								if c:IsA("TextLabel") and string.lower(c.Text or ""):match("^%s*view%s*$") then return d end
 							end
@@ -1143,9 +1308,8 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			while os.clock() - viewT0 < 4 and not teamOpen() do
 				dui = pgui and pgui:FindFirstChild("DungeonUi")
 				local vb = findViewButton(dui)
-				if vb and firesignal then
-					pcall(firesignal, vb.Activated)
-					pcall(firesignal, vb.MouseButton1Click)
+				if vb then
+					Helpers.ForceClickGuiButton(vb)
 					logAction("ดันเจี้ยน", "กดปุ่ม View แล้ว", true)
 					task.wait(0.5)
 					break
@@ -1157,7 +1321,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			holder = dui and dui:FindFirstChild("Holder")
 
 			-- ดึงชื่อดันเจี้ยนจริงจากการ์ดที่เลือก (Attribute/Text) ถ้าไม่ได้ใช้ fallback
-			local dungeonTargetName = Helpers._dgPickedName or "Double Dugeons"
+			local dungeonTargetName = Helpers.ResolveDungeonKey(Helpers._dgPickedName)
 
 			-- 4. เปิดปาร์ตี้ด้วยชื่อจริง (fallback สะกดอื่น)
 			if Net and Net.Paths and Net.Paths.DungeonPartyOpen and not teamOpen() then
@@ -1178,8 +1342,22 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local partyFrame = holder and (holder:FindFirstChild("PartyFrame") or dui:FindFirstChild("PartyFrame", true))
 			if partyFrame and partyFrame.Visible then
 				local startBtn = partyFrame:FindFirstChild("Start")
-				if startBtn and startBtn:IsA("GuiButton") and firesignal then
-					pcall(firesignal, startBtn.Activated)
+				if not (startBtn and startBtn:IsA("GuiButton")) then
+					startBtn = nil
+					for _, b in ipairs(partyFrame:GetDescendants()) do
+						if b:IsA("GuiButton") and b.Visible then
+							local bt = b:IsA("TextButton") and string.lower(b.Text or "") or ""
+							local bn = string.lower(b.Name)
+							if bn == "start" or bn == "startsolo" or bt:find("start") then startBtn = b break end
+							for _, c in ipairs(b:GetChildren()) do
+								if c:IsA("TextLabel") and string.lower(c.Text or ""):find("start") then startBtn = b break end
+							end
+							if startBtn then break end
+						end
+					end
+				end
+				if startBtn and startBtn:IsA("GuiButton") then
+					Helpers.ForceClickGuiButton(startBtn)
 					task.wait(0.3)
 				end
 			end
@@ -1374,8 +1552,8 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				pcall(function()
 					-- เรียกลู่วิ่งออกมาที่ตำแหน่งตัวละครก่อน (ลู่วิ่งในดันเจี้ยนไม่ได้อยู่ใน Workspace ตั้งแต่แรก)
 					local hrp0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-					if hrp0 and Net and Net.Paths and Net.Paths.TowersTreadmill then
-						Net.Fire(Net.Paths.TowersTreadmill, 1.0, { Look = hrp0.CFrame.LookVector, Position = hrp0.Position })
+					if hrp0 then
+						Helpers.SummonDungeonTreadmill(hrp0)
 						-- ปุ่ม UI เรียกลู่วิ่ง (DungeonHud / TowerUi / PlayerGui)
 						local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 						if pg and firesignal then
@@ -1397,7 +1575,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					local plotsFolder = Workspace:FindFirstChild("Plots")
 					for _, d in ipairs(Workspace:GetDescendants()) do
 						local n = string.lower(d.Name)
-						if n:find("treadmil") and not (plotsFolder and d:IsDescendantOf(plotsFolder)) then
+						if (n:find("treadmil") or n:find("runner") or n:find("machine") or n:find("pad")) and not (plotsFolder and d:IsDescendantOf(plotsFolder)) then
 							local part = d:IsA("BasePart") and d or nil
 							if d:IsA("Model") or d:IsA("Folder") then
 								part = d:FindFirstChild("Seat", true) or d:FindFirstChild("Primary", true) or d:FindFirstChildWhichIsA("BasePart", true)
