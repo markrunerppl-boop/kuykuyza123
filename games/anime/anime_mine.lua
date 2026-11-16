@@ -1343,7 +1343,8 @@ end
 local function TriggerOpenPetalfallCrate()
     if TradeState and TradeState.IsTradeActive then return end
 
-    local openEvent = (Config.Events and Config.Events.OpenColossusCrate) or "MineOpenColossusCrate"
+    -- ใช้ชื่อ Remote ตามเอกสาร (MineOpenColossusCrate) เป็นหลัก ไม่พึ่งค่าจาก MineCrateConfig.Events
+    local openEvent = "MineOpenColossusCrate"
 
     local function extractCount(v)
         if type(v) == "number" then return v end
@@ -1379,12 +1380,10 @@ local function TriggerOpenPetalfallCrate()
         return result
     end
 
-    -- ส่ง Remote เปิดกล่องโดยตรง (ไม่ส่ง alias ภาษาไทย ป้องกัน Server Error)
     local function sendOpen(name, amount)
         return SafeSendEvent(openEvent, name, amount)
     end
 
-    -- รอจนจำนวนกล่องลดลงจากค่าเดิม (ยืนยันว่าเซิร์ฟเวอร์ประมวลผลและ Replicate เรียบร้อย)
     local function waitDecrease(name, before, timeout)
         local t = 0
         local limit = timeout or 3.5
@@ -1407,7 +1406,6 @@ local function TriggerOpenPetalfallCrate()
         local fails = 0
         local guard = 0
 
-        -- เปิดแบบ Batch ครั้งละสูงสุด 50 กล่อง (หากติดขัดจะลดเหลือ 1 เพื่อความเสถียร)
         while remaining > 0 and fails < 3 and guard < 40 do
             guard = guard + 1
             if TradeState and TradeState.IsTradeActive then break end
@@ -1439,7 +1437,11 @@ local function TriggerOpenPetalfallCrate()
 
     if totalOpened > 0 then
         UpdateStatus(string.format("✅ เปิด Colossus Crate รวม %d กล่อง", totalOpened))
-        if Config.AutoEquipBest then TriggerEquipBest() end
+        -- ส่ง EquipBest ตรงผ่าน SafeSendEvent (TriggerEquipBest ถูกประกาศหลังฟังก์ชันนี้ จึงเรียกจากตรงนี้ไม่ได้)
+        if Config.AutoEquipBest then
+            pcall(SafeSendEvent, Config.Events.EquipBest)
+            HumanWait(0.2, 0.3)
+        end
     elseif next(crates) == nil then
         UpdateStatus("ℹ️ ไม่มี Colossus Crate ในคลัง")
     end
