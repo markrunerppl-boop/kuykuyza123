@@ -1025,66 +1025,71 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		return foundDouble or picked or foundAny or "Double Dugeons"
 	end
 
-	function Helpers.SummonDungeonTreadmill(hrp)
-		if not hrp then return end
-		local pos = { Look = hrp.CFrame.LookVector, Position = hrp.Position }
-		-- 1) Controller modules
-		pcall(function()
-			local ps = LocalPlayer:FindFirstChild("PlayerScripts")
-			local cnt = 0
-			for _, m in ipairs(ps and ps:GetDescendants() or {}) do
-				if m:IsA("ModuleScript") and cnt < 40 then
-					local l = string.lower(m.Name)
-					local isTm = l:find("treadmill") or l:find("treadmil")
-					if isTm or l:find("dungeon") or l:find("tower") then
-						cnt = cnt + 1
-						local ok, mod = pcall(require, m)
-						if ok and type(mod) == "table" then
-							for fk, fv in pairs(mod) do
-								if type(fk) == "string" and type(fv) == "function" then
-									local fl = string.lower(fk)
-									local hit = fl:find("treadmill") or fl:find("treadmil")
-									if not hit and isTm then
-										for _, w in ipairs({ "toggle", "start", "spawn", "summon", "enter", "use" }) do
-											if fl == w then hit = true break end
-										end
-									end
-									if hit then pcall(fv, pos) end
-								end
-							end
-						end
-					end
+	function Helpers.IsOnDungeonTreadmill()
+		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return true end
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Sit and hum.SeatPart then return true end
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if pg then
+			local st = pg:FindFirstChild("StopTrainingGui")
+			if st and st:IsA("ScreenGui") and st.Enabled then
+				for _, d in ipairs(st:GetDescendants()) do
+					if d:IsA("GuiObject") and d.Visible then return true end
 				end
 			end
-		end)
-		-- 2) UI buttons
+			local tj = pg:FindFirstChild("TreadmillJuice")
+			if tj and tj:IsA("ScreenGui") and tj.Enabled then
+				for _, d in ipairs(tj:GetDescendants()) do
+					if d:IsA("GuiObject") and d.Visible then return true end
+				end
+			end
+		end
+		return false
+	end
+
+	function Helpers.SummonDungeonTreadmill(hrp)
+		if not hrp or Helpers.IsOnDungeonTreadmill() then return end
+		local look = hrp.CFrame.LookVector
+		local flatLook = Vector3.new(look.X, 0, look.Z)
+		if flatLook.Magnitude > 0.01 then flatLook = flatLook.Unit else flatLook = Vector3.new(0, 0, -1) end
+		local pos = { Look = flatLook, Position = hrp.Position }
+
+		-- 1) คลิกปุ่มเรียกลู่วิ่งใน DungeonHud / TowerUi / TowerHud ก่อน (เพื่อให้ Client Controller ส่งพิกัดพื้นจริงและเสกโมเดล)
+		local clickedUi = false
 		pcall(function()
 			local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-			local clicked = 0
-			for _, d in ipairs(pg and pg:GetDescendants() or {}) do
-				if clicked >= 6 then break end
-				if d:IsA("GuiButton") and d.Visible then
-					local nm = string.lower(d.Name)
-					local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
-					local im = d:IsA("ImageButton") and string.lower(tostring(d.Image or "")) or ""
-					if not (nm:find("close") or nm:find("exit") or nm:find("leave") or nm:find("stop")) then
-						for _, kw in ipairs({ "treadmill", "treadmil", "train", "run", "speed" }) do
-							if nm:find(kw) or tx:find(kw) or im:find(kw) then
-								clicked = clicked + 1
+			if not pg then return end
+			for _, rn in ipairs({ "DungeonHud", "TowerUi", "TowerHud" }) do
+				local root = pg:FindFirstChild(rn)
+				if root then
+					for _, d in ipairs(root:GetDescendants()) do
+						if d:IsA("GuiButton") and d.Visible then
+							local nm = string.lower(d.Name)
+							local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
+							if (nm:find("treadmil") or tx:find("treadmil")) and not (nm:find("exit") or nm:find("stop") or nm:find("close")) then
 								Helpers.ForceClickGuiButton(d)
+								clickedUi = true
 								break
 							end
 						end
 					end
 				end
+				if clickedUi then break end
 			end
 		end)
-		-- 3) ContextActionService
+
+		if clickedUi then
+			task.wait(0.25)
+			if Helpers.IsOnDungeonTreadmill() then return end
+		end
+
+		-- 2) ContextActionService (เผื่อแมพผูกปุ่มลัดเรียกลู่วิ่ง)
 		pcall(function()
 			local vim = game:GetService("VirtualInputManager")
 			for an, info in pairs(game:GetService("ContextActionService"):GetAllBoundActionInfo()) do
 				local l = string.lower(tostring(an))
-				if l:find("treadmill") or l:find("treadmil") or l:find("train") then
+				if l:find("treadmill") or l:find("treadmil") then
 					for _, it in ipairs(info.inputTypes or {}) do
 						if typeof(it) == "EnumItem" and it.EnumType == Enum.KeyCode then
 							vim:SendKeyEvent(true, it, false, game)
@@ -1095,21 +1100,16 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				end
 			end
 		end)
-		-- 4) Remotes ใน Remotes.Towers / Remotes.Treadmill
+
+		-- 3) ยิง Remote ReplicatedStorage.Remotes.Towers.Treadmill โดยตรงเพียง 1 ครั้งต่อรอบ (ห้ามยิงซ้ำซ้อนเพื่อไม่ให้ Toggle ปิด)
 		pcall(function()
 			local rem = ReplicatedStorage:FindFirstChild("Remotes")
-			for _, fn in ipairs({ "Towers", "Treadmill" }) do
-				local fd = rem and rem:FindFirstChild(fn)
-				for _, r in ipairs(fd and fd:GetDescendants() or {}) do
-					local l = string.lower(r.Name)
-					if l:find("treadmill") or l:find("treadmil") or l:find("joinshared") or l:find("event") or l:find("state") then
-						if r:IsA("RemoteEvent") then
-							pcall(function() r:FireServer(pos) end)
-						elseif r:IsA("RemoteFunction") then
-							task.spawn(pcall, function() return r:InvokeServer(pos) end)
-						end
-					end
-				end
+			local tw = rem and rem:FindFirstChild("Towers")
+			local tm = tw and (tw:FindFirstChild("Treadmill") or tw:FindFirstChild("Treadmil"))
+			if tm and tm:IsA("RemoteEvent") then
+				tm:FireServer(pos)
+			elseif Net and Net.Paths and Net.Paths.TowersTreadmill then
+				Net.Fire(Net.Paths.TowersTreadmill, 2.0, pos)
 			end
 		end)
 	end
@@ -1546,87 +1546,76 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				Helpers.TriggerDungeonUltimates()
 			end
 
-			-- 3.5 ขึ้นลู่วิ่งในแมพดันเจี้ยนทันที
-			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and os.clock() - (Helpers._lastDgTreadmill or -100) > 3 then
+			-- 3.5 ขึ้นลู่วิ่งในแมพดันเจี้ยนทันที (แบบ Dynamic ไม่สแปม Toggle ซ้อน)
+			if not Helpers.IsOnDungeonTreadmill() and os.clock() - (Helpers._lastDgTreadmill or -100) > 4.0 then
 				Helpers._lastDgTreadmill = os.clock()
 				pcall(function()
-					-- เรียกลู่วิ่งออกมาที่ตำแหน่งตัวละครก่อน (ลู่วิ่งในดันเจี้ยนไม่ได้อยู่ใน Workspace ตั้งแต่แรก)
-					local hrp0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-					if hrp0 then
-						Helpers.SummonDungeonTreadmill(hrp0)
-						-- ปุ่ม UI เรียกลู่วิ่ง (DungeonHud / TowerUi / PlayerGui)
-						local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-						if pg and firesignal then
-							for _, rn in ipairs({ "DungeonHud", "TowerUi" }) do
-								local r = pg:FindFirstChild(rn)
-								if r then
-									for _, d in ipairs(r:GetDescendants()) do
-										if d:IsA("GuiButton") and string.lower(d.Name):find("treadmil") then
-											pcall(firesignal, d.Activated)
-											pcall(firesignal, d.MouseButton1Click)
-										end
-									end
+					local plotsFolder = Workspace:FindFirstChild("Plots")
+					local function findDungeonTreadmill()
+						local best, bestScore
+						for _, d in ipairs(Workspace:GetDescendants()) do
+							local n = string.lower(d.Name)
+							if n:find("treadmil") and not (plotsFolder and d:IsDescendantOf(plotsFolder)) then
+								local part = d:IsA("BasePart") and d or nil
+								if d:IsA("Model") or d:IsA("Folder") then
+									part = d:FindFirstChild("Seat", true) or d:FindFirstChild("Primary", true) or d:FindFirstChild("TreadmilBox", true) or d:FindFirstChildWhichIsA("BasePart", true)
+								end
+								if part and part:IsA("BasePart") then
+									local sc = (part.Name == "Seat" and 4) or (part.Name == "Primary" and 3) or (part.Name == "TreadmilBox" and 2) or 1
+									if not bestScore or sc > bestScore then best, bestScore = part, sc end
 								end
 							end
 						end
-						task.wait(0.5)
+						return best
 					end
-					local best, bestScore
-					local plotsFolder = Workspace:FindFirstChild("Plots")
-					for _, d in ipairs(Workspace:GetDescendants()) do
-						local n = string.lower(d.Name)
-						if (n:find("treadmil") or n:find("runner") or n:find("machine") or n:find("pad")) and not (plotsFolder and d:IsDescendantOf(plotsFolder)) then
-							local part = d:IsA("BasePart") and d or nil
-							if d:IsA("Model") or d:IsA("Folder") then
-								part = d:FindFirstChild("Seat", true) or d:FindFirstChild("Primary", true) or d:FindFirstChildWhichIsA("BasePart", true)
-							end
-							if part and part:IsA("BasePart") then
-								local sc = (part.Name == "Seat" and 3) or (part.Name == "Primary" and 2) or 1
-								if not bestScore or sc > bestScore then best, bestScore = part, sc end
-							end
+
+					local best = findDungeonTreadmill()
+					local hrp0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+					-- หากยังไม่มีโมเดลลู่วิ่งใน Workspace ให้สั่งเสกออกมาเพียงครั้งเดียวแล้วรอให้โมเดลเกิด
+					if not best and hrp0 then
+						Helpers.SummonDungeonTreadmill(hrp0)
+						local tWait = os.clock()
+						while os.clock() - tWait < 1.5 and not Helpers.IsOnDungeonTreadmill() do
+							best = findDungeonTreadmill()
+							if best then break end
+							task.wait(0.15)
 						end
 					end
-					local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-					if best and hrp then
-						hrp.Anchored = false
-						hrp.CFrame = best.CFrame + Vector3.new(0, 3, 0)
-						local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-						if hum then hum:MoveTo(best.Position) end
-						task.wait(0.3)
-						-- ทุกช่องทาง: firetouchinterest กับ Part ลู่วิ่งทั้งโมเดล
-						local root = best.Parent or best
-						local parts = { best }
-						if root and root ~= Workspace then
-							for _, p in ipairs(root:GetDescendants()) do
-								if p:IsA("BasePart") and #parts < 12 then table.insert(parts, p) end
+
+					-- หากยังไม่ติดสถานะขึ้นลู่วิ่ง และพบโมเดลลู่วิ่ง (หรือเพิ่งเสกออกมา)
+					if not Helpers.IsOnDungeonTreadmill() then
+						local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+						if best and hrp then
+							hrp.Anchored = false
+							hrp.CFrame = best.CFrame + Vector3.new(0, 2.5, 0)
+							local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+							if hum then hum:MoveTo(best.Position) end
+							task.wait(0.25)
+
+							local root = best.Parent or best
+							local parts = { best }
+							if root and root ~= Workspace then
+								for _, p in ipairs(root:GetDescendants()) do
+									if p:IsA("BasePart") and #parts < 12 then table.insert(parts, p) end
+								end
 							end
-						end
-						if firetouchinterest then
-							for _, p in ipairs(parts) do
-								pcall(firetouchinterest, hrp, p, 0)
-								pcall(firetouchinterest, hrp, p, 1)
+							if firetouchinterest then
+								for _, p in ipairs(parts) do
+									pcall(firetouchinterest, hrp, p, 0)
+									pcall(firetouchinterest, hrp, p, 1)
+								end
 							end
-						end
-						-- fireproximityprompt (ถ้ามี) บริเวณลู่วิ่ง
-						if fireproximityprompt then
-							for _, pp in ipairs(root:GetDescendants()) do
-								if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
+							if fireproximityprompt then
+								for _, pp in ipairs(root:GetDescendants()) do
+									if pp:IsA("ProximityPrompt") then pcall(fireproximityprompt, pp) end
+								end
 							end
+							if hum and best:IsA("Seat") then pcall(function() best:Sit(hum) end) end
+							logAction("ดันเจี้ยน", "ขึ้นลู่วิ่งในดันเจี้ยน: " .. best:GetFullName(), true)
+						elseif hrp and not best then
+							logAction("ดันเจี้ยน", "ส่งคำสั่งเรียกลู่วิ่งในดันเจี้ยน (Towers.Treadmill)", true)
 						end
-						-- Seat → นั่งบังคับ
-						if hum and best:IsA("Seat") then pcall(function() best:Sit(hum) end) end
-						-- Remote เสริม: Treadmill.JoinShared / Treadmill.Boost
-						pcall(function()
-							local js = ReplicatedStorage:FindFirstChild("JoinShared", true)
-							if js and js:IsA("RemoteEvent") then js:FireServer({ Look = hrp.CFrame.LookVector, Position = best.Position }) end
-							if js and js:IsA("RemoteFunction") then task.spawn(pcall, js.InvokeServer, js, { Look = hrp.CFrame.LookVector, Position = best.Position }) end
-						end)
-						if Net and Net.Paths and Net.Paths.Boost then pcall(Net.Fire, Net.Paths.Boost, 0) end
-						-- ยิง remote ขึ้นลู่วิ่งของดันเจี้ยน (Dump: {Look, Position})
-						if Net and Net.Paths and Net.Paths.TowersTreadmill then
-							Net.Fire(Net.Paths.TowersTreadmill, 1.0, { Look = hrp.CFrame.LookVector, Position = best.Position })
-						end
-						logAction("ดันเจี้ยน", "ขึ้นลู่วิ่งในดันเจี้ยน: " .. best:GetFullName(), true)
 					end
 				end)
 			end
@@ -2511,12 +2500,13 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		end
 		-- หน่วงให้พ้นช่วงแอนิเมชันเปิดปุ่ม (0.2s) แล้วกดปุ่ม Boost จริงก่อน หากไม่ได้ค่อยยิง Remote ตรง
 		Core:Connect(boost.OnClientEvent, function(...)
-			if not (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal) then return end
+			local inDg = Helpers.IsDungeonPlace and Helpers.IsDungeonPlace()
+			if not (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal or Core.Flags.AutoEnterDungeon or inDg) then return end
 			local args = table.pack(...)
 			if args.n == 0 then return end
 			task.spawn(function()
 				task.wait(0.24 + math.random() * 0.16)
-				if Core._alive and (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal) and LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
+				if Core._alive and (Core.Flags.AutoTreadmill or Core.Flags.AutoSteal or Core.Flags.AutoEnterDungeon or inDg) and LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then
 					if tryClickBoostPopup() or Net.Fire(boost, nil, table.unpack(args, 1, args.n)) then
 						Stats.boosts = Stats.boosts + 1
 					end
@@ -6379,11 +6369,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 					Core.Flags.DungeonTargetFloor = n
 					box.Text = tostring(n)
 					pcall(function()
-						local cfg = {}
-						local ok2, raw = pcall(readfile, "kuykuy_config.json")
-						if ok2 and raw then cfg = game:GetService("HttpService"):JSONDecode(raw) end
-						cfg.DungeonTargetFloor = n
-						writefile("kuykuy_config.json", game:GetService("HttpService"):JSONEncode(cfg))
+						if Config and Config.Save then Config.Save() end
 					end)
 				else
 					box.Text = tostring(Core.Flags.DungeonTargetFloor or 500)
