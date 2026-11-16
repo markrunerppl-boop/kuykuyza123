@@ -5236,9 +5236,16 @@ local function main()
 		end
 
 		local function CreateButton(parent, text, bgColor, callback)
+			if type(bgColor) == "function" and callback == nil then
+				callback = bgColor
+				bgColor = UIColors.Card
+			elseif bgColor == nil or typeof(bgColor) ~= "Color3" then
+				bgColor = UIColors.Card
+			end
+
 			local btn = Instance.new("TextButton")
 			btn.Size = UDim2.new(1, 0, 0, 34)
-			btn.BackgroundColor3 = bgColor or UIColors.Card
+			btn.BackgroundColor3 = bgColor
 			btn.Font = Enum.Font.GothamBold
 			btn.TextSize = 12
 			btn.TextColor3 = UIColors.TextPrimary
@@ -5654,11 +5661,11 @@ local function main()
 			Core.Flags.AutoDungeonExit = v
 		end)
 
-		CreateButton(pFarm, "จัดทีมตัวดีสุดลงดันเจี้ยน (Equip Best Team)", function()
+		CreateButton(pFarm, "⚔️ จัดทีมตัวดีสุดลงดันเจี้ยน (Equip Best Team)", UIColors.Card, function()
 			Helpers.EquipBestDungeonTeam()
 		end)
 
-		CreateButton(pFarm, "ลงดันเจี้ยนทันที (Force Enter Dungeon)", function()
+		CreateButton(pFarm, "🚪 ลงดันเจี้ยนทันที (Force Enter Dungeon)", UIColors.Accent, function()
 			task.spawn(function()
 				local ok, msg = Helpers.EnterDungeon()
 				if not ok then
@@ -5726,7 +5733,7 @@ local function main()
 			if v then Loops.EquipBest() end
 		end)
 
-		CreateButton(pPack, "ใส่ตัวดีสุดลงฐานทันที (Equip Best Now)", function()
+		CreateButton(pPack, "⭐ ใส่ตัวดีสุดลงฐานทันที (Equip Best Now)", UIColors.Accent, function()
 			if autoEquipBestStep then
 				autoEquipBestStep(true)
 			end
