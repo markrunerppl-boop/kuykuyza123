@@ -662,24 +662,78 @@ local function main()
 		return partySuccess, "ส่งคำขอเข้าดันเจี้ยนแล้ว"
 	end
 
+	function Helpers.IsUnitUltReady(slot)
+		if not slot then return false end
+
+		-- 1. ต้องไม่ล้ม/ไม่ตาย (Down)
+		local down = slot:FindFirstChild("Down")
+		if down and down:IsA("GuiObject") and down.Visible then
+			return false
+		end
+
+		local ultBtn = slot:FindFirstChild("Ult")
+		if not ultBtn or not ultBtn:IsA("GuiButton") or not ultBtn.Visible then
+			return false
+		end
+
+		-- 2. ตรวจจับ Key Label (ตัวเกมตั้ง Visible = true เมื่อชาร์จเต็ม 100% เท่านั้น)
+		local key = slot:FindFirstChild("Key")
+		if key and key:IsA("GuiObject") and key.Visible then
+			return true
+		end
+
+		-- 3. ตรวจสอบ UIStroke ขอบสีทอง (Ready = Color3.fromRGB(255, 205, 60), Not Ready = ดำ)
+		local stroke = ultBtn:FindFirstChild("UIStroke")
+		if stroke and stroke:IsA("UIStroke") then
+			local col = stroke.Color
+			if col.R > 0.7 and col.G > 0.6 and col.B < 0.4 then
+				return true
+			end
+		end
+
+		-- 4. ตรวจสอบระดับการชาร์จใน BadgeClip (Scale >= 0.98)
+		local badge = ultBtn:FindFirstChild("Badge")
+		local clip = badge and badge:FindFirstChild("BadgeClip", true)
+		if clip and clip:IsA("GuiObject") and clip.Size.Y.Scale >= 0.98 then
+			return true
+		end
+
+		-- 5. ตรวจสอบประกายสายฟ้า UltBolts
+		local bolts = slot:FindFirstChild("UltBolts") or ultBtn:FindFirstChild("UltBolts")
+		if bolts and #bolts:GetChildren() > 0 then
+			return true
+		end
+
+		return false
+	end
+
+	Helpers._lastUltTrigger = {}
 	function Helpers.TriggerDungeonUltimates()
 		if not Helpers.IsDungeonPlace() then return end
 
-		-- Layer 1: ตรวจจับปุ่ม Ult ใน PlayerGui.DungeonHud.Bottom.UnitBar
 		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		local hud = pgui and pgui:FindFirstChild("DungeonHud")
 		local unitBar = hud and hud:FindFirstChild("Bottom") and hud.Bottom:FindFirstChild("UnitBar")
-		if unitBar then
-			for i = 1, 4 do
-				local slot = unitBar:FindFirstChild("Slot" .. i)
-				local ultBtn = slot and slot:FindFirstChild("Ult")
-				if ultBtn and ultBtn:IsA("GuiButton") and ultBtn.Visible then
+		if not unitBar then return end
+
+		local now = os.clock()
+		for i = 1, 4 do
+			local slot = unitBar:FindFirstChild("Slot" .. i)
+			-- ตรวจสอบอย่างเข้มงวด: สกิลต้องพร้อมใช้ 100% จริงๆ เท่านั้นจึงจะยิงคำสั่ง
+			if Helpers.IsUnitUltReady(slot) then
+				if (now - (Helpers._lastUltTrigger[i] or 0)) >= 1.0 then
+					Helpers._lastUltTrigger[i] = now
+					local ultBtn = slot:FindFirstChild("Ult")
 					local triggered = false
-					if firesignal then
+
+					-- 1. กดผ่าน firesignal บนปุ่ม Ult
+					if firesignal and ultBtn then
 						pcall(firesignal, ultBtn.Activated)
 						pcall(firesignal, ultBtn.MouseButton1Click)
 						triggered = true
 					end
+
+					-- 2. กดผ่าน VirtualInputManager ตาม KeyCode 1-4
 					if not triggered and VirtualInputManager then
 						local keyMap = { [1] = Enum.KeyCode.One, [2] = Enum.KeyCode.Two, [3] = Enum.KeyCode.Three, [4] = Enum.KeyCode.Four }
 						local key = keyMap[i]
@@ -692,17 +746,15 @@ local function main()
 							triggered = true
 						end
 					end
-				end
-			end
-		end
 
-		-- Layer 2: สั่งกดผ่าน Module DungeonUlt.Press
-		local duOk, duMod = pcall(function()
-			return require(LocalPlayer.PlayerScripts.Client.Controllers.DungeonHud.DungeonUlt)
-		end)
-		if duOk and duMod and type(duMod.Press) == "function" then
-			for i = 1, 4 do
-				pcall(duMod.Press, i)
+					-- 3. สั่งผ่านโมดูลเกม DungeonUlt.Press(i)
+					local duOk, duMod = pcall(function()
+						return require(LocalPlayer.PlayerScripts.Client.Controllers.DungeonHud.DungeonUlt)
+					end)
+					if duOk and duMod and type(duMod.Press) == "function" then
+						pcall(duMod.Press, i)
+					end
+				end
 			end
 		end
 	end
