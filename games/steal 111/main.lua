@@ -185,13 +185,25 @@ local function main()
 	Core.Flags.AutoDungeonAttack = true     -- ตีออโต้ในดันเจี้ยน
 	Core.Flags.AutoDungeonExit = true       -- ออกดันเจี้ยนอัตโนมัติเมื่อจบเกม
 	Core.Flags.AutoDungeonSkipIntro = true  -- ข้ามคัตซีนเปิดตัวอัตโนมัติ
+	Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องการออก (1-500, 500 = วนไม่จำกัด)
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
 	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
 	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าในเมนูได้ถ้าต้องการ)
 	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
-	for i = 1, 13 do
+	local initMaxStage = 13
+	pcall(function()
+		local game_ = Workspace:FindFirstChild("Game")
+		local packs = game_ and game_:FindFirstChild("Packs")
+		if packs then
+			for _, ch in ipairs(packs:GetChildren()) do
+				local num = tonumber(string.match(ch.Name, "%d+"))
+				if num and num > initMaxStage then initMaxStage = num end
+			end
+		end
+	end)
+	for i = 1, initMaxStage do
 		Core.Flags["Stage" .. i] = true
 	end
 	for _, r in ipairs(STEAL_RARITY_KEYS) do
@@ -568,6 +580,208 @@ local function main()
 		end
 		return M.DungeonUtil
 	end
+
+	function Helpers.GetStageFolder(i)
+		local game_ = Workspace:FindFirstChild("Game")
+		local packs = game_ and game_:FindFirstChild("Packs")
+		return packs and packs:FindFirstChild("Stage" .. i)
+	end
+
+	function Helpers.GetMaxStage()
+		local maxStage = 13
+		local game_ = Workspace:FindFirstChild("Game")
+		local packs = game_ and game_:FindFirstChild("Packs")
+		if packs then
+			for _, child in ipairs(packs:GetChildren()) do
+				local num = tonumber(string.match(child.Name, "%d+"))
+				if num and num > maxStage then
+					maxStage = num
+				end
+			end
+		end
+		local sc = getStageConfig()
+		local stagesCfg = sc and sc.Stages
+		if stagesCfg and type(stagesCfg) == "table" then
+			for k, _ in pairs(stagesCfg) do
+				local num = tonumber(string.match(tostring(k), "%d+"))
+				if num and num > maxStage then
+					maxStage = num
+				end
+			end
+		end
+		for i = 1, maxStage do
+			if Core.Flags["Stage" .. i] == nil then
+				Core.Flags["Stage" .. i] = true
+			end
+		end
+		return maxStage
+	end
+
+	function Helpers.GetStageCenter(stageNum)
+		if not stageNum then return nil end
+		if STAGE_CENTERS[stageNum] then
+			return STAGE_CENTERS[stageNum]
+		end
+		local folder = Helpers.GetStageFolder(stageNum)
+		if folder then
+			local enemy = folder:FindFirstChild("Enemy")
+			if enemy and enemy:IsA("Model") then
+				local p = Helpers.GetPosition(enemy)
+				if p then
+					STAGE_CENTERS[stageNum] = Vector3.new(p.X, 68, -365)
+					return STAGE_CENTERS[stageNum]
+				end
+			end
+			local sp = folder:FindFirstChild("SpawnedPacks")
+			if sp then
+				local firstPack = sp:FindFirstChildWhichIsA("Model")
+				if firstPack then
+					local p = Helpers.GetPosition(firstPack)
+					if p then
+						STAGE_CENTERS[stageNum] = Vector3.new(p.X, 68, -365)
+						return STAGE_CENTERS[stageNum]
+					end
+				end
+			end
+		end
+		local highestKnown = 13
+		for k, _ in pairs(STAGE_CENTERS) do
+			if type(k) == "number" and k > highestKnown then highestKnown = k end
+		end
+		local lastCenter = STAGE_CENTERS[highestKnown] or Vector3.new(6875, 68, -364)
+		local estimated = Vector3.new(lastCenter.X + (stageNum - highestKnown) * 720, 68, -365)
+		STAGE_CENTERS[stageNum] = estimated
+		return estimated
+	end
+
+	function Helpers.GetAllRarityRanks()
+		local ranks = {
+			Common = 1,
+			Uncommon = 2,
+			Rare = 3,
+			Epic = 4,
+			Legendary = 5,
+			Mythical = 6,
+			Cosmic = 7,
+			Divine = 8,
+			Omniversal = 9,
+			Eternal = 10,
+			Primordial = 11,
+			Exclusive = 12,
+			Godlike = 13,
+			Absolute = 14,
+			Mystery = 15,
+			Secret = 15,
+			["???"] = 15,
+		}
+		local pc = getPacksConfig()
+		if pc and type(pc.RarityRank) == "table" then
+			for k, v in pairs(pc.RarityRank) do
+				if type(k) == "string" and type(v) == "number" then
+					local formatted = k
+					if formatted ~= "???" and #formatted > 0 then
+						formatted = formatted:sub(1,1):upper() .. formatted:sub(2):lower()
+					end
+					ranks[formatted] = v
+					ranks[k] = v
+				end
+			end
+		end
+		return ranks
+	end
+
+	function Helpers.GetRankNames()
+		local ranks = Helpers.GetAllRarityRanks()
+		local rankToName = {
+			[1] = "Common", [2] = "Uncommon", [3] = "Rare", [4] = "Epic",
+			[5] = "Legendary", [6] = "Mythical", [7] = "Cosmic", [8] = "Divine",
+			[9] = "Omniversal", [10] = "Eternal", [11] = "Primordial",
+			[12] = "Exclusive", [13] = "Godlike", [14] = "Absolute",
+			[15] = "Mystery", [16] = "Secret"
+		}
+		for k, v in pairs(ranks) do
+			if type(k) == "string" and type(v) == "number" and k ~= "???" and k ~= "Secret" then
+				if not rankToName[v] then
+					rankToName[v] = k
+				end
+			end
+		end
+		return rankToName
+	end
+
+	function Helpers.GetRarityDropdownOptions()
+		local ranks = Helpers.GetAllRarityRanks()
+		local list = {}
+		local seen = {}
+		local baseKeys = {
+			"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
+			"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
+			"Exclusive", "Godlike", "Absolute", "Mystery", "Secret"
+		}
+		for _, key in ipairs(baseKeys) do
+			seen[key] = true
+			local rNum = ranks[key] or 1
+			local label = (key == "Mystery" and "??? / Mystery (ระดับ 15)")
+				or (key == "Secret" and "Secret (ระดับพิเศษ)")
+				or string.format("%s (ระดับ %d)", key, rNum)
+			table.insert(list, {
+				value = "Rarity_" .. key,
+				label = label,
+				short = key:sub(1, 4),
+				rank = rNum,
+			})
+		end
+		local extra = {}
+		for k, v in pairs(ranks) do
+			if type(k) == "string" and type(v) == "number" and not seen[k] and k ~= "???" then
+				seen[k] = true
+				table.insert(extra, {
+					value = "Rarity_" .. k,
+					label = string.format("%s (ระดับ %d)", k, v),
+					short = k:sub(1, 4),
+					rank = v,
+				})
+			end
+		end
+		table.sort(extra, function(a, b) return a.rank < b.rank end)
+		for _, item in ipairs(extra) do
+			table.insert(list, item)
+		end
+		return list
+	end
+
+	function Helpers.GetSellRarityOptions()
+		local ranks = Helpers.GetAllRarityRanks()
+		local rankToName = Helpers.GetRankNames()
+		local maxRank = 15
+		for _, v in pairs(ranks) do
+			if type(v) == "number" and v > maxRank then
+				maxRank = v
+			end
+		end
+
+		local RARITY_NAMES = {}
+		local rarityOptions = {}
+		for r = 3, maxRank do
+			local name = rankToName[r] or ("Rank " .. r)
+			local optText = string.format("%s (%d)", name, r)
+			RARITY_NAMES[r] = optText
+			table.insert(rarityOptions, optText)
+		end
+		return RARITY_NAMES, rarityOptions
+	end
+
+	pcall(function()
+		local ranks = Helpers.GetAllRarityRanks()
+		for k, _ in pairs(ranks) do
+			if type(k) == "string" and k ~= "???" then
+				local flagKey = "Rarity_" .. k
+				if Core.Flags[flagKey] == nil then
+					Core.Flags[flagKey] = true
+				end
+			end
+		end
+	end)
 
 	function Helpers.IsDungeonPlace()
 		return game.PlaceId == 135412798316370 or Workspace:FindFirstChild("DungeonRoom") ~= nil or Workspace:FindFirstChild("DungeonFighters") ~= nil
@@ -985,6 +1199,31 @@ local function main()
 		end
 	end
 
+	function Helpers.GetCurrentDungeonFloor()
+		-- อ่านชั้นปัจจุบันจาก DungeonHud → Top.WaveLabel (หรือ TextLabel ที่แสดง "Wave X")
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local hud = pgui and pgui:FindFirstChild("DungeonHud")
+		if not hud then return 0 end
+		-- ค้นหา TextLabel ที่มีข้อความ "Wave" (รองรับทั้ง path ตรงและ recursive)
+		local function findWaveLabel(parent)
+			for _, child in ipairs(parent:GetChildren()) do
+				if child:IsA("TextLabel") or child:IsA("TextButton") then
+					local txt = child.Text or ""
+					if txt:match("[Ww]ave%s*%d") or txt:match("ชั้น%s*%d") then
+						return child
+					end
+				end
+				local found = findWaveLabel(child)
+				if found then return found end
+			end
+		end
+		local label = findWaveLabel(hud)
+		if not label then return 0 end
+		-- parse เลขแรกในข้อความ เช่น "Wave 202 • 63 LEFT" → 202
+		local n = label.Text:match("%d+")
+		return tonumber(n) or 0
+	end
+
 	function Helpers.CheckDungeonResultAndExit()
 		if not Helpers.IsDungeonPlace() then return end
 		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -1024,6 +1263,19 @@ local function main()
 			-- 4. ตรวจจับจบเกม (Victory / Defeat) เพื่อกดออก
 			if Core.Flags.AutoDungeonExit ~= false then
 				Helpers.CheckDungeonResultAndExit()
+			end
+
+			-- 5. ตรวจสอบชั้นเป้าหมาย → ถึงชั้นที่กำหนด → ออกดันเจี้ยนแล้ว loop ใหม่
+			local targetFloor = Core.Flags.DungeonTargetFloor
+			if Core.Flags.AutoDungeonExit ~= false and targetFloor and targetFloor < 500 then
+				local curFloor = Helpers.GetCurrentDungeonFloor()
+				if curFloor > 0 and curFloor >= targetFloor then
+					logAction("ดันเจี้ยน", "ถึงชั้น " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
+					queueScriptOnTeleport(TELEPORT_LOADER)
+					if Net and Net.Paths and Net.Paths.TowersExit then
+						Net.Fire(Net.Paths.TowersExit, 1.0)
+					end
+				end
 			end
 			return
 		end
@@ -2057,7 +2309,7 @@ local function main()
 		end
 
 		local pc = getPacksConfig()
-		local ranks = (pc and pc.RarityRank) or {
+		local ranks = (Helpers.GetAllRarityRanks and Helpers.GetAllRarityRanks()) or (pc and pc.RarityRank) or {
 			Common = 1,
 			Uncommon = 2,
 			Rare = 3,
@@ -2097,8 +2349,14 @@ local function main()
 			return true
 		end
 
+		-- Auto-detect real-time: หากเป็นเกดใหม่ที่ยังไม่เคยมีใน Flag ให้เปิดอนุญาตขโมยเป็นค่าเริ่มต้นทันที
+		if Core.Flags[flagKey] == nil and rank and rank >= 1 then
+			Core.Flags[flagKey] = true
+			return true
+		end
+
 		-- 2. Fallback ตรวจสอบจากลำดับ Rank
-		local rankNames = {
+		local rankNames = (Helpers.GetRankNames and Helpers.GetRankNames()) or {
 			[1] = "Common",
 			[2] = "Uncommon",
 			[3] = "Rare",
@@ -2230,7 +2488,7 @@ local function main()
 			for _, m in ipairs(root:GetChildren()) do consider(m) end
 		end
 		-- แพ็คที่หลุดตกค้างในด่าน (Tag SpawnedPack) ให้แข่งคะแนนกับแพ็คปกติ
-		local center = stageNum and STAGE_CENTERS[stageNum]
+		local center = stageNum and (Helpers.GetStageCenter and Helpers.GetStageCenter(stageNum) or STAGE_CENTERS[stageNum])
 		if center then
 			local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, "SpawnedPack")
 			if okT and type(tagged) == "table" then
@@ -2628,6 +2886,7 @@ local function main()
 	end
 
 	local function getStageFolder(i)
+		if Helpers.GetStageFolder then return Helpers.GetStageFolder(i) end
 		local game_ = Workspace:FindFirstChild("Game")
 		local packs = game_ and game_:FindFirstChild("Packs")
 		return packs and packs:FindFirstChild("Stage" .. i)
@@ -2635,7 +2894,7 @@ local function main()
 
 	local function checkStageHasPacks(i, noStream)
 		local folder = getStageFolder(i)
-		local basePos = STAGE_CENTERS[i]
+		local basePos = (Helpers.GetStageCenter and Helpers.GetStageCenter(i)) or STAGE_CENTERS[i]
 		if not noStream and basePos and (not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0) then
 			Helpers.StreamAround(basePos, 2.0)
 			task.wait(0.2)
@@ -2728,7 +2987,7 @@ local function main()
 		local pNow = packAnchorPos(prompt) or p0
 
 		-- หากเป็นด่านที่อยู่ไกล (ด่าน 2 ขึ้นไป) ให้วิ่งเกาะเส้นกลางเลนมาจนถึงหน้าด่านเป้าหมายก่อนเลี้ยวเข้าหาแพ็ค
-		local stageCenter = STAGE_CENTERS[i]
+		local stageCenter = (Helpers.GetStageCenter and Helpers.GetStageCenter(i)) or STAGE_CENTERS[i]
 		local hrpRun = Helpers.GetRoot()
 		local bounds = Helpers.GetSafeZoneBounds()
 		local corridorZ = (bounds and bounds.center and bounds.center.Z) or -364.5
@@ -2957,7 +3216,8 @@ local function main()
 		local margin = Core.Flags.OutrunMargin or 1.0
 
 		local candidates = {}
-		for i = 1, 13 do
+		local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
+		for i = 1, maxStages do
 			if Core.Flags["Stage" .. i] then
 				local bSpd = getStageBossSpeed(i)
 				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
@@ -3046,7 +3306,8 @@ local function main()
 		if #candidateStages == 0 then
 			local mySpeed = Helpers.GetMoveSpeed()
 			local lowestSelected = nil
-			for s = 1, 13 do
+			local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
+			for s = 1, maxStages do
 				if Core.Flags["Stage" .. s] then
 					lowestSelected = s
 					break
@@ -3091,7 +3352,7 @@ local function main()
 				-- เจอแพ็คแล้ว -> ด่านที่เหลือสแกนแบบไม่สตรีม (เร็ว) เพื่อเทียบหาใบที่ดีที่สุด
 				local prompt, diag, pc = checkStageHasPacks(sNum, targetPrompt ~= nil)
 				if not prompt and not targetPrompt then
-					local basePos = STAGE_CENTERS[sNum]
+					local basePos = (Helpers.GetStageCenter and Helpers.GetStageCenter(sNum)) or STAGE_CENTERS[sNum]
 					if basePos then
 						Helpers.StreamAround(basePos, 1.5)
 						task.wait(0.15)
@@ -3825,7 +4086,7 @@ local function main()
 		-- สแกนจาก Inventory.Packs.Backpack เผื่อ Tool ยังไม่โหลด
 		if #toSell == 0 and type(bpRecords) == "table" then
 			local pc = getPacksConfig()
-			local ranks = (pc and pc.RarityRank) or {
+			local ranks = (Helpers.GetAllRarityRanks and Helpers.GetAllRarityRanks()) or (pc and pc.RarityRank) or {
 				Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5,
 				Mythical = 6, Cosmic = 7, Divine = 8, Omniversal = 9, Eternal = 10,
 				Primordial = 11, Exclusive = 12, Godlike = 13, Absolute = 14,
@@ -5661,6 +5922,86 @@ local function main()
 			Core.Flags.AutoDungeonExit = v
 		end)
 
+		-- Slider ระบุชั้นดันเจี้ยนที่ต้องการออก (1-500, 500 = ไม่จำกัด)
+		do
+			local sliderFrame = Instance.new("Frame")
+			sliderFrame.BackgroundTransparency = 1
+			sliderFrame.Size = UDim2.new(1, 0, 0, 44)
+			sliderFrame.Parent = pFarm
+
+			local lblFloor = Instance.new("TextLabel")
+			lblFloor.BackgroundTransparency = 1
+			lblFloor.Size = UDim2.new(1, -8, 0, 18)
+			lblFloor.Position = UDim2.new(0, 4, 0, 2)
+			lblFloor.TextColor3 = Color3.fromRGB(220, 220, 220)
+			lblFloor.TextSize = 13
+			lblFloor.Font = Enum.Font.GothamMedium
+			lblFloor.TextXAlignment = Enum.TextXAlignment.Left
+			local function updateFloorLabel()
+				local v = Core.Flags.DungeonTargetFloor or 500
+				lblFloor.Text = "🏁 ออกเมื่อถึงชั้น: " .. (v >= 500 and "ไม่จำกัด" or tostring(v))
+			end
+			updateFloorLabel()
+			lblFloor.Parent = sliderFrame
+
+			local track = Instance.new("Frame")
+			track.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+			track.Size = UDim2.new(1, -8, 0, 10)
+			track.Position = UDim2.new(0, 4, 0, 24)
+			track.Parent = sliderFrame
+			Instance.new("UICorner", track).CornerRadius = UDim.new(0, 5)
+
+			local fill = Instance.new("Frame")
+			fill.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+			fill.Size = UDim2.new(1, 0, 1, 0)
+			fill.Parent = track
+			Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
+
+			local knob = Instance.new("TextButton")
+			knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			knob.Size = UDim2.new(0, 14, 0, 14)
+			knob.AnchorPoint = Vector2.new(0.5, 0.5)
+			knob.Position = UDim2.new(1, 0, 0.5, 0)
+			knob.Text = ""
+			knob.Parent = track
+			Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+			local MIN_F, MAX_F = 1, 500
+			local function setFloor(val)
+				val = math.clamp(math.round(val), MIN_F, MAX_F)
+				Core.Flags.DungeonTargetFloor = val
+				local pct = (val - MIN_F) / (MAX_F - MIN_F)
+				fill.Size = UDim2.new(pct, 0, 1, 0)
+				knob.Position = UDim2.new(pct, 0, 0.5, 0)
+				updateFloorLabel()
+				pcall(function()
+					local cfg = {}
+					local ok2, raw = pcall(readfile, "kuykuy_config.json")
+					if ok2 and raw then cfg = game:GetService("HttpService"):JSONDecode(raw) end
+					cfg.DungeonTargetFloor = val
+					writefile("kuykuy_config.json", game:GetService("HttpService"):JSONEncode(cfg))
+				end)
+			end
+
+			-- init pct จาก current value
+			local initPct = ((Core.Flags.DungeonTargetFloor or 500) - MIN_F) / (MAX_F - MIN_F)
+			fill.Size = UDim2.new(initPct, 0, 1, 0)
+			knob.Position = UDim2.new(initPct, 0, 0.5, 0)
+
+			local dragging = false
+			knob.MouseButton1Down:Connect(function() dragging = true end)
+			game:GetService("UserInputService").InputEnded:Connect(function(inp)
+				if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+			end)
+			game:GetService("RunService").Heartbeat:Connect(function()
+				if not dragging then return end
+				local mx = game:GetService("UserInputService"):GetMouseLocation().X
+				local abs = track.AbsolutePosition
+				local pct2 = math.clamp((mx - abs.X) / track.AbsoluteSize.X, 0, 1)
+				setFloor(MIN_F + pct2 * (MAX_F - MIN_F))
+			end)
+		end
+
 		CreateButton(pFarm, "⚔️ จัดทีมตัวดีสุดลงดันเจี้ยน (Equip Best Team)", UIColors.Card, function()
 			Helpers.EquipBestDungeonTeam()
 		end)
@@ -5676,7 +6017,8 @@ local function main()
 
 		-- Stage Multi-Select Dropdown
 		local stageOptions = {}
-		for i = 1, 13 do
+		local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
+		for i = 1, maxStages do
 			table.insert(stageOptions, {
 				value = "Stage" .. i,
 				label = string.format("ด่านที่ %d (Stage %d)", i, i),
@@ -5688,7 +6030,7 @@ local function main()
 		end)
 
 		-- Pack Rarities Multi-Select Dropdown
-		local rarityOptions = {
+		local rarityOptions = (Helpers.GetRarityDropdownOptions and Helpers.GetRarityDropdownOptions()) or {
 			{ value = "Rarity_Common",     label = "Common (ระดับ 1)",       short = "Com" },
 			{ value = "Rarity_Uncommon",   label = "Uncommon (ระดับ 2)",     short = "Unc" },
 			{ value = "Rarity_Rare",       label = "Rare (ระดับ 3)",         short = "Rare" },
@@ -5758,26 +6100,32 @@ local function main()
 			Core.Flags.KeepMutated = v
 		end)
 
-		local RARITY_NAMES = {
-			[3] = "Rare (3)",
-			[4] = "Epic (4)",
-			[5] = "Legendary (5)",
-			[6] = "Mythical (6)",
-			[7] = "Cosmic (7)",
-			[8] = "Divine (8)",
-			[9] = "Omniversal (9)",
-			[10] = "Eternal (10)",
-			[11] = "Primordial (11)",
-			[12] = "Exclusive (12)",
-			[13] = "Godlike (13)",
-			[14] = "Absolute (14)",
-			[15] = "Mystery (15)",
-		}
-		local rarityOptions = {
-			"Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)",
-			"Cosmic (7)", "Divine (8)", "Omniversal (9)", "Eternal (10)",
-			"Primordial (11)", "Exclusive (12)", "Godlike (13)", "Absolute (14)", "Mystery (15)"
-		}
+		local RARITY_NAMES, rarityOptions = nil, nil
+		if Helpers.GetSellRarityOptions then
+			RARITY_NAMES, rarityOptions = Helpers.GetSellRarityOptions()
+		end
+		if not RARITY_NAMES then
+			RARITY_NAMES = {
+				[3] = "Rare (3)",
+				[4] = "Epic (4)",
+				[5] = "Legendary (5)",
+				[6] = "Mythical (6)",
+				[7] = "Cosmic (7)",
+				[8] = "Divine (8)",
+				[9] = "Omniversal (9)",
+				[10] = "Eternal (10)",
+				[11] = "Primordial (11)",
+				[12] = "Exclusive (12)",
+				[13] = "Godlike (13)",
+				[14] = "Absolute (14)",
+				[15] = "Mystery (15)",
+			}
+			rarityOptions = {
+				"Rare (3)", "Epic (4)", "Legendary (5)", "Mythical (6)",
+				"Cosmic (7)", "Divine (8)", "Omniversal (9)", "Eternal (10)",
+				"Primordial (11)", "Exclusive (12)", "Godlike (13)", "Absolute (14)", "Mystery (15)"
+			}
+		end
 		local curRarityVal = Core.Flags.SellBelowRarity or 6
 		local curRarityText = RARITY_NAMES[curRarityVal] or "Mythical (6)"
 
