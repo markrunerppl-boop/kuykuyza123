@@ -1041,6 +1041,46 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				task.wait(0.3)
 			end
 
+			-- 3.1 หาและกดปุ่ม "View" (ค้นหาตามชื่อ/ข้อความ) เพื่อไปหน้า Party/Team ต่อ
+			local function findViewButton(root)
+				if not root then return nil end
+				for _, d in ipairs(root:GetDescendants()) do
+					if d:IsA("GuiButton") and d:IsDescendantOf(pgui) then
+						local vis = true
+						local p = d
+						while p and p ~= pgui do
+							if p:IsA("GuiObject") and not p.Visible then vis = false break end
+							p = p.Parent
+						end
+						if vis then
+							local nm = string.lower(d.Name)
+							local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
+							if nm == "view" or tx:match("^%s*view%s*$") then return d end
+							for _, c in ipairs(d:GetChildren()) do
+								if c:IsA("TextLabel") and string.lower(c.Text or ""):match("^%s*view%s*$") then return d end
+							end
+						end
+					end
+				end
+				return nil
+			end
+			local viewT0 = os.clock()
+			while os.clock() - viewT0 < 4 do
+				dui = pgui and pgui:FindFirstChild("DungeonUi")
+				local vb = findViewButton(dui)
+				if vb and firesignal then
+					pcall(firesignal, vb.Activated)
+					pcall(firesignal, vb.MouseButton1Click)
+					logAction("ดันเจี้ยน", "กดปุ่ม View แล้ว", true)
+					task.wait(0.5)
+					break
+				end
+				-- บางครั้ง Play ยังไม่ถูกกด ลองกดซ้ำจนกว่าจะเจอ View
+				if playBtn and playBtn.Parent and firesignal then pcall(firesignal, playBtn.Activated) end
+				task.wait(0.3)
+			end
+			holder = dui and dui:FindFirstChild("Holder")
+
 			-- ดึงชื่อดันเจี้ยน
 			local dungeonTargetName = "Double Dugeons"
 			if tmpl then
@@ -1262,6 +1302,34 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				Helpers.TriggerDungeonUltimates()
 			end
 
+			-- 3.5 ขึ้นลู่วิ่งในแมพดันเจี้ยนทันที
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and os.clock() - (Helpers._lastDgTreadmill or -100) > 3 then
+				Helpers._lastDgTreadmill = os.clock()
+				pcall(function()
+					local best, bestScore
+					for _, d in ipairs(Workspace:GetDescendants()) do
+						local n = string.lower(d.Name)
+						if n:find("treadmil") then
+							local part = d:IsA("BasePart") and d or nil
+							if d:IsA("Model") or d:IsA("Folder") then
+								part = d:FindFirstChild("Seat", true) or d:FindFirstChild("Primary", true) or d:FindFirstChildWhichIsA("BasePart", true)
+							end
+							if part and part:IsA("BasePart") then
+								local sc = (part.Name == "Seat" and 3) or (part.Name == "Primary" and 2) or 1
+								if not bestScore or sc > bestScore then best, bestScore = part, sc end
+							end
+						end
+					end
+					local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+					if best and hrp then
+						hrp.CFrame = best.CFrame + Vector3.new(0, 3, 0)
+						local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+						if hum then hum:MoveTo(best.Position) end
+						logAction("ดันเจี้ยน", "ขึ้นลู่วิ่งในดันเจี้ยน: " .. best:GetFullName(), true)
+					end
+				end)
+			end
+
 			-- 4. ตรวจจับจบเกม (Victory / Defeat) เพื่อกดออก
 			if Core.Flags.AutoDungeonExit ~= false then
 				Helpers.CheckDungeonResultAndExit()
@@ -1272,7 +1340,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			if Core.Flags.DungeonFloorLoop and targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
-				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 10 then
+				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 5 then
 					Helpers._lastFloorExit = os.clock()
 					logAction("ดันเจี้ยน", "ถึงชั้น " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
 					pcall(queueScriptOnTeleport, TELEPORT_LOADER)
