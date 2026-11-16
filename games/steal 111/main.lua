@@ -21,6 +21,34 @@ local VirtualUser = vuOk and vuSvc or nil
 local LocalPlayer = Players.LocalPlayer
 local ENV = (getgenv and getgenv()) or _G
 
+local TELEPORT_LOADER = [[
+task.spawn(function()
+	task.wait(1.5)
+	local ok, src = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/main.lua")
+	if ok and type(src) == "string" and #src > 100 then
+		loadstring(src)()
+	elseif getgenv and getgenv().__KUY_RAW_SOURCE then
+		loadstring(getgenv().__KUY_RAW_SOURCE)()
+	end
+end)
+]]
+
+local function queueScriptOnTeleport(scriptSource)
+	local qot = (syn and syn.queue_on_teleport)
+		or (fluxus and fluxus.queue_on_teleport)
+		or queue_on_teleport
+		or (getgenv and getgenv().queue_on_teleport)
+	if type(qot) == "function" then
+		pcall(qot, scriptSource or TELEPORT_LOADER)
+	end
+end
+
+pcall(function()
+	LocalPlayer.OnTeleport:Connect(function()
+		queueScriptOnTeleport(TELEPORT_LOADER)
+	end)
+end)
+
 local TRAINING_ATTR = "TrainingOnTreadmill"
 local COMBO_ATTR = "TreadmillCombo"
 local RP = "ReplicatedStorage.Remotes."
@@ -146,6 +174,10 @@ local function main()
 	Core.Flags.AutoRebirth = false          -- เกิดใหม่อัตโนมัติเมื่อ Speed ถึงเกณฑ์
 	Core.Flags.AutoClaim = false            -- เคลม Offline / Daily / Index อัตโนมัติ
 	Core.Flags.AutoEnterDungeon = false     -- ลงดันเจี้ยนอัตโนมัติเมื่อประตูเปิด
+	Core.Flags.AutoDungeonUlt = true        -- เปิดท่าไม้ตายออโต้ในดันเจี้ยน
+	Core.Flags.AutoDungeonAttack = true     -- ตีออโต้ในดันเจี้ยน
+	Core.Flags.AutoDungeonExit = true       -- ออกดันเจี้ยนอัตโนมัติเมื่อจบเกม
+	Core.Flags.AutoDungeonSkipIntro = true  -- ข้ามคัตซีนเปิดตัวอัตโนมัติ
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
@@ -611,6 +643,8 @@ local function main()
 
 		task.wait(0.3)
 		if Net and Net.Paths and Net.Paths.DungeonPartyStart then
+			-- เตรียม Queue สคริปต์ให้รันต่อเนื่องเมื่อถูกเทเลพอร์ตเข้าห้องดันเจี้ยน
+			queueScriptOnTeleport(TELEPORT_LOADER)
 			local ok, res = Net.Invoke(Net.Paths.DungeonPartyStart)
 			if ok and (res == nil or (type(res) == "table" and res.Success)) then
 				logAction("ดันเจี้ยน", "เริ่มเทเลพอร์ตเข้าสู่ Dungeon สำเร็จ", true)
@@ -621,18 +655,96 @@ local function main()
 		return partySuccess, "ส่งคำขอเข้าดันเจี้ยนแล้ว"
 	end
 
-	function Helpers.AutoDungeonStep()
-		if not Core.Flags.AutoEnterDungeon then return end
+	function Helpers.TriggerDungeonUltimates()
+		if not Helpers.IsDungeonPlace() then return end
 
+		-- Layer 1: ตรวจจับปุ่ม Ult ใน PlayerGui.DungeonHud.Bottom.UnitBar
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local hud = pgui and pgui:FindFirstChild("DungeonHud")
+		local unitBar = hud and hud:FindFirstChild("Bottom") and hud.Bottom:FindFirstChild("UnitBar")
+		if unitBar then
+			for i = 1, 4 do
+				local slot = unitBar:FindFirstChild("Slot" .. i)
+				local ultBtn = slot and slot:FindFirstChild("Ult")
+				if ultBtn and ultBtn:IsA("GuiButton") and ultBtn.Visible then
+					local triggered = false
+					if firesignal then
+						pcall(firesignal, ultBtn.Activated)
+						pcall(firesignal, ultBtn.MouseButton1Click)
+						triggered = true
+					end
+					if not triggered and VirtualInputManager then
+						local keyMap = { [1] = Enum.KeyCode.One, [2] = Enum.KeyCode.Two, [3] = Enum.KeyCode.Three, [4] = Enum.KeyCode.Four }
+						local key = keyMap[i]
+						if key then
+							pcall(function()
+								VirtualInputManager:SendKeyEvent(true, key, false, game)
+								task.wait(0.04)
+								VirtualInputManager:SendKeyEvent(false, key, false, game)
+							end)
+							triggered = true
+						end
+					end
+				end
+			end
+		end
+
+		-- Layer 2: สั่งกดผ่าน Module DungeonUlt.Press
+		local duOk, duMod = pcall(function()
+			return require(LocalPlayer.PlayerScripts.Client.Controllers.DungeonHud.DungeonUlt)
+		end)
+		if duOk and duMod and type(duMod.Press) == "function" then
+			for i = 1, 4 do
+				pcall(duMod.Press, i)
+			end
+		end
+	end
+
+	function Helpers.CheckDungeonResultAndExit()
+		if not Helpers.IsDungeonPlace() then return end
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local hud = pgui and pgui:FindFirstChild("DungeonHud")
+		if not hud then return end
+
+		local defeat = hud:FindFirstChild("Defeat")
+		local isDefeat = defeat and defeat:IsA("GuiObject") and defeat.Visible
+
+		if isDefeat then
+			logAction("ดันเจี้ยน", "ดันเจี้ยนจบลงแล้ว -> ออกจากห้องกลับสู่ Hub", true)
+			queueScriptOnTeleport(TELEPORT_LOADER)
+			if Net and Net.Paths and Net.Paths.TowersExit then
+				Net.Fire(Net.Paths.TowersExit, 1.0)
+			end
+		end
+	end
+
+	function Helpers.AutoDungeonStep()
 		-- กรณีอยู่ในแมพดันเจี้ยนแล้ว (PlaceId 135412798316370)
 		if Helpers.IsDungeonPlace() then
-			if Net and Net.Paths and Net.Paths.TowersSetAuto then
+			-- 1. สั่งข้ามคัตซีนเปิดตัว
+			if Core.Flags.AutoDungeonSkipIntro ~= false and Net and Net.Paths and Net.Paths.TowersIntroDone then
+				Net.Fire(Net.Paths.TowersIntroDone, 1.5)
+			end
+
+			-- 2. สั่งเปิดโหมด Auto Attack ต่อสู้ต่อเนื่อง
+			if Core.Flags.AutoDungeonAttack ~= false and Net and Net.Paths and Net.Paths.TowersSetAuto then
 				Net.Fire(Net.Paths.TowersSetAuto, 2.0, true)
+			end
+
+			-- 3. ตรวจจับและใช้ท่าไม้ตายออโต้ (Auto Ultimate)
+			if Core.Flags.AutoDungeonUlt ~= false then
+				Helpers.TriggerDungeonUltimates()
+			end
+
+			-- 4. ตรวจจับจบเกม (Victory / Defeat) เพื่อกดออก
+			if Core.Flags.AutoDungeonExit ~= false then
+				Helpers.CheckDungeonResultAndExit()
 			end
 			return
 		end
 
-		-- กรณีอยู่ในแมพหลัก
+		-- กรณีอยู่ในแมพหลัก (Hub)
+		if not Core.Flags.AutoEnterDungeon then return end
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
 			return
@@ -1351,6 +1463,9 @@ local function main()
 		TowersSetAuto = RP .. "Towers.SetAuto",         -- RE: FireServer(true/false)
 		TowersStart = RP .. "Towers.Start",             -- RF: InvokeServer(...)
 		TowersExit = RP .. "Towers.Exit",               -- RE: FireServer()
+		TowersIntroDone = RP .. "Towers.IntroDone",     -- RE: FireServer()
+		TowersUlt = RP .. "Towers.Ult",                 -- RE: FireServer(unitId)
+		TowersReplay = RP .. "Towers.Replay",           -- RE: FireServer()
 	}
 
 	function Net.Get(remote)
@@ -4396,8 +4511,16 @@ local function main()
 	end
 
 	function Loops.Dungeon()
-		Core:Loop("autoDungeon", "AutoEnterDungeon", 2.5, function()
-			Helpers.AutoDungeonStep()
+		Core:StopLoop("autoDungeon")
+		Core._loops["autoDungeon"] = task.spawn(function()
+			while Core._alive and (Helpers.IsDungeonPlace() or Core.Flags.AutoEnterDungeon) do
+				local ok, err = pcall(Helpers.AutoDungeonStep)
+				if not ok then
+					warn("[Kuy] loop 'autoDungeon': " .. tostring(err))
+				end
+				task.wait(Helpers.IsDungeonPlace() and 1.2 or 2.5)
+			end
+			Core._loops["autoDungeon"] = nil
 		end)
 	end
 
@@ -5241,6 +5364,14 @@ local function main()
 			if v then Loops.Dungeon() end
 		end)
 
+		CreateToggle(pFarm, "เปิดท่าไม้ตายออโต้ในดันเจี้ยน (Auto Dungeon Ultimate)", Core.Flags.AutoDungeonUlt, function(v)
+			Core.Flags.AutoDungeonUlt = v
+		end)
+
+		CreateToggle(pFarm, "ออกดันเจี้ยนอัตโนมัติเมื่อจบเกม (Auto Exit Dungeon)", Core.Flags.AutoDungeonExit, function(v)
+			Core.Flags.AutoDungeonExit = v
+		end)
+
 		-- Stage Multi-Select Dropdown
 		local stageOptions = {}
 		for i = 1, 13 do
@@ -5511,7 +5642,9 @@ local function main()
 		if Core.Flags.AutoUpgradeLuck then task.spawn(Loops.UpgradeLuck) end
 		if Core.Flags.AutoRebirth then task.spawn(Loops.Rebirth) end
 		if Core.Flags.AutoClaim then task.spawn(Loops.Claim) end
-		if Core.Flags.AutoEnterDungeon then task.spawn(Loops.Dungeon) end
+		if Helpers.IsDungeonPlace() or Core.Flags.AutoEnterDungeon then
+			task.spawn(Loops.Dungeon)
+		end
 
 		Core.Flags.UI = true
 		Core:Loop("autoSaveConfig", "UI", 30, function()
@@ -5521,6 +5654,17 @@ local function main()
 		end)
 
 		Core:Loop("status", "UI", 0.5, function()
+			if Helpers.IsDungeonPlace() then
+				local stText = "[⚔️ DUNGEON ACTIVE] กำลังต่อสู้อัตโนมัติในดันเจี้ยน"
+				StatusText.Text = "STATUS: " .. stText
+				if TreadmillStatusCard then
+					TreadmillStatusCard.Text = stText
+				end
+				if PackStatusCard then
+					PackStatusCard.Text = stText
+				end
+				return
+			end
 			local combo = LocalPlayer:GetAttribute(COMBO_ATTR) or 0
 			local training = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 			local spd = math.floor(Helpers.GetMoveSpeed() + 0.5)
