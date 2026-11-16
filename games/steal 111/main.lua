@@ -1034,7 +1034,16 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			local holder = dui and dui:FindFirstChild("Holder")
 			local ts = holder and holder:FindFirstChild("TowerSelection")
 			local sf = ts and ts:FindFirstChild("ScrollingFrame")
-			local tmpl = sf and sf:FindFirstChild("Template")
+			-- เลือกการ์ด "Double Dugeons" (วนทุก Template ตามชื่อ TowerName) ถ้าไม่เจอใช้ Template แรก
+			local tmpl
+			if sf then
+				for _, c in ipairs(sf:GetChildren()) do
+					local tn = c:FindFirstChild("TowerName", true)
+					local txt = string.lower((tn and tn:IsA("TextLabel") and tn.Text) or c.Name)
+					if txt:find("double") then tmpl = c break end
+				end
+				tmpl = tmpl or sf:FindFirstChild("Template")
+			end
 			local playBtn = tmpl and tmpl:FindFirstChild("Play")
 			if playBtn and playBtn:IsA("GuiButton") and firesignal then
 				pcall(firesignal, playBtn.Activated)
@@ -1083,22 +1092,12 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 
 			-- ดึงชื่อดันเจี้ยน
 			local dungeonTargetName = "Double Dugeons"
-			if tmpl then
-				local tname = tmpl:FindFirstChild("TowerName")
-				local diff = tmpl:FindFirstChild("Difficulty")
-				local baseName = (tname and tname.Text ~= "") and tname.Text or "Double Dugeons"
-				if diff and diff:IsA("TextLabel") and diff.Text ~= "" then
-					dungeonTargetName = string.format("%s (%s)", baseName, diff.Text)
-				else
-					dungeonTargetName = baseName
-				end
-			end
 
-			-- 4. เปิดปาร์ตี้ผ่าน Remote (ลองทั้งชื่อจริงจาก UI และ fallback)
+			-- 4. เปิดปาร์ตี้ด้วยชื่อที่ Dump จับได้จริง "Double Dugeons" (fallback สะกดอื่น)
 			if Net and Net.Paths and Net.Paths.DungeonPartyOpen then
 				local ok, res = Net.Invoke(Net.Paths.DungeonPartyOpen, dungeonTargetName)
-				if not ok or (type(res) == "table" and not res.Success) then
-					Net.Invoke(Net.Paths.DungeonPartyOpen, "Dugeon")
+				if not ok or (type(res) == "table" and res.Success == false) then
+					Net.Invoke(Net.Paths.DungeonPartyOpen, "Double Dungeons")
 				end
 			end
 
@@ -1307,9 +1306,10 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				Helpers._lastDgTreadmill = os.clock()
 				pcall(function()
 					local best, bestScore
+					local plotsFolder = Workspace:FindFirstChild("Plots")
 					for _, d in ipairs(Workspace:GetDescendants()) do
 						local n = string.lower(d.Name)
-						if n:find("treadmil") then
+						if n:find("treadmil") and not (plotsFolder and d:IsDescendantOf(plotsFolder)) then
 							local part = d:IsA("BasePart") and d or nil
 							if d:IsA("Model") or d:IsA("Folder") then
 								part = d:FindFirstChild("Seat", true) or d:FindFirstChild("Primary", true) or d:FindFirstChildWhichIsA("BasePart", true)
@@ -1325,6 +1325,11 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 						hrp.CFrame = best.CFrame + Vector3.new(0, 3, 0)
 						local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 						if hum then hum:MoveTo(best.Position) end
+						task.wait(0.3)
+						-- ยิง remote ขึ้นลู่วิ่งของดันเจี้ยน (Dump: {Look, Position})
+						if Net and Net.Paths and Net.Paths.TowersTreadmill then
+							Net.Fire(Net.Paths.TowersTreadmill, 1.0, { Look = hrp.CFrame.LookVector, Position = best.Position })
+						end
 						logAction("ดันเจี้ยน", "ขึ้นลู่วิ่งในดันเจี้ยน: " .. best:GetFullName(), true)
 					end
 				end)
@@ -1335,17 +1340,23 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				Helpers.CheckDungeonResultAndExit()
 			end
 
-			-- 5. โหมด Floor Loop: ถึงชั้นที่ระบุ (ตัวเลขอะไรก็ได้ >= 1) → ออกดันเจี้ยน แล้วระบบ AutoEnterDungeon เข้าใหม่
+			-- 5. ถึงชั้น/เวฟที่ระบุ → ออกดันเจี้ยน แล้ว AutoEnterDungeon เข้าใหม่ (ไม่ต้องพึ่งสวิตช์ Floor Loop)
 			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
-			if Core.Flags.DungeonFloorLoop and targetFloor and targetFloor >= 1 then
+			if (Core.Flags.DungeonFloorLoop or Core.Flags.AutoDungeonExit ~= false) and targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
-				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 5 then
+				if curFloor > 0 and curFloor >= targetFloor and (os.clock() - (Helpers._lastFloorExit or -100)) > 3 then
 					Helpers._lastFloorExit = os.clock()
-					logAction("ดันเจี้ยน", "ถึงชั้น " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
+					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → ออกดันเจี้ยน", true)
 					pcall(queueScriptOnTeleport, TELEPORT_LOADER)
-					if Net and Net.Paths and Net.Paths.TowersExit then
-						pcall(Net.Fire, Net.Paths.TowersExit, 1.0)
+					-- ปลดลู่วิ่งก่อน เพื่อไม่ให้ขวางการออก
+					if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil and Helpers.LeaveTreadmill then
+						pcall(Helpers.LeaveTreadmill)
+						task.wait(0.3)
+					end
+					if Net and Net.Paths then
+						if Net.Paths.TowersExit then pcall(Net.Fire, Net.Paths.TowersExit, 0) end
+						if Net.Paths.DungeonPartyLeave then pcall(Net.Fire, Net.Paths.DungeonPartyLeave, 0) end
 					end
 				end
 			end
@@ -2067,6 +2078,8 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		DungeonPartyStart = RP .. "DungeonParty.Start", -- RF: InvokeServer()
 		TowersSetAuto = RP .. "Towers.SetAuto",         -- RE: FireServer(true/false)
 		TowersStart = RP .. "Towers.Start",             -- RF: InvokeServer(...)
+		TowersTreadmill = RP .. "Towers.Treadmill",   -- RE: FireServer({Look=Vector3, Position=Vector3})
+		DungeonPartyLeave = RP .. "DungeonParty.Leave", -- RE: FireServer()
 		TowersExit = RP .. "Towers.Exit",               -- RE: FireServer()
 		TowersIntroDone = RP .. "Towers.IntroDone",     -- RE: FireServer()
 		TowersUlt = RP .. "Towers.Ult",                 -- RE: FireServer(unitId)
