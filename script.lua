@@ -266,7 +266,7 @@ task.spawn(function()
 
     -- 3. ฟังก์ชันดาวน์โหลดโค้ดสคริปต์ (Dual-Method Fetch with Cache-Buster & URL Encoding)
     local function urlEncodePath(str)
-        return (str:gsub("[^%w-_.~/]", function(c)
+        return (str:gsub("[^%w%-%_.~/]", function(c)
             return string.format("%%%02X", string.byte(c))
         end))
     end

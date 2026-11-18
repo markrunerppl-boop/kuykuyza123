@@ -24,12 +24,13 @@ local ENV = (getgenv and getgenv()) or _G
 local TELEPORT_LOADER = [[
 task.spawn(function()
 	task.wait(1.5)
-	local ok, src = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua")
+	local v = tostring(tick())
+	local ok, src = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/script.lua?v=" .. v)
 	if ok and type(src) == "string" and #src > 100 then
 		loadstring(src)()
 		return
 	end
-	local okDirect, srcDirect = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/steal%20111/main.lua")
+	local okDirect, srcDirect = pcall(game.HttpGet, game, "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/main/games/steal%20111/main.lua?v=" .. v)
 	if okDirect and type(srcDirect) == "string" and #srcDirect > 100 then
 		loadstring(srcDirect)()
 		return
@@ -187,8 +188,8 @@ local function main()
 	Core.Flags.AutoDungeonAttack = true     -- ตีออโต้ในดันเจี้ยน
 	Core.Flags.AutoDungeonExit = true       -- ออกดันเจี้ยนอัตโนมัติเมื่อจบเกม
 	Core.Flags.AutoDungeonSkipIntro = true  -- ข้ามคัตซีนเปิดตัวอัตโนมัติ
-Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องการออก (ตัวเลขอะไรก็ได้ >= 1)
-Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี้ยนเมื่อถึงชั้นที่ระบุแล้ววนเข้าใหม่
+Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องการรีสตาร์ทดันเจี้ยน (ตัวเลขอะไรก็ได้ >= 1)
+Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทดันเจี้ยน 2 ครั้งเมื่อถึงชั้นที่ระบุ (ไม่ออกดันเจี้ยน)
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
 	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
@@ -1000,7 +1001,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 	function Helpers.ForceClickGuiButton(btn)
 		if not (btn and btn:IsA("GuiButton")) then return false end
 		local nm0 = string.lower(btn.Name)
-		if nm0 == "stopview" or nm0 == "close" then return false end
+		if nm0 == "stopview" or nm0 == "close" or nm0 == "exit" or nm0 == "leave" then return false end
 		if getconnections then
 			for _, sn in ipairs({ "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up", "TouchTap" }) do
 				pcall(function()
@@ -1659,54 +1660,126 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 
 			-- 5. ถึงชั้น/เวฟที่ระบุ → กดปุ่ม RESTART DUGEON 2 ครั้ง (ไม่ออกดันเจี้ยน)
 			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
-			if targetFloor and targetFloor >= 1 then
+			if Core.Flags.DungeonFloorLoop and targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
 				if curFloor > 0 and curFloor >= targetFloor and not Helpers._forceExiting then
 					Helpers._forceExiting = true
 					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → กด RESTART DUGEON 2 ครั้ง", true)
 					task.spawn(function()
-						local function findRestartBtn()
-							local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-							for _, root in ipairs({ pg, CoreGui }) do
-								if root then
-									for _, d in ipairs(root:GetDescendants()) do
-										if not d:FindFirstAncestor("KUYKUY_ScreenGui") then
-											if d:IsA("TextLabel") or d:IsA("TextButton") then
-												local tx = string.lower(d.Text or "")
-												if tx:find("restart", 1, true) or tx:find("dugeon", 1, true) then
-													local btn = d:IsA("GuiButton") and d or d:FindFirstAncestorWhichIsA("GuiButton")
-													if not btn and d.Parent then
-														btn = d.Parent:FindFirstChildWhichIsA("GuiButton", true)
-													end
-													if btn and btn.Visible then return btn end
-												end
-											elseif d:IsA("GuiButton") and d.Visible then
-												local nm = string.lower(d.Name)
-												if nm:find("restart", 1, true) or nm:find("replay", 1, true) then
-													return d
-												end
-											end
+						local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+						local function isVis(obj)
+							local p = obj
+							while p and p ~= pgui and not p:IsA("ScreenGui") do
+								if p:IsA("GuiObject") and not p.Visible then return false end
+								p = p.Parent
+							end
+							return not (p and p:IsA("ScreenGui") and not p.Enabled)
+						end
+						local function isSafeBtn(btn)
+							if not (btn and btn:IsA("GuiButton") and isVis(btn)) then return false end
+							if btn:FindFirstAncestor("KUYKUY_ScreenGui") then return false end
+							local nm = string.lower(btn.Name)
+							if nm:find("exit", 1, true) or nm:find("leave", 1, true) or nm:find("close", 1, true) or nm:find("stop", 1, true) then
+								return false
+							end
+							for _, c in ipairs(btn:GetDescendants()) do
+								if c:IsA("TextLabel") or c:IsA("TextButton") then
+									local ct = string.lower(c.Text or "")
+									if ct:find("exit", 1, true) or ct:find("leave", 1, true) then return false end
+								end
+							end
+							return true
+						end
+						local function findRestartBtn(allowConfirm)
+							pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+							local roots = {}
+							if pgui then
+								for _, rn in ipairs({ "DungeonHud", "TowerHud", "TowerUi" }) do
+									local r = pgui:FindFirstChild(rn)
+									if r then table.insert(roots, r) end
+								end
+								table.insert(roots, pgui)
+							end
+							for _, root in ipairs(roots) do
+								for _, d in ipairs(root:GetDescendants()) do
+									if d:IsA("TextLabel") or d:IsA("TextButton") then
+										local tx = string.lower(d.Text or "")
+										local matchRestart = tx:find("restart", 1, true) or tx:find("replay", 1, true)
+										local matchConfirm = allowConfirm and (tx:find("confirm", 1, true) or tx:find("sure", 1, true) or tx == "yes")
+										if matchRestart or matchConfirm then
+											local btn = d:IsA("GuiButton") and d or d:FindFirstAncestorWhichIsA("GuiButton")
+											if isSafeBtn(btn) then return btn end
+										end
+									elseif d:IsA("GuiButton") then
+										local nm = string.lower(d.Name)
+										if (nm:find("restart", 1, true) or nm:find("replay", 1, true)) and isSafeBtn(d) then
+											return d
 										end
 									end
 								end
 							end
 							return nil
 						end
+						local function clickOnce(btn, pass)
+							if not isSafeBtn(btn) then return end
+							local fired = false
+							if firesignal and pass == 1 then
+								pcall(firesignal, btn.Activated)
+								pcall(firesignal, btn.MouseButton1Click)
+								fired = true
+							end
+							if getconnections and (not fired or pass >= 2) then
+								for _, sn in ipairs({ "Activated", "MouseButton1Click" }) do
+									pcall(function()
+										for _, cn in ipairs(getconnections(btn[sn])) do
+											if pass == 1 and cn.Fire then
+												pcall(cn.Fire, cn)
+											elseif type(cn.Function) == "function" then
+												pcall(cn.Function)
+											elseif cn.Fire then
+												pcall(cn.Fire, cn)
+											end
+										end
+									end)
+								end
+								fired = true
+							end
+							if not fired or pass >= 2 then
+								pcall(function()
+									if btn.AbsoluteSize.X > 0 and VirtualInputManager then
+										local sg = btn:FindFirstAncestorWhichIsA("ScreenGui")
+										local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or game:GetService("GuiService"):GetGuiInset()
+										local cx = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2 + inset.X
+										local cy = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2 + inset.Y
+										VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+										task.wait(0.04)
+										VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+									end
+								end)
+							end
+						end
 
 						local t0 = os.clock()
+						local pass = 0
 						while Helpers.IsDungeonPlace() and Helpers.GetCurrentDungeonFloor() >= targetFloor and os.clock() - t0 < 15 do
-							local rBtn = findRestartBtn()
+							pass = pass + 1
+							local rBtn = findRestartBtn(false)
 							if rBtn then
-								Helpers.ForceClickGuiButton(rBtn)
-								task.wait(0.35)
-								Helpers.ForceClickGuiButton(rBtn)
-							elseif Net and Net.Paths and Net.Paths.TowersReplay then
-								pcall(Net.Fire, Net.Paths.TowersReplay, 0)
+								-- กดครั้งที่ 1
+								clickOnce(rBtn, pass)
+								task.wait(0.4)
+								-- กดครั้งที่ 2 (กดปุ่มเดิมซ้ำ และหากมีปุ่มยืนยันให้กดด้วย)
+								local rBtn2 = findRestartBtn(true) or rBtn
+								clickOnce(rBtn2, pass)
+								if rBtn2 ~= rBtn and isSafeBtn(rBtn) then
+									clickOnce(rBtn, pass)
+								end
 							end
-							task.wait(1.2)
+							task.wait(1.0)
 						end
 						Helpers._dungeonMaxFloor = 0
+						Helpers._lastDgTreadmill = 0
 						Helpers._forceExiting = false
 					end)
 				end
@@ -5494,7 +5567,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 	function Loops.Dungeon()
 		Core:StopLoop("autoDungeon")
 		Core._loops["autoDungeon"] = task.spawn(function()
-			while Core._alive and (Helpers.IsDungeonPlace() or Core.Flags.AutoEnterDungeon) do
+			while Core._alive and (Helpers.IsDungeonPlace() or Core.Flags.AutoEnterDungeon or Core.Flags.DungeonFloorLoop) do
 				local ok, err = pcall(Helpers.AutoDungeonStep)
 				if not ok then
 					warn("[Kuy] loop 'autoDungeon': " .. tostring(err))
@@ -6360,9 +6433,10 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			Core.Flags.AutoDungeonExit = v
 		end)
 
-		-- โหมดออกดันเจี้ยนตามชั้นที่ระบุ แล้ววนเข้าใหม่ (Toggle + ช่องกรอกชั้น + ชั้นสูงสุดเรียลไทม์)
+		-- โหมดรีสตาร์ทดันเจี้ยน 2 ครั้งตามชั้นที่ระบุ (Toggle + ช่องกรอกชั้น + ชั้นสูงสุดเรียลไทม์)
 		CreateToggle(pFarm, "ออกเมื่อถึงชั้นที่ระบุแล้ววนเข้าใหม่ (Floor Loop)", Core.Flags.DungeonFloorLoop, function(v)
 			Core.Flags.DungeonFloorLoop = v
+			if v then Loops.Dungeon() end
 			pcall(function() if Config and Config.Save then Config.Save() end end)
 		end)
 
