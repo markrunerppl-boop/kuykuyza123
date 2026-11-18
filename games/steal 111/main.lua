@@ -855,7 +855,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local cc = safeRequire(function() return ReplicatedStorage.Shared.Configs.CharacterConfig end)
 		local tu = safeRequire(function() return ReplicatedStorage.Shared.Utilities.TowerUtil end)
 		local tc = Helpers.GetTowerConfig()
-		local rarityRank = (pc and pc.RarityRank) or {}
+		local rarityRank = (Helpers.GetAllRarityRanks and Helpers.GetAllRarityRanks()) or (pc and pc.RarityRank) or {}
 		local minRank = rarityRank.Cosmic or 7
 
 		local candidates = {}
@@ -5518,6 +5518,24 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			if hasUnclaimed then
 				UpgState.nextIndexClaim = now + 25
 				local mutationKeys = { "", "Gold", "Emerald", "Diamond", "Cursed", "Transcendent", "Glitched" }
+				local seenMut = {}
+				for _, mk in ipairs(mutationKeys) do seenMut[mk] = true end
+				pcall(function()
+					local mc = getMutateConfig()
+					if type(mc) == "table" then
+						for _, tbl in pairs({ mc.Mutations, mc.Order, mc.Config, mc }) do
+							if type(tbl) == "table" then
+								for k, v in pairs(tbl) do
+									local mName = (type(v) == "string" and v) or (type(k) == "string" and type(v) == "table" and (v.Name or k)) or nil
+									if type(mName) == "string" and #mName > 1 and not seenMut[mName] and mName ~= "Mutations" and mName ~= "Order" then
+										seenMut[mName] = true
+										table.insert(mutationKeys, mName)
+									end
+								end
+							end
+						end
+					end
+				end)
 				local totalClaimed = 0
 
 				-- 1. เคลมแบบรวมทั้งหมด (Batch ClaimAll)
@@ -5557,7 +5575,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 					logAction("เคลม", string.format("เคลม Index Rewards สำเร็จ (+%d รายการ)", totalClaimed), true)
 				end
 			else
-				nextIndexClaim = now + 20
+				UpgState.nextIndexClaim = now + 20
 			end
 		end
 	end
@@ -6334,7 +6352,11 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end
 			end)
 
-			for i, opt in ipairs(options) do
+			local knownValues = {}
+			local totalContentHeight = 26 + 4 + (#options * 30) + 12
+
+			local function addOptionItem(i, opt)
+				knownValues[opt.value] = true
 				local optBtn = Instance.new("TextButton")
 				optBtn.Name = "Opt_" .. string.format("%02d", i)
 				optBtn.LayoutOrder = i
@@ -6365,7 +6387,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				table.insert(optionButtons, { btn = optBtn, value = opt.value, label = opt.label })
 			end
 
-			local totalContentHeight = 26 + 4 + (#options * 30) + 12
+			for i, opt in ipairs(options) do
+				addOptionItem(i, opt)
+			end
 
 			local function ToggleExpand(state)
 				isExpanded = (state ~= nil) and state or (not isExpanded)
@@ -6378,12 +6402,31 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end
 			end
 
+			local function SyncOptions(newOptions)
+				if type(newOptions) ~= "table" then return end
+				local added = false
+				for _, opt in ipairs(newOptions) do
+					if opt and opt.value and not knownValues[opt.value] then
+						table.insert(options, opt)
+						addOptionItem(#options, opt)
+						added = true
+					end
+				end
+				if added then
+					totalContentHeight = 26 + 4 + (#options * 30) + 12
+					if isExpanded then
+						card.Size = UDim2.new(1, 0, 0, 48 + totalContentHeight)
+					end
+					RefreshUI()
+				end
+			end
+
 			selectBtn.MouseButton1Click:Connect(function()
 				ToggleExpand()
 			end)
 
 			RefreshUI()
-			return card
+			return card, SyncOptions
 		end
 
 		-- =====================================================================
@@ -6452,7 +6495,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end)
 
 		-- โหมดรีสตาร์ทดันเจี้ยน 2 ครั้งตามชั้นที่ระบุ (Toggle + ช่องกรอกชั้น + ชั้นสูงสุดเรียลไทม์)
-		CreateToggle(pFarm, "ออกเมื่อถึงชั้นที่ระบุแล้ววนเข้าใหม่ (Floor Loop)", Core.Flags.DungeonFloorLoop, function(v)
+		CreateToggle(pFarm, "รีสตาร์ทดันเจี้ยนเมื่อถึงชั้นที่ระบุ (Restart Floor Loop)", Core.Flags.DungeonFloorLoop, function(v)
 			Core.Flags.DungeonFloorLoop = v
 			if v then Loops.Dungeon() end
 			pcall(function() if Config and Config.Save then Config.Save() end end)
@@ -6478,7 +6521,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			local box = Instance.new("TextBox")
 			box.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 			box.TextColor3 = Color3.fromRGB(255, 255, 255)
-			box.PlaceholderText = "ชั้นที่ต้องการออก (ใส่เลขเท่าไหร่ก็ได้)"
+			box.PlaceholderText = "ชั้น/เวฟที่ต้องการรีสตาร์ท (ใส่เลขเท่าไหร่ก็ได้)"
 			box.ClearTextOnFocus = false
 			box.Font = Enum.Font.GothamMedium
 			box.TextSize = 13
@@ -6527,16 +6570,20 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end)
 
 		-- Stage Multi-Select Dropdown
-		local stageOptions = {}
-		local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
-		for i = 1, maxStages do
-			table.insert(stageOptions, {
-				value = "Stage" .. i,
-				label = string.format("ด่านที่ %d (Stage %d)", i, i),
-				short = tostring(i),
-			})
+		local function buildStageOptions()
+			local list = {}
+			local maxSt = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
+			for i = 1, maxSt do
+				table.insert(list, {
+					value = "Stage" .. i,
+					label = string.format("ด่านที่ %d (Stage %d)", i, i),
+					short = tostring(i),
+				})
+			end
+			return list
 		end
-		CreateMultiSelectDropdown(pFarm, "ด่านที่ต้องการขโมย (Stages)", stageOptions, Core.Flags, function()
+		local stageOptions = buildStageOptions()
+		local _, syncStageDropdown = CreateMultiSelectDropdown(pFarm, "ด่านที่ต้องการขโมย (Stages)", stageOptions, Core.Flags, function()
 			-- Core.Flags updated in-place by selectedMap
 		end)
 
@@ -6559,8 +6606,17 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			{ value = "Rarity_Mystery",    label = "??? / Mystery (ระดับ 15)", short = "Mys" },
 			{ value = "Rarity_Secret",     label = "Secret (ระดับพิเศษ)",    short = "Sec" },
 		}
-		CreateMultiSelectDropdown(pFarm, "เกรดของแพ็คที่ต้องการขโมย (All Grades)", rarityOptions, Core.Flags, function()
+		local _, syncRarityDropdown = CreateMultiSelectDropdown(pFarm, "เกรดของแพ็คที่ต้องการขโมย (All Grades)", rarityOptions, Core.Flags, function()
 			-- Core.Flags updated in-place by selectedMap
+		end)
+
+		Core:Loop("dynamicUISync", "UI", 5.0, function()
+			if syncStageDropdown then
+				pcall(function() syncStageDropdown(buildStageOptions()) end)
+			end
+			if syncRarityDropdown and Helpers.GetRarityDropdownOptions then
+				pcall(function() syncRarityDropdown(Helpers.GetRarityDropdownOptions()) end)
+			end
 		end)
 
 		-- =====================================================================
