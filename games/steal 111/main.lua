@@ -918,6 +918,33 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		return team
 	end
 
+	function Helpers.FindVisibleGuiButton(root, keyword)
+		if not root then return nil end
+		local kw = string.lower(keyword)
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local function isVis(obj)
+			local p = obj
+			while p and p ~= pgui and not p:IsA("ScreenGui") do
+				if p:IsA("GuiObject") and not p.Visible then return false end
+				p = p.Parent
+			end
+			return not (p and p:IsA("ScreenGui") and not p.Enabled)
+		end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("GuiButton") and isVis(d) then
+				local nm = string.lower(d.Name)
+				local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
+				if nm:find(kw, 1, true) or tx:find(kw, 1, true) then return d end
+				for _, c in ipairs(d:GetDescendants()) do
+					if c:IsA("TextLabel") and string.lower(c.Text or ""):find(kw, 1, true) then
+						return d
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	function Helpers.EquipBestDungeonTeam()
 		local bestTeam = Helpers.GetBestDungeonTeam()
 		if #bestTeam == 0 then
@@ -937,21 +964,24 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			end
 		end
 
+		-- กดปุ่ม EquipBest และรัวปุ่ม Continue บนหน้า Your Team จนกว่าหน้าต่างจะปิด (แก้บั๊ก UGPhone)
 		pcall(function()
 			local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-			local dui = pgui and pgui:FindFirstChild("DungeonUi")
-			local holder = dui and dui:FindFirstChild("Holder")
-			local teamFrame = holder and holder:FindFirstChild("TeamFrame")
-			if teamFrame and teamFrame.Visible then
-				local eb = teamFrame:FindFirstChild("EquipBest")
-				if eb and eb:IsA("GuiButton") then
-					Helpers.ForceClickGuiButton(eb)
-					task.wait(0.2)
-				end
-				local cont = teamFrame:FindFirstChild("Continue")
-				if cont and cont:IsA("GuiButton") and firesignal then
-					firesignal(cont.Activated)
-					task.wait(0.2)
+			if not pgui then return end
+			for _, uiName in ipairs({ "DungeonUi", "TowerUi" }) do
+				local ui = pgui:FindFirstChild(uiName)
+				if ui then
+					local eb = Helpers.FindVisibleGuiButton(ui, "equip")
+					if eb then
+						Helpers.ForceClickGuiButton(eb)
+						task.wait(0.25)
+					end
+					for _ = 1, 15 do
+						local cont = Helpers.FindVisibleGuiButton(ui, "continue")
+						if not cont then break end
+						Helpers.ForceClickGuiButton(cont)
+						task.wait(0.18)
+					end
 				end
 			end
 		end)
@@ -972,7 +1002,7 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 		local nm0 = string.lower(btn.Name)
 		if nm0 == "stopview" or nm0 == "close" then return false end
 		if getconnections then
-			for _, sn in ipairs({ "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up" }) do
+			for _, sn in ipairs({ "Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up", "TouchTap" }) do
 				pcall(function()
 					for _, cn in ipairs(getconnections(btn[sn])) do
 						if type(cn.Function) == "function" then pcall(cn.Function) end
@@ -986,11 +1016,13 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 			pcall(firesignal, btn.MouseButton1Click)
 			pcall(firesignal, btn.MouseButton1Down)
 			pcall(firesignal, btn.MouseButton1Up)
+			pcall(function() firesignal(btn.TouchTap) end)
 		end
 		pcall(function()
 			if btn.AbsoluteSize.X > 0 then
 				local vim = game:GetService("VirtualInputManager")
-				local inset = game:GetService("GuiService"):GetGuiInset()
+				local sg = btn:FindFirstAncestorWhichIsA("ScreenGui")
+				local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or game:GetService("GuiService"):GetGuiInset()
 				local cx = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2 + inset.X
 				local cy = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2 + inset.Y
 				vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
@@ -1625,55 +1657,57 @@ Core.Flags.DungeonFloorLoop = false   -- โหมดออกดันเจี
 				Helpers.CheckDungeonResultAndExit()
 			end
 
-			-- 5. ถึงชั้น/เวฟที่ระบุ → ออกดันเจี้ยน แล้ว AutoEnterDungeon เข้าใหม่ (ไม่ต้องพึ่งสวิตช์ Floor Loop)
+			-- 5. ถึงชั้น/เวฟที่ระบุ → กดปุ่ม RESTART DUGEON 2 ครั้ง (ไม่ออกดันเจี้ยน)
 			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
 			if targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
 				if curFloor > 0 and curFloor >= targetFloor and not Helpers._forceExiting then
 					Helpers._forceExiting = true
-					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → บังคับออกดันเจี้ยน", true)
+					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → กด RESTART DUGEON 2 ครั้ง", true)
 					task.spawn(function()
-						local t0 = os.clock()
-						-- ยิง Exit/Leave + กดปุ่ม Exit บน UI ซ้ำทุก 1 วินาที จนกว่าจะออกสำเร็จ (สูงสุด 120 วิ)
-						while Helpers.IsDungeonPlace() and os.clock() - t0 < 120 do
-							if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil and Helpers.LeaveTreadmill then
-								pcall(Helpers.LeaveTreadmill)
-							end
-							if Net and Net.Paths then
-								if Net.Paths.TowersExit then pcall(Net.Fire, Net.Paths.TowersExit, 0) end
-								if Net.Paths.DungeonPartyLeave then pcall(Net.Fire, Net.Paths.DungeonPartyLeave, 0) end
-							end
-							pcall(function()
-								local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-								if not pg then return end
-								for _, d in ipairs(pg:GetDescendants()) do
-									if d:IsA("GuiButton") then
-										local nm = string.lower(d.Name)
-										local tx = d:IsA("TextButton") and string.lower(d.Text or "") or ""
-										if nm == "exit" or nm == "leave" or tx:match("^%s*exit%s*$") or tx:match("^%s*leave%s*$") then
-											if firesignal then
-												pcall(firesignal, d.Activated)
-												pcall(firesignal, d.MouseButton1Click)
-											end
-											if getconnections then
-												pcall(function()
-													for _, cn in ipairs(getconnections(d.Activated)) do pcall(cn.Fire, cn) end
-													for _, cn in ipairs(getconnections(d.MouseButton1Click)) do pcall(cn.Fire, cn) end
-												end)
+						local function findRestartBtn()
+							local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+							for _, root in ipairs({ pg, CoreGui }) do
+								if root then
+									for _, d in ipairs(root:GetDescendants()) do
+										if not d:FindFirstAncestor("KUYKUY_ScreenGui") then
+											if d:IsA("TextLabel") or d:IsA("TextButton") then
+												local tx = string.lower(d.Text or "")
+												if tx:find("restart", 1, true) or tx:find("dugeon", 1, true) then
+													local btn = d:IsA("GuiButton") and d or d:FindFirstAncestorWhichIsA("GuiButton")
+													if not btn and d.Parent then
+														btn = d.Parent:FindFirstChildWhichIsA("GuiButton", true)
+													end
+													if btn and btn.Visible then return btn end
+												end
+											elseif d:IsA("GuiButton") and d.Visible then
+												local nm = string.lower(d.Name)
+												if nm:find("restart", 1, true) or nm:find("replay", 1, true) then
+													return d
+												end
 											end
 										end
 									end
 								end
-							end)
-							task.wait(1)
+							end
+							return nil
 						end
+
+						local t0 = os.clock()
+						while Helpers.IsDungeonPlace() and Helpers.GetCurrentDungeonFloor() >= targetFloor and os.clock() - t0 < 15 do
+							local rBtn = findRestartBtn()
+							if rBtn then
+								Helpers.ForceClickGuiButton(rBtn)
+								task.wait(0.35)
+								Helpers.ForceClickGuiButton(rBtn)
+							elseif Net and Net.Paths and Net.Paths.TowersReplay then
+								pcall(Net.Fire, Net.Paths.TowersReplay, 0)
+							end
+							task.wait(1.2)
+						end
+						Helpers._dungeonMaxFloor = 0
 						Helpers._forceExiting = false
-						-- ออกมาที่ล็อบบี้แล้ว → เข้าดันเจี้ยนใหม่ทันที
-						if not Helpers.IsDungeonPlace() then
-							task.wait(1.5)
-							pcall(Helpers.EnterDungeon)
-						end
 					end)
 				end
 			end
