@@ -1517,7 +1517,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	end
 
 	function Helpers.GetCurrentDungeonFloor()
-		-- อ่านชั้นปัจจุบันจาก DungeonHud → Top.WaveLabel (หรือ TextLabel ที่แสดง "Wave X")
+		-- อ่านชั้น/เวฟปัจจุบันจาก DungeonHud.TopBar.Banner.wAVE ("Wave X • Y LEFT")
 		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		local function parseFloor(txt)
 			txt = tostring(txt or "")
@@ -1525,6 +1525,25 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			return txt:match("[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)") or txt:match("[Ff][Ll][Oo][Oo][Rr]%s*:?%s*(%d+)")
 				or txt:match("[Ss][Tt][Aa][Gg][Ee]%s*:?%s*(%d+)") or txt:match("[Ll][Ee][Vv][Ee][Ll]%s*:?%s*(%d+)")
 				or txt:match("ชั้น%s*:?%s*(%d+)") or txt:match("เวฟ%s*:?%s*(%d+)")
+		end
+		local hud = pgui and pgui:FindFirstChild("DungeonHud")
+		local topBar = hud and hud:FindFirstChild("TopBar")
+		local banner = topBar and topBar:FindFirstChild("Banner")
+		if banner then
+			local waveLbl = banner:FindFirstChild("wAVE") or banner:FindFirstChild("Wave")
+			if waveLbl and waveLbl:IsA("TextLabel") then
+				local wTxt = tostring(waveLbl.Text or "")
+				if string.lower(wTxt):find("lobby", 1, true) then
+					return 0
+				end
+				local wn = tonumber(parseFloor(wTxt) or wTxt:match("(%d+)"))
+				if wn and wn > 0 then return wn end
+			end
+			local floorLbl = banner:FindFirstChild("Floor")
+			if floorLbl and floorLbl:IsA("TextLabel") then
+				local fn = tonumber(parseFloor(floorLbl.Text))
+				if fn and fn > 0 then return fn end
+			end
 		end
 		local best = 0
 		for _, rootName in ipairs({ "DungeonHud", "TowerUi", "DungeonUi", "TowerHud" }) do
@@ -1564,10 +1583,22 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	function Helpers.AutoDungeonStep()
 		-- กรณีอยู่ในแมพดันเจี้ยนแล้ว (PlaceId 135412798316370)
 		if Helpers.IsDungeonPlace() then
-			-- 1. สั่งข้ามคัตซีนเปิดตัว
+			-- 1. สั่งข้ามคัตซีนเปิดตัว และกด Start ทันทีหากติดหน้า Lobby หลัง Restart
 			if Core.Flags.AutoDungeonSkipIntro ~= false and Net and Net.Paths and Net.Paths.TowersIntroDone then
 				Net.Fire(Net.Paths.TowersIntroDone, 1.5)
 			end
+			pcall(function()
+				local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+				local hud = pg and pg:FindFirstChild("DungeonHud")
+				local lobby = hud and hud:FindFirstChild("Lobby")
+				local banner = hud and hud:FindFirstChild("TopBar") and hud.TopBar:FindFirstChild("Banner")
+				local wLbl = banner and (banner:FindFirstChild("wAVE") or banner:FindFirstChild("Wave"))
+				local inLobby = (lobby and lobby:IsA("GuiObject") and lobby.Visible)
+					or (wLbl and wLbl:IsA("TextLabel") and string.lower(wLbl.Text or ""):find("lobby", 1, true) ~= nil)
+				if inLobby and Net and Net.Paths and Net.Paths.TowersStartNow then
+					Net.Fire(Net.Paths.TowersStartNow, 1.0)
+				end
+			end)
 
 			-- 2. สั่งเปิดโหมด Auto Attack ต่อสู้ต่อเนื่อง
 			if Core.Flags.AutoDungeonAttack ~= false and Net and Net.Paths and Net.Paths.TowersSetAuto then
@@ -1658,125 +1689,110 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				Helpers.CheckDungeonResultAndExit()
 			end
 
-			-- 5. ถึงชั้น/เวฟที่ระบุ → กดปุ่ม RESTART DUGEON 2 ครั้ง (ไม่ออกดันเจี้ยน)
+			-- 5. ถึงชั้น/เวฟที่ระบุ → กดปุ่ม TopbarPlus "DungeonRestart" (RESTART DUGEON) 2 ครั้ง + ยิง Towers.Restart (ไม่ออกดันเจี้ยน)
 			local targetFloor = tonumber(Core.Flags.DungeonTargetFloor)
-			if Core.Flags.DungeonFloorLoop and targetFloor and targetFloor >= 1 then
+			if targetFloor and targetFloor >= 1 then
 				local curFloor = Helpers.GetCurrentDungeonFloor()
 				if curFloor > (Helpers._dungeonMaxFloor or 0) then Helpers._dungeonMaxFloor = curFloor end
 				if curFloor > 0 and curFloor >= targetFloor and not Helpers._forceExiting then
 					Helpers._forceExiting = true
 					logAction("ดันเจี้ยน", "ถึงเวฟ " .. curFloor .. " (เป้าหมาย " .. targetFloor .. ") → กด RESTART DUGEON 2 ครั้ง", true)
 					task.spawn(function()
-						local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-						local function isVis(obj)
-							local p = obj
-							while p and p ~= pgui and not p:IsA("ScreenGui") do
-								if p:IsA("GuiObject") and not p.Visible then return false end
-								p = p.Parent
+						local function findRestartClickRegion()
+							local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+							if not pg then return nil end
+							-- 1) ค้นหาจาก TopbarPlus: PlayerGui...DungeonRestart.Widget.ClickRegion
+							local dr = pg:FindFirstChild("DungeonRestart", true)
+							if dr then
+								local cr = dr:FindFirstChild("ClickRegion", true) or dr:FindFirstChildWhichIsA("GuiButton", true)
+								if cr then return cr end
 							end
-							return not (p and p:IsA("ScreenGui") and not p.Enabled)
-						end
-						local function isSafeBtn(btn)
-							if not (btn and btn:IsA("GuiButton") and isVis(btn)) then return false end
-							if btn:FindFirstAncestor("KUYKUY_ScreenGui") then return false end
-							local nm = string.lower(btn.Name)
-							if nm:find("exit", 1, true) or nm:find("leave", 1, true) or nm:find("close", 1, true) or nm:find("stop", 1, true) then
-								return false
-							end
-							for _, c in ipairs(btn:GetDescendants()) do
-								if c:IsA("TextLabel") or c:IsA("TextButton") then
-									local ct = string.lower(c.Text or "")
-									if ct:find("exit", 1, true) or ct:find("leave", 1, true) then return false end
-								end
-							end
-							return true
-						end
-						local function findRestartBtn(allowConfirm)
-							pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-							local roots = {}
-							if pgui then
-								for _, rn in ipairs({ "DungeonHud", "TowerHud", "TowerUi" }) do
-									local r = pgui:FindFirstChild(rn)
-									if r then table.insert(roots, r) end
-								end
-								table.insert(roots, pgui)
-							end
-							for _, root in ipairs(roots) do
-								for _, d in ipairs(root:GetDescendants()) do
-									if d:IsA("TextLabel") or d:IsA("TextButton") then
-										local tx = string.lower(d.Text or "")
-										local matchRestart = tx:find("restart", 1, true) or tx:find("replay", 1, true)
-										local matchConfirm = allowConfirm and (tx:find("confirm", 1, true) or tx:find("sure", 1, true) or tx == "yes")
-										if matchRestart or matchConfirm then
-											local btn = d:IsA("GuiButton") and d or d:FindFirstAncestorWhichIsA("GuiButton")
-											if isSafeBtn(btn) then return btn end
-										end
-									elseif d:IsA("GuiButton") then
-										local nm = string.lower(d.Name)
-										if (nm:find("restart", 1, true) or nm:find("replay", 1, true)) and isSafeBtn(d) then
-											return d
+							-- 2) Fallback: ค้นหา IconLabel ที่มีข้อความ "RESTART DUGEON" แล้วหา ClickRegion ในคอนเทนเนอร์เดียวกัน
+							for _, d in ipairs(pg:GetDescendants()) do
+								if d:IsA("TextLabel") and not d:FindFirstAncestor("KUYKUY_ScreenGui") then
+									local tx = string.lower(d.Text or "")
+									if tx:find("restart", 1, true) then
+										local p = d.Parent
+										for _ = 1, 4 do
+											if not p or p == pg then break end
+											local cr = p:FindFirstChild("ClickRegion", true) or p:FindFirstChildWhichIsA("GuiButton", true)
+											if cr and not string.lower(cr.Name):find("exit", 1, true) and not string.lower(cr.Name):find("leave", 1, true) then
+												return cr
+											end
+											p = p.Parent
 										end
 									end
 								end
 							end
 							return nil
 						end
-						local function clickOnce(btn, pass)
-							if not isSafeBtn(btn) then return end
+
+						local function fireButtonOnce(btn)
+							if not (btn and btn:IsA("GuiButton")) then return false end
 							local fired = false
-							if firesignal and pass == 1 then
+							if firesignal then
 								pcall(firesignal, btn.Activated)
 								pcall(firesignal, btn.MouseButton1Click)
 								fired = true
 							end
-							if getconnections and (not fired or pass >= 2) then
+							if getconnections then
 								for _, sn in ipairs({ "Activated", "MouseButton1Click" }) do
 									pcall(function()
 										for _, cn in ipairs(getconnections(btn[sn])) do
-											if pass == 1 and cn.Fire then
-												pcall(cn.Fire, cn)
-											elseif type(cn.Function) == "function" then
+											if type(cn.Function) == "function" then
 												pcall(cn.Function)
+												fired = true
 											elseif cn.Fire then
 												pcall(cn.Fire, cn)
+												fired = true
 											end
 										end
 									end)
 								end
-								fired = true
 							end
-							if not fired or pass >= 2 then
+							if not fired and VirtualInputManager and btn.AbsoluteSize.X > 0 then
 								pcall(function()
-									if btn.AbsoluteSize.X > 0 and VirtualInputManager then
-										local sg = btn:FindFirstAncestorWhichIsA("ScreenGui")
-										local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or game:GetService("GuiService"):GetGuiInset()
-										local cx = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2 + inset.X
-										local cy = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2 + inset.Y
-										VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-										task.wait(0.04)
-										VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-									end
+									local sg = btn:FindFirstAncestorWhichIsA("ScreenGui")
+									local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or game:GetService("GuiService"):GetGuiInset()
+									local cx = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2 + inset.X
+									local cy = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2 + inset.Y
+									VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+									task.wait(0.04)
+									VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
 								end)
 							end
+							return true
 						end
 
 						local t0 = os.clock()
-						local pass = 0
-						while Helpers.IsDungeonPlace() and Helpers.GetCurrentDungeonFloor() >= targetFloor and os.clock() - t0 < 15 do
-							pass = pass + 1
-							local rBtn = findRestartBtn(false)
-							if rBtn then
-								-- กดครั้งที่ 1
-								clickOnce(rBtn, pass)
-								task.wait(0.4)
-								-- กดครั้งที่ 2 (กดปุ่มเดิมซ้ำ และหากมีปุ่มยืนยันให้กดด้วย)
-								local rBtn2 = findRestartBtn(true) or rBtn
-								clickOnce(rBtn2, pass)
-								if rBtn2 ~= rBtn and isSafeBtn(rBtn) then
-									clickOnce(rBtn, pass)
-								end
+						while Helpers.IsDungeonPlace() and Helpers.GetCurrentDungeonFloor() >= targetFloor and os.clock() - t0 < 12 do
+							local cr = findRestartClickRegion()
+							if cr then
+								-- กดครั้งที่ 1 (เปลี่ยนปุ่มเป็น "SURE?")
+								fireButtonOnce(cr)
+								task.wait(0.25)
+								-- กดครั้งที่ 2 (ยืนยัน "RESTART DUGEON" ภายใน 3 วินาที)
+								fireButtonOnce(cr)
+								task.wait(0.35)
 							end
-							task.wait(1.0)
+							-- Fallback ยิง Remote ReplicatedStorage.Remotes.Towers.Restart โดยตรงหากเวฟยังไม่รีเซ็ต
+							if Helpers.GetCurrentDungeonFloor() >= targetFloor then
+								pcall(function()
+									local rem = ReplicatedStorage:FindFirstChild("Remotes")
+									local tw = rem and rem:FindFirstChild("Towers")
+									local rst = tw and tw:FindFirstChild("Restart")
+									if rst and rst:IsA("RemoteEvent") then
+										rst:FireServer()
+									elseif Net and Net.Paths and Net.Paths.TowersRestart then
+										Net.Fire(Net.Paths.TowersRestart, 0)
+									end
+								end)
+							end
+							task.wait(0.8)
+						end
+						-- หากหลังรีสตาร์ทติดหน้า Lobby ให้สั่ง StartNow ทันที
+						if Net and Net.Paths and Net.Paths.TowersStartNow then
+							pcall(Net.Fire, Net.Paths.TowersStartNow, 0)
 						end
 						Helpers._dungeonMaxFloor = 0
 						Helpers._lastDgTreadmill = 0
@@ -2506,6 +2522,8 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		TowersTreadmill = RP .. "Towers.Treadmill",   -- RE: FireServer({Look=Vector3, Position=Vector3})
 		DungeonPartyLeave = RP .. "DungeonParty.Leave", -- RE: FireServer()
 		TowersExit = RP .. "Towers.Exit",               -- RE: FireServer()
+		TowersRestart = RP .. "Towers.Restart",         -- RE: FireServer()
+		TowersStartNow = RP .. "Towers.StartNow",       -- RE: FireServer()
 		TowersIntroDone = RP .. "Towers.IntroDone",     -- RE: FireServer()
 		TowersUlt = RP .. "Towers.Ult",                 -- RE: FireServer(unitId)
 		TowersReplay = RP .. "Towers.Replay",           -- RE: FireServer()
