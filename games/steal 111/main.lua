@@ -12,7 +12,8 @@ local ContextActionService = game:GetService("ContextActionService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
-local CoreGui = game:GetService("CoreGui")
+local cgOk, cgSvc = pcall(function() return game:GetService("CoreGui") end)
+local CoreGui = cgOk and cgSvc or nil
 local vimOk, vimSvc = pcall(function() return game:GetService("VirtualInputManager") end)
 local VirtualInputManager = vimOk and vimSvc or nil
 local vuOk, vuSvc = pcall(function() return game:GetService("VirtualUser") end)
@@ -6822,12 +6823,27 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			Cyan          = Color3.fromRGB(0, 210, 255),   -- #00D2FF
 		}
 
-		-- ล้าง UI เก่าถ้ามีอยู่
-		local oldUI = (CoreGui and CoreGui:FindFirstChild("KUYKUY_ScreenGui"))
-			or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("KUYKUY_ScreenGui"))
-			or (CoreGui and CoreGui:FindFirstChild("KuykuyHub"))
-			or (LocalPlayer:FindFirstChildOfClass("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("KuykuyHub"))
-		if oldUI then pcall(function() oldUI:Destroy() end) end
+		-- ล้าง UI เก่าถ้ามีอยู่ (ครอบ pcall ป้องกัน Executor ที่จำกัดสิทธิ์ CoreGui)
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local hui = nil
+		if gethui then
+			local okH, resH = pcall(gethui)
+			if okH then hui = resH end
+		end
+		local uiRoots = {}
+		if hui then table.insert(uiRoots, hui) end
+		if CoreGui then table.insert(uiRoots, CoreGui) end
+		if pgui then table.insert(uiRoots, pgui) end
+		for _, root in ipairs(uiRoots) do
+			if root then
+				for _, uiName in ipairs({ "KUYKUY_ScreenGui", "KuykuyHub" }) do
+					pcall(function()
+						local old = root:FindFirstChild(uiName)
+						if old then old:Destroy() end
+					end)
+				end
+			end
+		end
 
 		local ScreenGui = Instance.new("ScreenGui")
 		ScreenGui.Name = "KUYKUY_ScreenGui"
