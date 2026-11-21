@@ -11,7 +11,7 @@ local function main()
 	local HttpService = game:GetService("HttpService")
 	local UserInputService = game:GetService("UserInputService")
 
-	local LocalPlayer = Players.LocalPlayer
+	local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 	local PlaceId = game.PlaceId
 	local ENV = (getgenv and getgenv()) or _G
 
@@ -155,14 +155,16 @@ local function main()
 		return true, table.unpack(results, 2, results.n)
 	end
 
-	-- ReplicatedStorage.Events.AnimeIdle.<name> (cached)
+	-- ReplicatedStorage.Events.AnimeIdle.<name> (cached, recursive fallback on map restructure)
 	Net._cache = {}
 	function Net.Remote(name: string)
 		local c = Net._cache[name]
 		if c and c.Parent then return c end
 		local ev = ReplicatedStorage:FindFirstChild("Events")
-		ev = ev and ev:FindFirstChild("AnimeIdle")
-		local r = ev and ev:FindFirstChild(name)
+		local ai = ev and ev:FindFirstChild("AnimeIdle")
+		local r = ai and ai:FindFirstChild(name)
+		if not r and ev then r = ev:FindFirstChild(name, true) end
+		if not r then r = ReplicatedStorage:FindFirstChild(name, true) end
 		Net._cache[name] = r
 		return r
 	end
@@ -170,53 +172,98 @@ local function main()
 	-- =================================================================
 	-- 5. HELPERS
 	-- =================================================================
-	local Helpers = { _plot = nil, _cfg = nil, _upgradeDefs = nil, _dungeonCfg = nil, SkillTree = {}, _skillSynced = false }
+	local Helpers = {
+		_plot = nil,
+		_mods = {},
+		_modInsts = {},
+		_chestTemplates = {},
+		DungeonList = {},
+		TierList = { "Normal" },
+		SkillTree = {},
+		_skillSynced = false,
+	}
 
-	function Helpers.GetDungeons()
-		if not Helpers._dungeonCfg then
-			local ok, mod = pcall(function()
-				return require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Gameplay"):WaitForChild("DungeonConfig"))
-			end)
-			if ok and type(mod) == "table" then Helpers._dungeonCfg = mod end
+	function Helpers.RequireModule(key: string, ...: string)
+		local inst = Helpers._modInsts[key]
+		if inst and inst.Parent and Helpers._mods[key] ~= nil then
+			return Helpers._mods[key]
 		end
-		local list = {}
-		if Helpers._dungeonCfg and type(Helpers._dungeonCfg.Dungeons) == "table" then
-			for _, d in ipairs(Helpers._dungeonCfg.Dungeons) do
-				if d.Id then
-					table.insert(list, { id = tostring(d.Id), name = tostring(d.Name or d.Id) })
+		Helpers._mods[key] = nil
+		Helpers._modInsts[key] = nil
+		local cur: Instance? = ReplicatedStorage
+		for i = 1, select("#", ...) do
+			if not cur then break end
+			local part = select(i, ...)
+			cur = cur:FindFirstChild(part) or cur:WaitForChild(part, 1.5)
+		end
+		if cur and cur:IsA("ModuleScript") then
+			local ok, mod = pcall(require, cur)
+			if ok and type(mod) == "table" then
+				Helpers._modInsts[key] = cur
+				Helpers._mods[key] = mod
+				return mod
+			end
+		end
+		return nil
+	end
+
+	function Helpers.InvalidateModules()
+		table.clear(Helpers._mods)
+		table.clear(Helpers._modInsts)
+		table.clear(Helpers._chestTemplates)
+	end
+
+	function Helpers.RefreshDungeons(): boolean
+		local list, seen = {}, {}
+		local cfg = Helpers.RequireModule("DungeonConfig", "Modules", "Gameplay", "DungeonConfig")
+		if cfg and type(cfg.Dungeons) == "table" then
+			for _, d in ipairs(cfg.Dungeons) do
+				if type(d) == "table" and d.Id then
+					local id = tostring(d.Id)
+					if not seen[id] then
+						seen[id] = true
+						table.insert(list, { id = id, name = tostring(d.Name or d.Id) })
+					end
+				end
+			end
+		end
+		local arenas = Workspace:FindFirstChild("Arenas")
+		if arenas then
+			for _, a in ipairs(arenas:GetChildren()) do
+				local da = a:GetAttribute("DungeonArena")
+				if type(da) == "string" and da ~= "" and not seen[da] then
+					seen[da] = true
+					table.insert(list, { id = da, name = da })
 				end
 			end
 		end
 		if #list == 0 then
-			list = {
-				{ id = "ShrineGrounds", name = "Shrine Grounds" },
-				{ id = "JadePalace", name = "Jade Palace" },
-				{ id = "RaijinStorm", name = "Raijin Storm" },
-				{ id = "DivineSanctum", name = "Divine Sanctum" },
-				{ id = "OniDemonFortress", name = "Oni Demon Fortress" },
-				{ id = "BloodMoonCitadel", name = "Blood Moon Citadel" },
-				{ id = "AstralWorld", name = "Astral Awakening" },
-			}
+			list = { { id = "ShrineGrounds", name = "Shrine Grounds" } }
 		end
-		return list
+		local changed = #list ~= #Helpers.DungeonList
+		if not changed then
+			for i, v in ipairs(list) do
+				if not Helpers.DungeonList[i] or Helpers.DungeonList[i].id ~= v.id or Helpers.DungeonList[i].name ~= v.name then
+					changed = true
+					break
+				end
+			end
+		end
+		Helpers.DungeonList = list
+		return changed
+	end
+
+	function Helpers.GetDungeons()
+		if #Helpers.DungeonList == 0 then Helpers.RefreshDungeons() end
+		return Helpers.DungeonList
 	end
 
 	function Helpers.GetConfig()
-		if Helpers._cfg then return Helpers._cfg end
-		local ok, mod = pcall(function()
-			return require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Gameplay"):WaitForChild("AnimeIdleConfig"))
-		end)
-		if ok and type(mod) == "table" then Helpers._cfg = mod end
-		return Helpers._cfg
+		return Helpers.RequireModule("AnimeIdleConfig", "Modules", "Gameplay", "AnimeIdleConfig")
 	end
 
 	function Helpers.GetUpgradeDefs()
-		if Helpers._upgradeDefs then return Helpers._upgradeDefs end
-		local ok, mod = pcall(function()
-			return require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("UI"):WaitForChild("UpgradeTreeController"):WaitForChild("UpgradeDefinitions"))
-		end)
-		if ok and type(mod) == "table" then Helpers._upgradeDefs = mod end
-		return Helpers._upgradeDefs
+		return Helpers.RequireModule("UpgradeDefinitions", "Modules", "UI", "UpgradeTreeController", "UpgradeDefinitions")
 	end
 
 	function Helpers.GetRoot()
@@ -313,8 +360,7 @@ local function main()
 		return best
 	end
 
-	-- dynamic tier list (Normal + AnimeIdleConfig.MutationOrder + any Mutation seen on map)
-	Helpers.TierList = { "Normal" }
+	-- dynamic tier list (Normal + AnimeIdleConfig.MutationOrder + any Mutation seen on map/assets)
 	function Helpers.RefreshTiers(): boolean
 		local list, seen = { "Normal" }, { Normal = true }
 		local cfg = Helpers.GetConfig()
@@ -332,15 +378,25 @@ local function main()
 		local plots = lobby and lobby:FindFirstChild("Plots")
 		if plots then
 			for _, p in ipairs(plots:GetChildren()) do
-				local ac = p:FindFirstChild("ActiveChests")
-				if ac then
-					for _, c in ipairs(ac:GetChildren()) do
-						if c:IsA("Model") then
-							local t = Helpers.ChestTier(c)
-							if not seen[t] then seen[t] = true; table.insert(list, t) end
+				for _, folderName in ipairs({ "ActiveChests", "PlacedChests" }) do
+					local ac = p:FindFirstChild(folderName)
+					if ac then
+						for _, c in ipairs(ac:GetChildren()) do
+							if c:IsA("Model") then
+								local t = Helpers.ChestTier(c)
+								if not seen[t] then seen[t] = true; table.insert(list, t) end
+							end
 						end
 					end
 				end
+			end
+		end
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local chests = assets and assets:FindFirstChild("Chests")
+		if chests then
+			for _, c in ipairs(chests:GetChildren()) do
+				local t = Helpers.ChestTier(c)
+				if not seen[t] then seen[t] = true; table.insert(list, t) end
 			end
 		end
 		local changed = #list ~= #Helpers.TierList
@@ -364,17 +420,16 @@ local function main()
 		return ok
 	end
 
-	Helpers._chestTemplates = nil
 	function Helpers.GetChestTemplate(tier: number)
-		if not Helpers._chestTemplates then
-			Helpers._chestTemplates = {}
-			local assets = ReplicatedStorage:FindFirstChild("Assets")
-			local chests = assets and assets:FindFirstChild("Chests")
-			if chests then
-				for _, c in ipairs(chests:GetChildren()) do
-					local t = c:GetAttribute("Tier")
-					if type(t) == "number" then Helpers._chestTemplates[t] = c end
-				end
+		local cached = Helpers._chestTemplates[tier]
+		if cached and cached.Parent then return cached end
+		table.clear(Helpers._chestTemplates)
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local chests = assets and assets:FindFirstChild("Chests")
+		if chests then
+			for _, c in ipairs(chests:GetChildren()) do
+				local t = c:GetAttribute("Tier")
+				if type(t) == "number" then Helpers._chestTemplates[t] = c end
 			end
 		end
 		return Helpers._chestTemplates[tier]
@@ -1001,7 +1056,6 @@ local function main()
 			corner(holder, 6)
 			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, holder)
 			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-			local dungeons = Helpers.GetDungeons()
 			local btns = {}
 			local function renderAll()
 				local cur = tostring(Core.Flags.DungeonId or "ShrineGrounds")
@@ -1011,17 +1065,24 @@ local function main()
 					entry.btn.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
 				end
 			end
-			for i, d in ipairs(dungeons) do
-				local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = d.name, AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, holder)
-				corner(b, 4)
-				table.insert(btns, { id = d.id, name = d.name, btn = b })
-				Core:Connect(b.MouseButton1Click, function()
-					Config.Set("DungeonId", d.id)
-					logAction("CFG", "เลือกระดับดันเจียน: " .. d.name, true)
-					renderAll()
-				end)
+			local function rebuild()
+				table.clear(btns)
+				for _, ch in ipairs(holder:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
+				local dungeons = Helpers.GetDungeons()
+				for i, d in ipairs(dungeons) do
+					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = d.name, AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, holder)
+					corner(b, 4)
+					table.insert(btns, { id = d.id, name = d.name, btn = b })
+					b.MouseButton1Click:Connect(function()
+						Config.Set("DungeonId", d.id)
+						logAction("CFG", "เลือกระดับดันเจียน: " .. d.name, true)
+						renderAll()
+					end)
+				end
+				renderAll()
 			end
-			renderAll()
+			UI.RebuildDungeons = rebuild
+			rebuild()
 		end
 
 		-- dynamic multi-select (rebuilt when map/config tiers change)
@@ -1030,12 +1091,12 @@ local function main()
 			corner(holder, 6)
 			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, holder)
 			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-			local cfg = Helpers.GetConfig()
 			local function rebuild()
+				local cfg = Helpers.GetConfig()
 				for _, ch in ipairs(holder:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
 				for i, tier in ipairs(Helpers.TierList) do
 					local mul = ""
-					if cfg and type(cfg.Mutations) == "table" and cfg.Mutations[tier] and cfg.Mutations[tier].PriceMultiplier then
+					if cfg and type(cfg.Mutations) == "table" and type(cfg.Mutations[tier]) == "table" and cfg.Mutations[tier].PriceMultiplier then
 						mul = " x" .. tostring(cfg.Mutations[tier].PriceMultiplier)
 					end
 					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = "", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = C_TXT }, holder)
@@ -1084,6 +1145,7 @@ local function main()
 	Config.Load()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
 	Helpers.RefreshTiers()
+	Helpers.RefreshDungeons()
 
 	UI.Section("📦 Auto Buy Chest (สายพานฐานตัวเอง)")
 	UI.Toggle("เปิด Auto ซื้อกล่อง", "AutoBuyChest", function(on)
@@ -1126,11 +1188,20 @@ local function main()
 	UI.Section("📜 Logs")
 	UI.LogBox()
 
-	-- real-time: tiers watcher (map ChildAdded + periodic config re-check)
+	-- real-time: map / config / assets auto-update watchers
+	local function syncMapData(reason: string?)
+		if not Core._alive then return end
+		if Helpers.RefreshTiers() and UI.RebuildTiers then
+			UI.RebuildTiers()
+			logAction("MAP", reason or "อัปเดตรายการระดับกล่องตามแมพ", true)
+		end
+		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
+			UI.RebuildDungeons()
+			logAction("MAP", reason or "อัปเดตรายชื่อดันเจียนตามแมพ", true)
+		end
+	end
+
 	local function hookPlotsFolder()
-		local lobby = Workspace:FindFirstChild("Lobby")
-		local plots = lobby and lobby:FindFirstChild("Plots")
-		if not plots then return end
 		local function hookPlot(p)
 			local ac = p:WaitForChild("ActiveChests", 10)
 			if not (ac and Core._alive) then return end
@@ -1138,23 +1209,58 @@ local function main()
 				if not c:IsA("Model") then return end
 				task.defer(function()
 					local t = Helpers.ChestTier(c)
-					if not table.find(Helpers.TierList, t) and Helpers.RefreshTiers() and UI.RebuildTiers then
-						UI.RebuildTiers()
-						logAction("MAP", "พบระดับกล่องใหม่: " .. t, true)
+					if not table.find(Helpers.TierList, t) then
+						syncMapData("พบระดับกล่องใหม่: " .. t)
 					end
 				end)
 			end)
 		end
-		for _, p in ipairs(plots:GetChildren()) do task.spawn(hookPlot, p) end
-		Core:Connect(plots.ChildAdded, function(p) task.spawn(hookPlot, p) end)
+		local function bindPlots(plots)
+			for _, p in ipairs(plots:GetChildren()) do task.spawn(hookPlot, p) end
+			Core:Connect(plots.ChildAdded, function(p) task.spawn(hookPlot, p) end)
+		end
+		local function bindLobby(lobby)
+			local plots = lobby:FindFirstChild("Plots")
+			if plots then bindPlots(plots) end
+			Core:Connect(lobby.ChildAdded, function(ch)
+				if ch.Name == "Plots" then bindPlots(ch) end
+			end)
+		end
+		local lobby = Workspace:FindFirstChild("Lobby")
+		if lobby then bindLobby(lobby) end
+		Core:Connect(Workspace.ChildAdded, function(ch)
+			if ch.Name == "Lobby" then bindLobby(ch) end
+		end)
 	end
 	task.spawn(hookPlotsFolder)
+
+	task.spawn(function()
+		local mods = ReplicatedStorage:FindFirstChild("Modules") or ReplicatedStorage:WaitForChild("Modules", 5)
+		if mods and Core._alive then
+			local function onModChange(desc)
+				if desc:IsA("ModuleScript") then
+					Helpers.InvalidateModules()
+					task.defer(syncMapData, "ตรวจพบอัปเดตโมดูลแมพ: " .. desc.Name)
+				end
+			end
+			Core:Connect(mods.DescendantAdded, onModChange)
+			Core:Connect(mods.DescendantRemoving, onModChange)
+		end
+		local assets = ReplicatedStorage:FindFirstChild("Assets") or ReplicatedStorage:WaitForChild("Assets", 5)
+		local chests = assets and (assets:FindFirstChild("Chests") or assets:WaitForChild("Chests", 5))
+		if chests and Core._alive then
+			Core:Connect(chests.ChildAdded, function()
+				table.clear(Helpers._chestTemplates)
+				task.defer(syncMapData, "พบกล่องใหม่ใน Assets")
+			end)
+		end
+	end)
 
 	Core:Connect(LocalPlayer:GetAttributeChangedSignal("PlotId"), function() Helpers._plot = nil end)
 
 	task.spawn(function()
 		while Core._alive do
-			if Helpers.RefreshTiers() and UI.RebuildTiers then UI.RebuildTiers() end
+			syncMapData()
 			local plot = Helpers.GetPlot()
 			pcall(function()
 				status.Text = string.format("  Plot: %s | เงิน: ¥%s | ขั้นต่ำ: ¥%s\n  ซื้อแล้ว: %d กล่อง | ใช้ไป: ¥%s",
@@ -1175,4 +1281,13 @@ local function main()
 end
 
 local ok, err = pcall(main)
-if not ok then warn("[KUYKUY HUB] Boot error: " .. tostring(err)) end
+if not ok then
+	warn("[KUYKUY HUB] Boot error: " .. tostring(err))
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = "KUYKUY HUB | Boot Error",
+			Text = tostring(err),
+			Duration = 8,
+		})
+	end)
+end
