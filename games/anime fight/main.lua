@@ -100,6 +100,10 @@ local function main()
 			AutoPvp = false,
 			AutoPvpReplay = true,
 			AutoBuyPvpShop = false,
+			UIWidth = 340,
+			UIHeight = 450,
+			UIExpanded = false,
+			ActiveTab = "Chest",
 		},
 	}
 
@@ -1402,51 +1406,148 @@ local function main()
 		end
 		UI.mk, UI.corner = mk, corner
 
-		local main = mk("Frame", { Size = UDim2.fromOffset(300, 430), Position = UDim2.new(0, 40, 0.5, -215), BackgroundColor3 = C_BG, BorderSizePixel = 0, Active = true }, gui)
+		local curW, curH = 340, 450
+		local minimized, expanded = false, false
+
+		local main = mk("Frame", { Size = UDim2.fromOffset(curW, curH), Position = UDim2.new(0, 40, 0.5, -225), BackgroundColor3 = C_BG, BorderSizePixel = 0, Active = true, ClipsDescendants = true }, gui)
 		corner(main, 8)
 		local top = mk("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, main)
 		corner(top, 8)
-		mk("TextLabel", { Size = UDim2.new(1, -70, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Text = "KUYKUY HUB | Anime Fight", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left }, top)
+		mk("TextLabel", { Size = UDim2.new(1, -100, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Text = "KUYKUY HUB | Anime Fight", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, top)
+		local btnSize = mk("TextButton", { Size = UDim2.fromOffset(26, 22), Position = UDim2.new(1, -86, 0, 4), BackgroundColor3 = C_BG, Text = "□", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 13 }, top)
+		corner(btnSize, 4)
 		local btnMin = mk("TextButton", { Size = UDim2.fromOffset(26, 22), Position = UDim2.new(1, -58, 0, 4), BackgroundColor3 = C_BG, Text = "-", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 14 }, top)
 		corner(btnMin, 4)
 		local btnClose = mk("TextButton", { Size = UDim2.fromOffset(26, 22), Position = UDim2.new(1, -30, 0, 4), BackgroundColor3 = Color3.fromRGB(170, 50, 50), Text = "X", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 12 }, top)
 		corner(btnClose, 4)
 
-		local body = mk("ScrollingFrame", { Size = UDim2.new(1, -12, 1, -38), Position = UDim2.fromOffset(6, 34), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, main)
-		mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, body)
+		local contentWrap = mk("Frame", { Size = UDim2.new(1, 0, 1, -30), Position = UDim2.fromOffset(0, 30), BackgroundTransparency = 1, BorderSizePixel = 0 }, main)
+		local tabBar = mk("Frame", { Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
+		mk("UIGridLayout", { CellSize = UDim2.new(0.2, -4, 1, 0), CellPadding = UDim2.fromOffset(4, 0), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
 
-		-- drag
+		local pageContainer = mk("Frame", { Size = UDim2.new(1, -12, 1, -94), Position = UDim2.fromOffset(6, 36), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
+		local statusBar = mk("Frame", { Size = UDim2.new(1, -18, 0, 48), Position = UDim2.new(0, 6, 1, -54), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, contentWrap)
+		corner(statusBar, 6)
+		local resizeGrip = mk("TextButton", { Size = UDim2.fromOffset(14, 14), Position = UDim2.new(1, -14, 1, -14), BackgroundTransparency = 1, Text = "◢", TextColor3 = C_SUB, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, contentWrap)
+
+		local function applyWindowSize(saveIt)
+			curW = math.clamp(math.floor(curW), 280, 720)
+			curH = math.clamp(math.floor(curH), 260, 700)
+			contentWrap.Visible = not minimized
+			main.Size = minimized and UDim2.fromOffset(curW, 30) or UDim2.fromOffset(curW, curH)
+			btnMin.Text = minimized and "+" or "-"
+			btnSize.Text = expanded and "❐" or "□"
+			if saveIt then
+				Core.Flags.UIWidth = curW
+				Core.Flags.UIHeight = curH
+				Core.Flags.UIExpanded = expanded
+				Config.Save()
+			end
+		end
+
+		function UI.ApplySavedSize()
+			expanded = Core.Flags.UIExpanded == true
+			curW = tonumber(Core.Flags.UIWidth) or (expanded and 480 or 340)
+			curH = tonumber(Core.Flags.UIHeight) or (expanded and 560 or 450)
+			applyWindowSize(false)
+		end
+
+		-- drag & resize
 		do
 			local dragging, dStart, pStart
+			local resizing, rStart, sW, sH
 			Core:Connect(top.InputBegan, function(i)
 				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 					dragging, dStart, pStart = true, i.Position, main.Position
 				end
 			end)
+			Core:Connect(resizeGrip.InputBegan, function(i)
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					resizing, rStart, sW, sH = true, i.Position, curW, curH
+				end
+			end)
 			Core:Connect(UserInputService.InputChanged, function(i)
-				if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-					local d = i.Position - dStart
-					main.Position = UDim2.new(pStart.X.Scale, pStart.X.Offset + d.X, pStart.Y.Scale, pStart.Y.Offset + d.Y)
+				if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+					if dragging then
+						local d = i.Position - dStart
+						main.Position = UDim2.new(pStart.X.Scale, pStart.X.Offset + d.X, pStart.Y.Scale, pStart.Y.Offset + d.Y)
+					elseif resizing and not minimized then
+						local d = i.Position - rStart
+						curW = math.clamp(sW + d.X, 280, 720)
+						curH = math.clamp(sH + d.Y, 260, 700)
+						expanded = (curW >= 440 or curH >= 520)
+						main.Size = UDim2.fromOffset(curW, curH)
+						btnSize.Text = expanded and "❐" or "□"
+					end
 				end
 			end)
 			Core:Connect(UserInputService.InputEnded, function(i)
-				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					dragging = false
+					if resizing then
+						resizing = false
+						applyWindowSize(true)
+					end
+				end
 			end)
 		end
 
-		local minimized = false
+		Core:Connect(btnSize.MouseButton1Click, function()
+			expanded = not expanded
+			minimized = false
+			curW = expanded and 480 or 340
+			curH = expanded and 560 or 450
+			applyWindowSize(true)
+		end)
 		Core:Connect(btnMin.MouseButton1Click, function()
 			minimized = not minimized
-			body.Visible = not minimized
-			main.Size = minimized and UDim2.fromOffset(300, 30) or UDim2.fromOffset(300, 430)
+			applyWindowSize(false)
 		end)
 		Core:Connect(btnClose.MouseButton1Click, function() Core:Destroy() end)
 
+		local tabs, tabOrder, activeTabId = {}, 0, nil
+		local body = pageContainer
 		local order = 0
 		local function nextOrder() order += 1 return order end
 
+		function UI.SetTab(id)
+			if not tabs[id] then return end
+			activeTabId = id
+			for k, t in pairs(tabs) do
+				local on = (k == id)
+				t.page.Visible = on
+				t.btn.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_PANEL
+				t.btn.TextColor3 = on and C_ACC or C_SUB
+			end
+			body = tabs[id].page
+		end
+
+		function UI.CreateTab(id, label)
+			tabOrder += 1
+			local btn = mk("TextButton", { LayoutOrder = tabOrder, BackgroundColor3 = C_PANEL, Text = label, AutoButtonColor = false, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C_SUB, TextTruncate = Enum.TextTruncate.AtEnd }, tabBar)
+			corner(btn, 6)
+			local page = mk("ScrollingFrame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false }, pageContainer)
+			mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
+			mk("UIPadding", { PaddingRight = UDim.new(0, 4) }, page)
+			tabs[id] = { btn = btn, page = page }
+			Core:Connect(btn.MouseButton1Click, function()
+				UI.SetTab(id)
+				Config.Set("ActiveTab", id)
+			end)
+			body = page
+			if not activeTabId then UI.SetTab(id) end
+			return page
+		end
+
 		function UI.Section(text)
-			mk("TextLabel", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = text, TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left }, body)
+			mk("TextLabel", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = text, TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, body)
+		end
+
+		function UI.Button(text, onClick)
+			local b = mk("TextButton", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = C_PANEL, Text = text, TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 12, AutoButtonColor = true }, body)
+			corner(b, 6)
+			Core:Connect(b.MouseButton1Click, function() if onClick then onClick() end end)
+			return b
 		end
 
 		-- toggle row (synced with Core.Flags + saved)
@@ -1607,11 +1708,11 @@ local function main()
 		end
 
 		function UI.StatusLabel()
-			return mk("TextLabel", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = C_PANEL, Text = "", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, body)
+			return mk("TextLabel", { Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0), BackgroundTransparency = 1, Text = "", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, statusBar)
 		end
 
 		function UI.LogBox()
-			local box = mk("ScrollingFrame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 130), BackgroundColor3 = C_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, body)
+			local box = mk("ScrollingFrame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 260), BackgroundColor3 = C_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, body)
 			corner(box, 6)
 			local lbl = mk("TextLabel", { Size = UDim2.new(1, -8, 0, 0), Position = UDim2.fromOffset(4, 2), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Text = "", RichText = true, TextColor3 = C_TXT, Font = Enum.Font.Code, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, box)
 			Core._updateLogUI = function()
@@ -1631,12 +1732,14 @@ local function main()
 	-- 8. BOOT
 	-- =================================================================
 	Config.Load()
+	UI.ApplySavedSize()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
 	Helpers.RefreshTiers()
 	Helpers.RefreshDungeons()
 	Helpers.RefreshRaids()
 	Helpers.RefreshPvp()
 
+	UI.CreateTab("Chest", "📦 กล่อง")
 	UI.Section("📦 Auto Buy Chest (สายพานฐานตัวเอง)")
 	UI.Toggle("เปิด Auto ซื้อกล่อง", "AutoBuyChest", function(on)
 		logAction("CFG", "Auto Buy Chest: " .. (on and "ON" or "OFF"), on)
@@ -1652,6 +1755,8 @@ local function main()
 		logAction("CFG", "Auto Open Chest: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoOpen() end
 	end)
+
+	UI.CreateTab("Battle", "⚔️ ดันเจียน")
 	UI.Section("⚔️ Auto Battle")
 	UI.Toggle("เล่นด่านซ้ำอัตโนมัติ (Auto Replay)", "AutoReplay", function(on)
 		logAction("CFG", "Auto Replay: " .. (on and "ON" or "OFF"), on)
@@ -1669,6 +1774,8 @@ local function main()
 	UI.NumberInput("ชั้นเริ่มต้น (Start Floor)", "DungeonStartFloor", 1)
 	UI.NumberInput("จบชั้นที่ (ออกเมื่อพ้นชั้นนี้)", "DungeonEndFloor", 1)
 	UI.DungeonSelect()
+
+	UI.CreateTab("Raid", "🔥 Raid")
 	UI.Section("🔥 Auto Raid (ลงเรดอัตโนมัติ)")
 	UI.Toggle("วาร์ปเข้าโซน Raid อัตโนมัติ (เมื่อปลดล็อก)", "AutoTravelRaid", function(on)
 		logAction("CFG", "Auto Travel Raid: " .. (on and "ON" or "OFF"), on)
@@ -1690,6 +1797,8 @@ local function main()
 		if on then Loops.StartAutoBuyRaidShop() end
 	end)
 	UI.OptionSelect("RaidShopTarget", "All", Helpers.GetRaidShopOptions, "ไอเทม Raid Shop: ", "RebuildRaidShop")
+
+	UI.CreateTab("PvP", "⚡ PvP/สกิล")
 	UI.Section("⚔️ Auto PvP (ลง PvP อัตโนมัติ - Real-Time)")
 	UI.Toggle("วาร์ปเข้าโซน PvP อัตโนมัติ (เมื่อปลดล็อก)", "AutoTravelPvp", function(on)
 		logAction("CFG", "Auto Travel PvP: " .. (on and "ON" or "OFF"), on)
@@ -1709,9 +1818,17 @@ local function main()
 		logAction("CFG", "Auto Upgrade Skill: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoUpgradeSkill() end
 	end)
-	local status = UI.StatusLabel()
-	UI.Section("📜 Logs")
+
+	UI.CreateTab("Logs", "📜 Logs")
+	UI.Section("📜 ประวัติการทำงาน (Logs)")
+	UI.Button("🗑️ ล้าง Logs", function()
+		table.clear(Stats.logs)
+		if Core._updateLogUI then pcall(Core._updateLogUI) end
+	end)
 	UI.LogBox()
+
+	UI.SetTab(Core.Flags.ActiveTab or "Chest")
+	local status = UI.StatusLabel()
 
 	-- real-time: map / config / assets auto-update watchers
 	local function syncMapData(reason: string?)
