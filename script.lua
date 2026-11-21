@@ -280,10 +280,24 @@ task.spawn(function()
         end))
     end
 
+    local function resolveLatestBaseUrl()
+        local okApi, body = pcall(function()
+            return game:HttpGet("https://api.github.com/repos/markrunerppl-boop/kuykuyza123/commits/main")
+        end)
+        if okApi and type(body) == "string" then
+            local sha = string.match(body, '"sha"%s*:%s*"([0-9a-fA-F]+)"')
+            if sha and #sha >= 7 then
+                return "https://raw.githubusercontent.com/markrunerppl-boop/kuykuyza123/" .. sha .. "/games/"
+            end
+        end
+        return BaseUrl
+    end
+
     local function FetchScript(path)
         local safePath = urlEncodePath(path)
         local rawPath = path:gsub(" ", "%%20")
-        local fullUrl = BaseUrl .. safePath
+        local activeBase = resolveLatestBaseUrl()
+        local fullUrl = activeBase .. safePath
         local saltUrl = fullUrl .. "?v=" .. tostring(os.time()) .. "&salt=" .. tostring(math.random(100000, 999999))
 
         -- ลองโหลดด้วย Salt URL ป้องกันแคช (URL Encoded)

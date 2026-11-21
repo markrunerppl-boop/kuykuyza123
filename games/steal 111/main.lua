@@ -2429,6 +2429,26 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return math.max((hum and hum.WalkSpeed) or 16, 16)
 	end
 
+	-- คำนวณความเร็วเป้าหมายตามจริงรวมตัวคูณแพ็คหนัก (Heavy) ให้ตรงกับ SpeedController ของเกม 100%
+	function Helpers.GetTargetWalkSpeed()
+		local baseWs = Helpers.GetMoveSpeed()
+		local carryEntry = Helpers.GetCarryingEntry and Helpers.GetCarryingEntry() or nil
+		if type(carryEntry) == "table" and carryEntry.Heavy == true then
+			if M.AdminAbuseConfig == nil then
+				M.AdminAbuseConfig = safeRequire(function() return ReplicatedStorage.Shared.Configs.AdminAbuseConfig end) or false
+			end
+			local aac = M.AdminAbuseConfig
+			if type(aac) == "table" and type(aac.GetCarrySpeedMultiplier) == "function" then
+				local okM, mult = pcall(aac.GetCarrySpeedMultiplier, carryEntry.Weight)
+				if okM and type(mult) == "number" and mult < 1 then
+					local minCarry = (aac.Rocket and aac.Rocket.CarrySpeed and aac.Rocket.CarrySpeed.MinimumWalkSpeed) or 16
+					return math.max(baseWs * mult, minCarry)
+				end
+			end
+		end
+		return baseWs
+	end
+
 	-- ลบอนิเมชชั่นล้ม/โดนตี (Ragdoll) ทันทีเมื่อถูกบอสตี เพื่อไม่ให้เสียจังหวะวิ่งกลับฐาน
 	function Helpers.RecoverFromHit(char)
 		if not Core.Flags.AntiRagdollMode then return end
@@ -2574,19 +2594,17 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			local hum = char:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then return end
 
-			-- ป้องกัน SpeedController ของเกมรีเซ็ต WalkSpeed ลงเป็น 16 ระหว่างหยุด/ออกตัว
+			-- ป้องกัน SpeedController ของเกมรีเซ็ต WalkSpeed ลงเป็น 16 ระหว่าง MoveTo / หยุด / ออกตัว
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil
 				and char:GetAttribute("TrapImmobilized") ~= true
 				and char:GetAttribute("Ragdolled") ~= true then
-				local carryEntry = Helpers.GetCarryingEntry and Helpers.GetCarryingEntry() or nil
-				local isHeavyCarry = type(carryEntry) == "table" and carryEntry.Heavy == true
-				if not isHeavyCarry and (Core.Flags.AutoSteal or Core.Busy or hum.MoveDirection.Magnitude > 0.05) then
+				if Core.Flags.AutoSteal or Core.Busy or hum.MoveDirection.Magnitude > 0.05 then
 					local now = os.clock()
 					if now >= nextWsSample then
-						nextWsSample = now + 0.25
-						cachedSafeWs = Helpers.GetMoveSpeed and Helpers.GetMoveSpeed() or 16
+						nextWsSample = now + 0.2
+						cachedSafeWs = Helpers.GetTargetWalkSpeed and Helpers.GetTargetWalkSpeed() or 16
 					end
-					if hum.WalkSpeed < (cachedSafeWs - 1) or hum.WalkSpeed <= 0 then
+					if math.abs(hum.WalkSpeed - cachedSafeWs) > 1 or hum.WalkSpeed <= 0 then
 						hum.WalkSpeed = cachedSafeWs
 					end
 				end
@@ -2762,16 +2780,11 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			end
 			local locked = char:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true)
 			if not locked then
-				local carryEntry = Helpers.GetCarryingEntry and Helpers.GetCarryingEntry() or nil
-				local isHeavyCarry = type(carryEntry) == "table" and carryEntry.Heavy == true
-				if not isHeavyCarry then
-					local safeWs = Helpers.GetMoveSpeed()
-					if hum.WalkSpeed < (safeWs - 1) or hum.WalkSpeed <= 0 then
-						hum.WalkSpeed = safeWs
-					end
-				elseif hum.WalkSpeed <= 0 then
-					hum.WalkSpeed = 16
+				local targetWs = Helpers.GetTargetWalkSpeed and Helpers.GetTargetWalkSpeed() or Helpers.GetMoveSpeed()
+				if math.abs(hum.WalkSpeed - targetWs) > 1 or hum.WalkSpeed <= 0 then
+					hum.WalkSpeed = targetWs
 				end
+				ws = math.max(hum.WalkSpeed or 16, 16)
 				if hum.Sit then hum.Sit = false end
 				if hum.PlatformStand then hum.PlatformStand = false end
 
@@ -8061,7 +8074,6 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			task.spawn(Loops.Dungeon)
 		end
 
-		Core.Flags.UI = true
 		Core:Loop("autoSaveConfig", "UI", 30, function()
 			if Config and Config.Save then
 				pcall(Config.Save)
@@ -8111,7 +8123,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	buildUI()
 	Core.Helpers = Helpers
 	Core.Net = Net
-	print("[Kuy] โหลดสำเร็จ | Plot:", Helpers.GetPlot() and Helpers.GetPlot().Name or "ยังไม่พบ")
+	print("[Kuy] โหลดสำเร็จ (v2.3 FastSteal) | Plot:", Helpers.GetPlot() and Helpers.GetPlot().Name or "ยังไม่พบ")
 end
 
 local ok, err = pcall(main)
