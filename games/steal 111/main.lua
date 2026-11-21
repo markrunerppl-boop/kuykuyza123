@@ -63,10 +63,11 @@ local TRAINING_ATTR = "TrainingOnTreadmill"
 local COMBO_ATTR = "TreadmillCombo"
 local RP = "ReplicatedStorage.Remotes."
 
+-- Fallback ฉุกเฉินกรณี require(PacksConfig/Types) ล้มเหลวเท่านั้น (ปกติอ่านสดจากเกมจริง 100%)
 local STEAL_RARITY_KEYS = {
 	"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
 	"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
-	"Exclusive", "Godlike", "Absolute", "Mystery", "Secret"
+	"Exclusive", "Godlike", "Absolute", "Mystery", "Immortal"
 }
 
 local STAGE_CENTERS = {
@@ -99,12 +100,33 @@ local function main()
 	local Core = {
 		Flags = {},
 		Busy = false,
+		_busyOwner = nil,
 		_conns = {},
 		_loops = {},
 		_cleanups = {},
 		_alive = true,
 	}
 	local Loops = {}
+
+	function Core:AcquireBusy(owner, force)
+		if self.Busy and self._busyOwner and self._busyOwner ~= owner and not force then
+			return false
+		end
+		self.Busy = true
+		self._busyOwner = owner or "unknown"
+		return true
+	end
+
+	function Core:ReleaseBusy(owner)
+		if not owner or self._busyOwner == owner then
+			self.Busy = false
+			self._busyOwner = nil
+		end
+	end
+
+	function Core:IsBusyByOther(owner)
+		return self.Busy and self._busyOwner ~= nil and self._busyOwner ~= owner
+	end
 
 	function Core:Connect(signal, fn)
 		local c = signal:Connect(fn)
@@ -124,19 +146,35 @@ local function main()
 		end
 	end
 
+	function Core:IsLoopRunning(name)
+		local th = self._loops[name]
+		if not th then return false end
+		if typeof(th) == "thread" then
+			return coroutine.status(th) ~= "dead"
+		end
+		return true
+	end
+
 	-- ลูปผูกกับ flag: flag เป็น false หรือ Destroy -> หยุดเอง
 	function Core:Loop(name, flag, interval, fn)
 		self:StopLoop(name)
-		self._loops[name] = task.spawn(function()
+		local myThread = task.spawn(function()
+			local cur = coroutine.running()
 			while self._alive and self.Flags[flag] do
 				local ok, err = pcall(fn)
 				if not ok then
 					warn("[Kuy] loop '" .. name .. "': " .. tostring(err))
 				end
+				if not (self._alive and self.Flags[flag]) then break end
 				task.wait(interval)
 			end
-			self._loops[name] = nil
+			if self._loops[name] == cur then
+				self._loops[name] = nil
+			end
 		end)
+		if typeof(myThread) == "thread" and coroutine.status(myThread) ~= "dead" then
+			self._loops[name] = myThread
+		end
 	end
 
 	function Core:Destroy()
@@ -144,6 +182,8 @@ local function main()
 			pcall(Config.Save)
 		end
 		self._alive = false
+		self.Busy = false
+		self._busyOwner = nil
 		for name in pairs(self._loops) do
 			self:StopLoop(name)
 		end
@@ -192,10 +232,7 @@ Core.Flags.DungeonTargetFloor = 500     -- ชั้นที่ต้องก�
 Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทดันเจี้ยน 2 ครั้งเมื่อถึงชั้นที่ระบุ (ไม่ออกดันเจี้ยน)
 	Core.Flags.AntiAfk = true               -- กันเตะ AFK 20 นาที
 	Core.Flags.StealDelay = 1
-	Core.Flags.OutrunOnly = true           -- ขโมยเฉพาะด่านที่ความเร็วเราวิ่งหนีบอสทัน
-	Core.Flags.TargetFastestOnly = true    -- ขโมยเฉพาะด่านเดียวที่บอสเร็วที่สุดที่เราวิ่งทัน
-	Core.Flags.MaxStageStealPacks = 999    -- 999 = ไม่จำกัดจำนวนใบ ขโมยจนหมดเกรดที่เลือก (ติ๊กจำกัดโควต้าในเมนูได้ถ้าต้องการ)
-	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน)
+	Core.Flags.OutrunMargin = 1.0          -- อัตราส่วนความเร็วเราเทียบกับบอส (>= 1.0 คือวิ่งทัน; ล็อกเก็บเฉพาะ 1 ด่านเร็วที่สุดที่วิ่งทันเสมอ)
 	local initMaxStage = 13
 	pcall(function()
 		local game_ = Workspace:FindFirstChild("Game")
@@ -381,19 +418,26 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			return false, "decode_failed"
 		end
 
+		local removedKeys = {
+			OutrunOnly = true,
+			TargetFastestOnly = true,
+			MaxStageStealPacks = true,
+		}
 		local count = 0
 		for k, v in pairs(parsed) do
-			if Core.Flags[k] ~= nil and type(Core.Flags[k]) == type(v) then
-				Core.Flags[k] = v
-				count = count + 1
-			elseif string.sub(k, 1, 5) == "Stage" and type(v) == "boolean" then
-				Core.Flags[k] = v
-				count = count + 1
-			elseif Core.Flags[k] == nil then
-				local tv = type(v)
-				if tv == "boolean" or tv == "number" or tv == "string" then
+			if not removedKeys[k] then
+				if Core.Flags[k] ~= nil and type(Core.Flags[k]) == type(v) then
 					Core.Flags[k] = v
 					count = count + 1
+				elseif string.sub(k, 1, 5) == "Stage" and type(v) == "boolean" then
+					Core.Flags[k] = v
+					count = count + 1
+				elseif Core.Flags[k] == nil then
+					local tv = type(v)
+					if tv == "boolean" or tv == "number" or tv == "string" then
+						Core.Flags[k] = v
+						count = count + 1
+					end
 				end
 			end
 		end
@@ -585,206 +629,414 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return M.DungeonUtil
 	end
 
+	function Helpers.GetTypesModule()
+		if not M.Types then
+			M.Types = safeRequire(function() return ReplicatedStorage.Shared.Data.Constants.Types end)
+		end
+		return M.Types
+	end
+
+	Helpers.GameCatalog = {
+		discoveredRarities = {}, -- [canonicalRarity] = rank
+		areaCenters = {},        -- [stageNum] = Vector3 (จาก Part Area จริงในแมพ)
+		areaBounds = {},         -- [stageNum] = { center = Vector3, size = Vector3 }
+		uiSyncCallbacks = {},
+		uiSyncPending = false,
+	}
+
+	function Helpers.RegisterCatalogUISync(fn)
+		if type(fn) == "function" then
+			table.insert(Helpers.GameCatalog.uiSyncCallbacks, fn)
+		end
+	end
+
+	function Helpers.TriggerCatalogUISync()
+		if Helpers.GameCatalog.uiSyncPending or not Core._alive then return end
+		Helpers.GameCatalog.uiSyncPending = true
+		task.delay(0.25, function()
+			Helpers.GameCatalog.uiSyncPending = false
+			if not Core._alive then return end
+			for _, fn in ipairs(Helpers.GameCatalog.uiSyncCallbacks) do
+				pcall(fn)
+			end
+		end)
+	end
+
+	function Helpers.GetPacksRoot()
+		local sc = getStageConfig()
+		local worldName = (sc and sc.WorldFolderName) or "Game"
+		local packsName = (sc and sc.PacksFolderName) or "Packs"
+		local game_ = Workspace:FindFirstChild(worldName) or Workspace:FindFirstChild("Game")
+		return game_ and (game_:FindFirstChild(packsName) or game_:FindFirstChild("Packs"))
+	end
+
 	function Helpers.GetStageFolder(i)
-		local game_ = Workspace:FindFirstChild("Game")
-		local packs = game_ and game_:FindFirstChild("Packs")
-		return packs and packs:FindFirstChild("Stage" .. i)
+		local packs = Helpers.GetPacksRoot()
+		return packs and packs:FindFirstChild("Stage" .. tostring(i))
+	end
+
+	function Helpers.IsAreaRockModel(model)
+		if not model then return false end
+		local pc = getPacksConfig()
+		local rockName = (pc and pc.AreaRock and pc.AreaRock.RuntimeName) or "PackAreaRock"
+		return model.Name == rockName
+	end
+
+	-- คืนรายชื่อด่านจริงทั้งหมดจาก StageConfig.GetRuntimeStageNames() + โฟลเดอร์จริงใน Workspace.Game.Packs (รองรับแมพเพิ่มด่านอัตโนมัติ)
+	function Helpers.GetRuntimeStages()
+		local sc = getStageConfig()
+		local byNum = {}
+		local function addStage(num, key)
+			if not num or num < 1 then return end
+			local stageKey = key or ("Stage" .. tostring(num))
+			local cfg = nil
+			if sc then
+				if type(sc.Get) == "function" then
+					local okG, resG = pcall(sc.Get, stageKey)
+					if okG and type(resG) == "table" then cfg = resG end
+				elseif type(sc.Stages) == "table" then
+					cfg = sc.Stages[stageKey]
+				end
+			end
+			if not byNum[num] then
+				byNum[num] = {
+					num = num,
+					key = stageKey,
+					text = (cfg and cfg.Text) or ("Stage " .. tostring(num)),
+					emoji = (cfg and cfg.Emoji) or "",
+					rarity = cfg and cfg.Rarity or nil,
+					recommendedSpeed = cfg and tonumber(cfg.RecommendedSpeed) or nil,
+				}
+			end
+			if Core.Flags["Stage" .. tostring(num)] == nil then
+				Core.Flags["Stage" .. tostring(num)] = true
+			end
+		end
+
+		if sc and type(sc.GetRuntimeStageNames) == "function" then
+			local okN, names = pcall(sc.GetRuntimeStageNames)
+			if okN and type(names) == "table" then
+				for _, stName in ipairs(names) do
+					local num = tonumber(string.match(tostring(stName), "^Stage(%d+)$")) or tonumber(string.match(tostring(stName), "(%d+)$"))
+					if num then addStage(num, tostring(stName)) end
+				end
+			end
+		elseif sc and type(sc.Stages) == "table" then
+			for stName, cfg in pairs(sc.Stages) do
+				if type(cfg) == "table" and cfg.RuntimeEnabled == true then
+					local num = tonumber(string.match(tostring(stName), "^Stage(%d+)$")) or tonumber(string.match(tostring(stName), "(%d+)$"))
+					if num then addStage(num, tostring(stName)) end
+				end
+			end
+		end
+
+		-- ผสานกับโฟลเดอร์ด่านจริงใน Workspace.Game.Packs (กรณีแมพเพิ่มด่านสดระหว่างเล่น)
+		local packs = Helpers.GetPacksRoot()
+		if packs then
+			for _, child in ipairs(packs:GetChildren()) do
+				local num = tonumber(string.match(child.Name, "^Stage(%d+)$"))
+				if num then addStage(num, child.Name) end
+			end
+		end
+
+		local list = {}
+		for _, entry in pairs(byNum) do
+			table.insert(list, entry)
+		end
+		if #list == 0 then
+			for i = 1, 13 do
+				addStage(i, "Stage" .. i)
+				table.insert(list, byNum[i])
+			end
+		end
+		table.sort(list, function(a, b) return a.num < b.num end)
+		return list
 	end
 
 	function Helpers.GetMaxStage()
-		local maxStage = 13
-		local game_ = Workspace:FindFirstChild("Game")
-		local packs = game_ and game_:FindFirstChild("Packs")
-		if packs then
-			for _, child in ipairs(packs:GetChildren()) do
-				local num = tonumber(string.match(child.Name, "%d+"))
-				if num and num > maxStage then
-					maxStage = num
-				end
-			end
-		end
+		local stages = Helpers.GetRuntimeStages()
+		return (#stages > 0 and stages[#stages].num) or 13
+	end
+
+	function Helpers.GetStageAreaBounds(stageNum)
+		if not stageNum then return nil end
+		local folder = Helpers.GetStageFolder(stageNum)
 		local sc = getStageConfig()
-		local stagesCfg = sc and sc.Stages
-		if stagesCfg and type(stagesCfg) == "table" then
-			for k, _ in pairs(stagesCfg) do
-				local num = tonumber(string.match(tostring(k), "%d+"))
-				if num and num > maxStage then
-					maxStage = num
-				end
-			end
+		local areaName = (sc and sc.AreaPartName) or "Area"
+		local area = folder and folder:FindFirstChild(areaName)
+		if area and area:IsA("BasePart") then
+			local b = { center = area.Position, size = area.Size }
+			Helpers.GameCatalog.areaBounds[stageNum] = b
+			Helpers.GameCatalog.areaCenters[stageNum] = Vector3.new(area.Position.X, area.Position.Y, area.Position.Z)
+			return b
 		end
-		for i = 1, maxStage do
-			if Core.Flags["Stage" .. i] == nil then
-				Core.Flags["Stage" .. i] = true
-			end
-		end
-		return maxStage
+		return Helpers.GameCatalog.areaBounds[stageNum]
 	end
 
 	function Helpers.GetStageCenter(stageNum)
 		if not stageNum then return nil end
+		-- 1. อ่านจาก Part "Area" จริงของด่านก่อนเสมอ (แม่นยำ 100% แม้แมพย้ายหรือเพิ่มด่านใหม่)
+		local areaBounds = Helpers.GetStageAreaBounds(stageNum)
+		if areaBounds and areaBounds.center then
+			return areaBounds.center
+		end
+		if Helpers.GameCatalog.areaCenters[stageNum] then
+			return Helpers.GameCatalog.areaCenters[stageNum]
+		end
+
+		-- 2. ค่าเฉลี่ยพิกัดแพ็คจริงใน SpawnedPacks (ข้าม PackAreaRock)
+		local folder = Helpers.GetStageFolder(stageNum)
+		if folder then
+			local sc = getStageConfig()
+			local spName = (sc and sc.SpawnedPacksFolderName) or "SpawnedPacks"
+			local sp = folder:FindFirstChild(spName)
+			if sp then
+				local sum, cnt = Vector3.zero, 0
+				for _, m in ipairs(sp:GetChildren()) do
+					if m:IsA("Model") and not Helpers.IsAreaRockModel(m) then
+						local p = Helpers.GetPosition and Helpers.GetPosition(m) or nil
+						if p then
+							sum = sum + p
+							cnt = cnt + 1
+						end
+					end
+				end
+				if cnt > 0 then
+					local avg = sum / cnt
+					return Vector3.new(avg.X, 68, -365)
+				end
+			end
+		end
+
+		-- 3. Fallback ตารางพิกัดเดิม (สำหรับด่านที่ยังไม่ stream เข้ามา)
 		if STAGE_CENTERS[stageNum] then
 			return STAGE_CENTERS[stageNum]
 		end
-		local folder = Helpers.GetStageFolder(stageNum)
+
+		-- 4. ตำแหน่ง Enemy ปัจจุบัน (ชั่วคราว ไม่แคชทับ Area จริง)
 		if folder then
 			local enemy = folder:FindFirstChild("Enemy")
 			if enemy and enemy:IsA("Model") then
-				local p = Helpers.GetPosition(enemy)
+				local p = Helpers.GetPosition and Helpers.GetPosition(enemy) or nil
 				if p then
-					STAGE_CENTERS[stageNum] = Vector3.new(p.X, 68, -365)
-					return STAGE_CENTERS[stageNum]
-				end
-			end
-			local sp = folder:FindFirstChild("SpawnedPacks")
-			if sp then
-				local firstPack = sp:FindFirstChildWhichIsA("Model")
-				if firstPack then
-					local p = Helpers.GetPosition(firstPack)
-					if p then
-						STAGE_CENTERS[stageNum] = Vector3.new(p.X, 68, -365)
-						return STAGE_CENTERS[stageNum]
-					end
+					return Vector3.new(p.X, 68, -365)
 				end
 			end
 		end
-		local highestKnown = 13
-		for k, _ in pairs(STAGE_CENTERS) do
-			if type(k) == "number" and k > highestKnown then highestKnown = k end
+
+		-- 5. ประมาณการต่อจากด่านสูงสุดที่ทราบพิกัด (สำหรับด่านใหม่ที่ยังไม่ stream)
+		local highestKnown, lastCenter = 0, nil
+		for k, v in pairs(Helpers.GameCatalog.areaCenters) do
+			if type(k) == "number" and k > highestKnown then
+				highestKnown, lastCenter = k, v
+			end
 		end
-		local lastCenter = STAGE_CENTERS[highestKnown] or Vector3.new(6875, 68, -364)
-		local estimated = Vector3.new(lastCenter.X + (stageNum - highestKnown) * 720, 68, -365)
-		STAGE_CENTERS[stageNum] = estimated
-		return estimated
+		for k, v in pairs(STAGE_CENTERS) do
+			if type(k) == "number" and k > highestKnown then
+				highestKnown, lastCenter = k, v
+			end
+		end
+		if not lastCenter then
+			highestKnown, lastCenter = 13, Vector3.new(6875, 68, -364)
+		end
+		return Vector3.new(lastCenter.X + (stageNum - highestKnown) * 720, lastCenter.Y, lastCenter.Z)
 	end
 
+	-- แปลงชื่อ Rarity ให้อยู่ในรูปมาตรฐานเดียวกับเกม (เช่น "Mystery" -> "???", ตรงตัวตาม PacksConfig.RarityRank / Types.Rarity)
+	function Helpers.CanonicalRarityKey(raw)
+		if raw == nil then return nil end
+		local s = tostring(raw):gsub("^%s+", ""):gsub("%s+$", "")
+		if s == "" then return nil end
+		local ls = string.lower(s)
+		if s == "???" or ls == "mystery" then
+			return "???"
+		end
+		local pc = getPacksConfig()
+		if pc and type(pc.RarityRank) == "table" then
+			if pc.RarityRank[s] ~= nil then return s end
+			for k in pairs(pc.RarityRank) do
+				if type(k) == "string" and string.lower(k) == ls then
+					return k
+				end
+			end
+		end
+		local typesMod = Helpers.GetTypesModule()
+		if typesMod and type(typesMod.Rarity) == "table" then
+			for enumKey, val in pairs(typesMod.Rarity) do
+				if type(val) == "string" and (string.lower(val) == ls or string.lower(tostring(enumKey)) == ls) then
+					return val
+				end
+			end
+		end
+		return s:sub(1, 1):upper() .. s:sub(2):lower()
+	end
+
+	-- แปลงชื่อ Rarity เป็นคีย์ Flag ใน Core.Flags (คง "Rarity_Mystery" สำหรับ "???" เพื่อไม่ให้ Config เก่าพัง)
+	function Helpers.RarityToFlagKey(raw)
+		local canon = Helpers.CanonicalRarityKey(raw)
+		if not canon then return nil end
+		if canon == "???" then
+			return "Rarity_Mystery"
+		end
+		return "Rarity_" .. canon
+	end
+
+	function Helpers.RegisterDiscoveredRarity(raw, suggestedRank)
+		local canon = Helpers.CanonicalRarityKey(raw)
+		if not canon then return nil end
+		local ranks = Helpers.GetAllRarityRanks()
+		if ranks[canon] ~= nil then
+			local fk = Helpers.RarityToFlagKey(canon)
+			if fk and Core.Flags[fk] == nil then
+				Core.Flags[fk] = true
+			end
+			return canon, ranks[canon]
+		end
+		local maxR = 0
+		for _, v in pairs(ranks) do
+			if type(v) == "number" and v > maxR then maxR = v end
+		end
+		local assignedRank = (type(suggestedRank) == "number" and suggestedRank > 0) and suggestedRank or (maxR + 1)
+		Helpers.GameCatalog.discoveredRarities[canon] = assignedRank
+		local fk = Helpers.RarityToFlagKey(canon)
+		if fk and Core.Flags[fk] == nil then
+			Core.Flags[fk] = true
+		end
+		Helpers.TriggerCatalogUISync()
+		return canon, assignedRank
+	end
+
+	-- ดึงอันดับระดับความหายากทั้งหมดจากเกมจริง 100% (PacksConfig.RarityRank + Types.Rarity + Live Discovered)
 	function Helpers.GetAllRarityRanks()
-		local ranks = {
-			Common = 1,
-			Uncommon = 2,
-			Rare = 3,
-			Epic = 4,
-			Legendary = 5,
-			Mythical = 6,
-			Cosmic = 7,
-			Divine = 8,
-			Omniversal = 9,
-			Eternal = 10,
-			Primordial = 11,
-			Exclusive = 12,
-			Godlike = 13,
-			Absolute = 14,
-			Mystery = 15,
-			Secret = 15,
-			["???"] = 15,
-		}
+		local ranks = {}
+		local hasLive = false
+		local maxRank = 0
+
 		local pc = getPacksConfig()
 		if pc and type(pc.RarityRank) == "table" then
 			for k, v in pairs(pc.RarityRank) do
 				if type(k) == "string" and type(v) == "number" then
-					local formatted = k
-					if formatted ~= "???" and #formatted > 0 then
-						formatted = formatted:sub(1,1):upper() .. formatted:sub(2):lower()
-					end
-					ranks[formatted] = v
 					ranks[k] = v
+					hasLive = true
+					if v > maxRank then maxRank = v end
 				end
 			end
 		end
+
+		local typesMod = Helpers.GetTypesModule()
+		if typesMod and type(typesMod.Rarity) == "table" then
+			local extra = {}
+			for _, val in pairs(typesMod.Rarity) do
+				if type(val) == "string" and ranks[val] == nil then
+					table.insert(extra, val)
+				end
+			end
+			table.sort(extra)
+			for _, val in ipairs(extra) do
+				maxRank = maxRank + 1
+				ranks[val] = maxRank
+				hasLive = true
+			end
+		end
+
+		if not hasLive then
+			ranks = {
+				Common = 1, Uncommon = 2, Rare = 3, Epic = 4,
+				Legendary = 5, Mythical = 6, Cosmic = 7, Divine = 8,
+				Omniversal = 9, Eternal = 10, Primordial = 11, Exclusive = 12,
+				Godlike = 13, Absolute = 14, ["???"] = 15, Immortal = 16,
+			}
+			maxRank = 16
+		end
+
+		-- ผสานระดับใหม่ที่ตรวจพบสดจากแมพขณะเล่น
+		for k, v in pairs(Helpers.GameCatalog.discoveredRarities) do
+			if type(k) == "string" and ranks[k] == nil then
+				ranks[k] = (type(v) == "number" and v > 0) and v or (maxRank + 1)
+				if ranks[k] > maxRank then maxRank = ranks[k] end
+			end
+		end
+
+		-- Alias สำหรับการค้นหาคำว่า "Mystery" ให้ชี้ไปที่อันดับเดียวกับ "???" ของเกม
+		if ranks["???"] and ranks.Mystery == nil then
+			ranks.Mystery = ranks["???"]
+		end
+
 		return ranks
 	end
 
-	function Helpers.GetRankNames()
+	-- คืนรายการระดับความหายากเรียงจากระดับ 1 -> สูงสุดตามเกมจริง (ไม่มีระดับปลอม/ซ้ำซ้อน)
+	function Helpers.GetOrderedRarities()
 		local ranks = Helpers.GetAllRarityRanks()
-		local rankToName = {
-			[1] = "Common", [2] = "Uncommon", [3] = "Rare", [4] = "Epic",
-			[5] = "Legendary", [6] = "Mythical", [7] = "Cosmic", [8] = "Divine",
-			[9] = "Omniversal", [10] = "Eternal", [11] = "Primordial",
-			[12] = "Exclusive", [13] = "Godlike", [14] = "Absolute",
-			[15] = "Mystery", [16] = "Secret"
-		}
-		for k, v in pairs(ranks) do
-			if type(k) == "string" and type(v) == "number" and k ~= "???" and k ~= "Secret" then
-				if not rankToName[v] then
-					rankToName[v] = k
+		local pc = getPacksConfig()
+		local emojis = pc and pc.RollNotification and pc.RollNotification.RarityEmojis or nil
+		local byFlag = {}
+		local list = {}
+
+		for rawName, rNum in pairs(ranks) do
+			if type(rawName) == "string" and type(rNum) == "number" and rawName ~= "Mystery" then
+				local flagKey = Helpers.RarityToFlagKey(rawName)
+				if flagKey and not byFlag[flagKey] then
+					byFlag[flagKey] = true
+					if Core.Flags[flagKey] == nil then
+						Core.Flags[flagKey] = true
+					end
+					local displayName = (rawName == "???") and "??? / Mystery" or rawName
+					local emoji = emojis and emojis[rawName]
+					local prefix = (type(emoji) == "string" and emoji ~= "") and (emoji .. " ") or ""
+					table.insert(list, {
+						key = rawName,
+						displayName = displayName,
+						value = flagKey,
+						label = string.format("%s%s (ระดับ %d)", prefix, displayName, rNum),
+						short = (rawName == "???") and "???" or rawName:sub(1, 4),
+						rank = rNum,
+					})
 				end
+			end
+		end
+
+		table.sort(list, function(a, b)
+			if a.rank ~= b.rank then return a.rank < b.rank end
+			return tostring(a.key) < tostring(b.key)
+		end)
+		return list
+	end
+
+	function Helpers.GetRankNames()
+		local ordered = Helpers.GetOrderedRarities()
+		local rankToName = {}
+		for _, item in ipairs(ordered) do
+			if not rankToName[item.rank] then
+				rankToName[item.rank] = (item.key == "???") and "Mystery" or item.key
 			end
 		end
 		return rankToName
 	end
 
 	function Helpers.GetRarityDropdownOptions()
-		local ranks = Helpers.GetAllRarityRanks()
-		local list = {}
-		local seen = {}
-		local baseKeys = {
-			"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythical",
-			"Cosmic", "Divine", "Omniversal", "Eternal", "Primordial",
-			"Exclusive", "Godlike", "Absolute", "Mystery", "Secret"
-		}
-		for _, key in ipairs(baseKeys) do
-			seen[key] = true
-			local rNum = ranks[key] or 1
-			local label = (key == "Mystery" and "??? / Mystery (ระดับ 15)")
-				or (key == "Secret" and "Secret (ระดับพิเศษ)")
-				or string.format("%s (ระดับ %d)", key, rNum)
-			table.insert(list, {
-				value = "Rarity_" .. key,
-				label = label,
-				short = key:sub(1, 4),
-				rank = rNum,
-			})
-		end
-		local extra = {}
-		for k, v in pairs(ranks) do
-			if type(k) == "string" and type(v) == "number" and not seen[k] and k ~= "???" then
-				seen[k] = true
-				table.insert(extra, {
-					value = "Rarity_" .. k,
-					label = string.format("%s (ระดับ %d)", k, v),
-					short = k:sub(1, 4),
-					rank = v,
-				})
-			end
-		end
-		table.sort(extra, function(a, b) return a.rank < b.rank end)
-		for _, item in ipairs(extra) do
-			table.insert(list, item)
-		end
-		return list
+		return Helpers.GetOrderedRarities()
 	end
 
 	function Helpers.GetSellRarityOptions()
-		local ranks = Helpers.GetAllRarityRanks()
-		local rankToName = Helpers.GetRankNames()
-		local maxRank = 15
-		for _, v in pairs(ranks) do
-			if type(v) == "number" and v > maxRank then
-				maxRank = v
-			end
-		end
-
+		local ordered = Helpers.GetOrderedRarities()
 		local RARITY_NAMES = {}
 		local rarityOptions = {}
-		for r = 3, maxRank do
-			local name = rankToName[r] or ("Rank " .. r)
-			local optText = string.format("%s (%d)", name, r)
-			RARITY_NAMES[r] = optText
-			table.insert(rarityOptions, optText)
+		for _, item in ipairs(ordered) do
+			if item.rank >= 3 then
+				local name = (item.key == "???") and "??? / Mystery" or item.key
+				local optText = string.format("%s (%d)", name, item.rank)
+				RARITY_NAMES[item.rank] = optText
+				table.insert(rarityOptions, optText)
+			end
 		end
 		return RARITY_NAMES, rarityOptions
 	end
 
+	-- ซิงก์ Flag ด่านและระดับทั้งหมดจากเกมจริงทันทีหลัง Config.Load() (คงค่าเดิมที่ผู้ใช้เคยบันทึกไว้)
 	pcall(function()
-		local ranks = Helpers.GetAllRarityRanks()
-		for k, _ in pairs(ranks) do
-			if type(k) == "string" and k ~= "???" then
-				local flagKey = "Rarity_" .. k
-				if Core.Flags[flagKey] == nil then
-					Core.Flags[flagKey] = true
-				end
-			end
-		end
+		Helpers.GetRuntimeStages()
+		Helpers.GetOrderedRarities()
 	end)
 
 	function Helpers.IsDungeonPlace()
@@ -1413,6 +1665,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end)
 
 		Helpers._enteringDungeon = false
+		Core:ReleaseBusy("dungeon")
 		if not success then
 			return false, tostring(retMsg)
 		end
@@ -1806,16 +2059,15 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		-- กรณีอยู่ในแมพหลัก (Hub)
 		if not Core.Flags.AutoEnterDungeon then return end
 		if Helpers._enteringDungeon then return end
+		if Helpers.IsCarrying and Helpers.IsCarrying() then return end
 		if os.clock() - (Helpers._lastDungeonAttempt or -100) < 8 then return end
 		local can, reason = Helpers.CanEnterDungeon()
 		if not can then
 			return
 		end
 
-		if StealState and StealState.isStealing then
-			StealState.isStealing = false
-			Core.Busy = false
-		end
+		if Helpers.StopMove then Helpers.StopMove() end
+		Core:AcquireBusy("dungeon", true)
 
 		logAction("ดันเจี้ยน", "ประตูดันเจี้ยนเปิดอยู่ และ Speed ถึง 50B -> กำลังเข้าดันเจี้ยน...", true)
 		Helpers.EnterDungeon()
@@ -1831,6 +2083,26 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			elseif sz:IsA("Model") then
 				local cf, s = sz:GetBoundingBox()
 				pos, size = cf.Position, s
+			elseif sz:IsA("Folder") then
+				local minX, maxX, minY, maxY, minZ, maxZ
+				for _, desc in ipairs(sz:GetDescendants()) do
+					if desc:IsA("BasePart") then
+						local p, s = desc.Position, desc.Size * 0.5
+						local x1, x2 = p.X - s.X, p.X + s.X
+						local y1, y2 = p.Y - s.Y, p.Y + s.Y
+						local z1, z2 = p.Z - s.Z, p.Z + s.Z
+						minX = minX and math.min(minX, x1) or x1
+						maxX = maxX and math.max(maxX, x2) or x2
+						minY = minY and math.min(minY, y1) or y1
+						maxY = maxY and math.max(maxY, y2) or y2
+						minZ = minZ and math.min(minZ, z1) or z1
+						maxZ = maxZ and math.max(maxZ, z2) or z2
+					end
+				end
+				if minX and maxX then
+					pos = Vector3.new((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5)
+					size = Vector3.new(maxX - minX, maxY - minY, maxZ - minZ)
+				end
 			end
 			if pos and size then
 				return {
@@ -1957,14 +2229,19 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return hum ~= nil and hum.Health > 0 and Helpers.GetRoot() ~= nil
 	end
 
-	function Helpers.Teleport(cf)
+	Helpers._moveToken = 0
+	function Helpers.StopMove()
+		Helpers._moveToken = (Helpers._moveToken or 0) + 1
 		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local hrp = Helpers.GetRoot()
-		if not (char and hrp) then return false end
-		return pcall(function()
-			char:PivotTo(cf)
-			hrp.AssemblyLinearVelocity = Vector3.zero
-			hrp.AssemblyAngularVelocity = Vector3.zero
+		pcall(function()
+			if hum and hrp then hum:MoveTo(hrp.Position) end
+			if hum then hum:Move(Vector3.zero) end
+			if hrp then
+				local v = hrp.AssemblyLinearVelocity
+				hrp.AssemblyLinearVelocity = Vector3.new(0, v.Y, 0)
+			end
 		end)
 	end
 
@@ -1981,9 +2258,26 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		if Helpers.mutatePadCache and Helpers.mutatePadCache.Parent then
 			return Helpers.mutatePadCache
 		end
-		local pad = Workspace:FindFirstChild("MutationMachine", true)
-			or Workspace:FindFirstChild("MergeMachine", true)
-			or (Workspace:FindFirstChild("Machine2", true) and Workspace:FindFirstChild("Machine2", true):FindFirstChild("MutationMachine", true))
+		Helpers.mutatePadCache = nil
+
+		-- อ่านตำแหน่งแท่นแบบไดนามิกจาก MutateConfig.Machine.Pad (รองรับการอัปเดตแมพอัตโนมัติ)
+		local mc = getMutateConfig()
+		local padPath = mc and mc.Machine and mc.Machine.Pad
+		local pad = nil
+		if type(padPath) == "table" and #padPath > 0 then
+			local cur = Workspace
+			for _, seg in ipairs(padPath) do
+				cur = cur and cur:FindFirstChild(seg)
+			end
+			pad = cur
+		end
+
+		if not pad then
+			pad = Workspace:FindFirstChild("MutationMachine", true)
+				or Workspace:FindFirstChild("MergeMachine", true)
+				or (Workspace:FindFirstChild("Machine2", true) and Workspace:FindFirstChild("Machine2", true):FindFirstChild("MutationMachine", true))
+		end
+
 		if pad then
 			if pad:IsA("BasePart") then
 				Helpers.mutatePadCache = pad
@@ -2003,13 +2297,22 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local pad = Helpers.GetMutateMachinePad()
 		local hrp = Helpers.GetRoot()
 		if not (pad and hrp) then return false end
+		local mc = getMutateConfig()
+		local radius = (mc and mc.Machine and tonumber(mc.Machine.Radius)) or 10
+		local height = (mc and mc.Machine and tonumber(mc.Machine.Height)) or 12
 		local d = hrp.Position - pad.Position
-		return Vector3.new(d.X, 0, d.Z).Magnitude <= 10 and math.abs(d.Y) <= 8
+		return Vector3.new(d.X, 0, d.Z).Magnitude <= radius and d.Y >= -2 and d.Y <= height
 	end
 
 	function Helpers.VisitMutateMachine(actionFn, ignoreBusy)
-		if not Helpers.IsAlive() or Helpers.IsCarrying() or (not ignoreBusy and Core.Busy) then
+		if Helpers.IsDungeonPlace and Helpers.IsDungeonPlace() then
+			return false, "IN_DUNGEON"
+		end
+		if not Helpers.IsAlive() or Helpers.IsCarrying() then
 			return false, "BUSY_OR_DEAD"
+		end
+		if not ignoreBusy and (Core.Flags.AutoSteal or Core:IsBusyByOther("mutate")) then
+			return false, "BUSY_OR_STEALING"
 		end
 		local pad = Helpers.GetMutateMachinePad()
 		if not pad then
@@ -2018,11 +2321,20 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local hrp = Helpers.GetRoot()
 		if not hrp then return false, "NO_HRP" end
 
-		local prevBusy = Core.Busy
-		Core.Busy = true
+		local mc = getMutateConfig()
+		local maxH = (mc and mc.Machine and tonumber(mc.Machine.Height)) or 12
+		local checkSec = (mc and mc.Machine and tonumber(mc.Machine.CheckSeconds)) or 0.2
+		local padY = pad.Position.Y + math.clamp((pad.Size.Y * 0.5) + 3.0, 1.5, math.max(maxH - 1.5, 2.0))
+
+		local acquiredHere = false
+		if not ignoreBusy then
+			if not Core:AcquireBusy("mutate") then
+				return false, "BUSY_OR_DEAD"
+			end
+			acquiredHere = true
+		end
 		local wasAtMachine = Helpers.IsAtMutateMachine()
-		local origCF = hrp.CFrame
-		local padCF = CFrame.new(pad.Position.X, 74.0, pad.Position.Z)
+		local padPos = Vector3.new(pad.Position.X, padY, pad.Position.Z)
 
 		local wasTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 		if not wasAtMachine then
@@ -2030,25 +2342,25 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				pcall(Helpers.LeaveTreadmill)
 				task.wait(0.15)
 			end
-			Helpers.Teleport(padCF)
-			task.wait(0.55)
+			Helpers.MoveTo(padPos, function()
+				return not Core._alive or Helpers.IsCarrying() or Helpers.IsAtMutateMachine()
+			end, { precise = true, arriveDist = 4, evadeEnemies = false })
+			task.wait(math.max(checkSec, 0.2) + 0.15)
 		end
 
 		local ok, res, extra = pcall(actionFn)
 
-		if not wasAtMachine and Helpers.IsAlive() and not Helpers.IsCarrying() then
-			Helpers.Teleport(origCF)
-			task.wait(0.2)
-			if wasTraining and Core.Flags.AutoEnter and enterTreadmill then
-				task.spawn(function()
-					task.wait(0.5)
-					pcall(enterTreadmill)
-				end)
-			end
+		if not wasAtMachine and wasTraining and Core.Flags.AutoEnter and not Core.Flags.AutoSteal and Helpers.EnterTreadmill and Helpers.IsAlive() and not Helpers.IsCarrying() then
+			task.spawn(function()
+				task.wait(0.3)
+				if not Core.Busy and not Core.Flags.AutoSteal then
+					pcall(Helpers.EnterTreadmill)
+				end
+			end)
 		end
 
-		if not prevBusy then
-			Core.Busy = false
+		if acquiredHere then
+			Core:ReleaseBusy("mutate")
 		end
 
 		if not ok then
@@ -2084,22 +2396,29 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local sc = getSpeedConfig()
 		local maxCap = (sc and sc.MaximumWalkSpeed) or 340
 		local spdStat = nil
+		local function takeHigher(val)
+			local n = tonumber(val) or Helpers.ParseSuffixNumber(val)
+			if n and (spdStat == nil or n > spdStat) then
+				spdStat = n
+			end
+		end
 		local pd = getPlayerData()
 		if pd and pd.Get then
 			local ok, val = pcall(pd.Get, "Speed")
-			if ok and val ~= nil then
-				spdStat = tonumber(val) or Helpers.ParseSuffixNumber(val)
-			end
+			if ok and val ~= nil then takeHigher(val) end
 		end
-		if not spdStat then
-			local ls = LocalPlayer:FindFirstChild("leaderstats")
-			local sv = ls and ls:FindFirstChild("Speed")
-			if sv then
-				spdStat = tonumber(sv.Value) or Helpers.ParseSuffixNumber(sv.Value)
-			end
+		local ls = LocalPlayer:FindFirstChild("leaderstats")
+		local sv = ls and ls:FindFirstChild("Speed")
+		if sv then takeHigher(sv.Value) end
+		local attrSpd = LocalPlayer:GetAttribute("Speed")
+		if attrSpd ~= nil then takeHigher(attrSpd) end
+		local isSlowMode = false
+		if pd and pd.Get and sc and sc.SlowModeDataName then
+			local okSm, smVal = pcall(pd.Get, sc.SlowModeDataName)
+			if okSm and smVal == true then isSlowMode = true end
 		end
 		if sc and sc.ToWalkSpeed and spdStat then
-			local ok, ws = pcall(sc.ToWalkSpeed, spdStat, false)
+			local ok, ws = pcall(sc.ToWalkSpeed, spdStat, isSlowMode)
 			if ok and type(ws) == "number" then
 				return math.clamp(ws * 0.98, sc.MinimumWalkSpeed or 16, maxCap)
 			end
@@ -2147,10 +2466,12 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				hrp.AssemblyAngularVelocity = Vector3.zero
 				local lv = hrp.AssemblyLinearVelocity
 				hrp.AssemblyLinearVelocity = Vector3.new(0, math.clamp(lv.Y, -35, 10), 0)
-				local look = hrp.CFrame.LookVector * Vector3.new(1, 0, 1)
-				local forward = look.Magnitude > 0.05 and look.Unit or Vector3.new(-1, 0, 0)
-				local p = hrp.Position
-				hrp.CFrame = CFrame.lookAt(p, p + forward)
+				if not (Helpers.IsCarrying and Helpers.IsCarrying()) then
+					local look = hrp.CFrame.LookVector * Vector3.new(1, 0, 1)
+					local forward = look.Magnitude > 0.05 and look.Unit or Vector3.new(-1, 0, 0)
+					local p = hrp.Position
+					hrp.CFrame = CFrame.lookAt(p, p + forward)
+				end
 			end)
 		end
 
@@ -2167,7 +2488,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				hum:ChangeState(Enum.HumanoidStateType.Running)
 			end
 			if hum.WalkSpeed <= 0 then
-				hum.WalkSpeed = Helpers.GetMoveSpeed()
+				hum.WalkSpeed = 16
 			end
 			if char:GetAttribute("Ragdolled") ~= nil then
 				char:SetAttribute("Ragdolled", nil)
@@ -2291,13 +2612,27 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return bestPos, bestDist
 	end
 
-	-- เคลื่อนที่ด้วย Humanoid:MoveTo จริง พร้อมโหมดเบรกแม่นยำ (precise) และหลบบอสไล่หลัง (evadeEnemies)
-	function Helpers.MoveTo(targetPos, shouldAbort, opts)
+	-- เคลื่อนที่ต่อเนื่องหลาย Waypoint ด้วย Humanoid:MoveTo (โทเคนกันคำสั่งซ้อน + กัน Overshoot ที่ WalkSpeed สูง + Side Hysteresis หลบบอส)
+	function Helpers.MoveAlongPath(waypoints, shouldAbort, opts)
+		if type(waypoints) ~= "table" or #waypoints == 0 then return false end
+		Helpers._moveToken = (Helpers._moveToken or 0) + 1
+		local myToken = Helpers._moveToken
 		local precise = not (opts and opts.precise == false)
+		local strictArrive = opts and opts.strictArrive == true
 		local evadeEnemies = opts and opts.evadeEnemies == true
 		local safeBounds = Helpers.GetSafeZoneBounds()
-		local arriveDist = (opts and opts.arriveDist) or (precise and 3 or 8)
-		local floorRefreshAt = 0
+		local defaultArrive = (opts and opts.arriveDist) or (precise and 3 or 8)
+		local maxArriveCap = (opts and opts.maxArriveDist) or math.max(defaultArrive, 5.5)
+
+		local function getWp(idx)
+			local w = waypoints[idx]
+			if typeof(w) == "Vector3" then
+				return w, defaultArrive
+			elseif type(w) == "table" and typeof(w.pos) == "Vector3" then
+				return w.pos, w.arriveDist or defaultArrive
+			end
+			return nil, defaultArrive
+		end
 
 		local function stopMotion(h, r, settle)
 			local function zeroOnce()
@@ -2318,7 +2653,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			zeroOnce()
 			if settle and r then
 				local v = r.AssemblyLinearVelocity
-				if Vector3.new(v.X, 0, v.Z).Magnitude > 8 then
+				if Vector3.new(v.X, 0, v.Z).Magnitude > 10 then
 					RunService.Heartbeat:Wait()
 					zeroOnce()
 				end
@@ -2329,55 +2664,76 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local hrp = Helpers.GetRoot()
 		if not (char and hum and hrp) then return false end
-		local initYOk = precise and 10 or 22
-		local initFlat = Vector3.new(targetPos.X - hrp.Position.X, 0, targetPos.Z - hrp.Position.Z).Magnitude
-		if initFlat <= arriveDist and math.abs(targetPos.Y - hrp.Position.Y) <= initYOk then
-			if precise then
-				stopMotion(hum, hrp, true)
+
+		local totalDist = 0
+		local prevP = hrp.Position
+		for k = 1, #waypoints do
+			local wp = getWp(k)
+			if wp then
+				totalDist = totalDist + Vector3.new(wp.X - prevP.X, 0, wp.Z - prevP.Z).Magnitude
+				prevP = wp
 			end
-			pcall(function()
-				if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
-			end)
-			return true
 		end
 
+		local wpIdx = 1
+		local prevFlatDelta = nil
+		local dodgeSide = nil
+		local dodgeSideUntil = 0
 		local lastCheck = os.clock()
 		local lastPos = hrp.Position
 		local lastIssue = 0
-		local lastDodgeJump = 0
 		local borderStallStart = nil
-		local timeout = os.clock() + math.max(90, initFlat / 12 + 30)
+		local borderMaxX = nil
+		local timeout = os.clock() + math.max(90, totalDist / 12 + 30)
 
-		while Core._alive and Helpers.IsAlive() and os.clock() < timeout do
+		while Core._alive and Helpers.IsAlive() and Helpers._moveToken == myToken and os.clock() < timeout do
 			local now = os.clock()
 			if shouldAbort and shouldAbort() then
-				if precise then
+				if precise and not (opts and opts.noStopOnAbort) then
 					stopMotion(hum, hrp, false)
 				end
-				pcall(function()
-					if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
-				end)
 				return true
 			end
+
 			char = LocalPlayer.Character
 			hum = char and char:FindFirstChildOfClass("Humanoid")
 			hrp = Helpers.GetRoot()
 			if not (char and hum and hrp) then return false end
 
+			local targetPos, wpArrive = getWp(wpIdx)
+			if not targetPos then return true end
+			local isFinal = (wpIdx == #waypoints)
 			local cur = hrp.Position
+			local ws = math.max(hum.WalkSpeed or 16, 16)
 			local flatDelta = Vector3.new(targetPos.X - cur.X, 0, targetPos.Z - cur.Z)
 			local flatDist = flatDelta.Magnitude
-			local fullDist = (targetPos - cur).Magnitude
-			local yTol = precise and 10 or 22
-			if flatDist <= arriveDist and math.abs(targetPos.Y - cur.Y) <= yTol then
-				if precise then
-					stopMotion(hum, hrp, true)
+			local yTol = (isFinal and precise) and 12 or 24
+
+			if not isFinal then
+				-- เปลี่ยน Waypoint ถัดไปแบบลื่นไหลต่อเนื่อง ไม่เบรก/ไม่ล้างความเร็วกลางทาง
+				local cornerDist = math.clamp(math.max(wpArrive, ws / 22), 7, 16)
+				if flatDist <= cornerDist and math.abs(targetPos.Y - cur.Y) <= yTol then
+					wpIdx = wpIdx + 1
+					prevFlatDelta = nil
+					lastIssue = 0
+					continue
 				end
-				pcall(function()
-					if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
-				end)
-				return true
+			else
+				local effArrive
+				if precise then
+					effArrive = strictArrive and wpArrive or math.clamp(math.max(wpArrive, ws / 48), wpArrive, maxArriveCap)
+				else
+					effArrive = math.max(wpArrive, math.min(ws / 26, 14))
+				end
+				local crossed = precise and prevFlatDelta ~= nil and prevFlatDelta:Dot(flatDelta) <= 0 and flatDist <= (effArrive + 3.0)
+				if (flatDist <= effArrive or crossed) and math.abs(targetPos.Y - cur.Y) <= yTol then
+					if precise then
+						stopMotion(hum, hrp, true)
+					end
+					return true
+				end
 			end
+			prevFlatDelta = flatDelta
 
 			local moveTarget = targetPos
 			if Core.Flags.AntiRagdollMode and (char:GetAttribute("Ragdolled") == true or hum.PlatformStand) then
@@ -2385,36 +2741,42 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			end
 			local locked = char:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true)
 			if not locked then
-				local topSpeed = Helpers.GetMoveSpeed()
-				-- วิ่งด้วย topSpeed เต็ม 100% ตลอดเส้นทาง ไม่กดสปีดลง เพื่อให้เข้าถึงแพ็คการ์ดเร็วที่สุด
-				hum.WalkSpeed = topSpeed
+				-- ให้ SpeedController ของเกมคุม WalkSpeed ตามจริง (ไม่บังคับเขียนทับทุกเฟรม ป้องกันขัดกับ CarrySpeed/SlowMode)
+				if hum.WalkSpeed <= 0 then
+					hum.WalkSpeed = 16
+				end
+				if hum.Sit then hum.Sit = false end
+				if hum.PlatformStand then hum.PlatformStand = false end
 
-				-- หลีกเลี่ยงบอสบนทางหลักระหว่างวิ่งในด่าน
-				if evadeEnemies and safeBounds and cur.X > safeBounds.maxX and cur.Y > 64 and flatDist > 40 then
-					local ePos, eDist = findNearestEnemyPos(cur, 65)
-					if ePos then
-						local side = (ePos.Z >= cur.Z) and -1 or 1
-						local dodgeZ = math.clamp(safeBounds.center.Z + side * 34, safeBounds.center.Z - 42, safeBounds.center.Z + 42)
-						local stepX = math.max(targetPos.X, cur.X - 110)
-						moveTarget = Vector3.new(stepX, targetPos.Y, dodgeZ)
-						if eDist <= 42 and now - lastDodgeJump >= 0.65 then
-							lastDodgeJump = now
-							pcall(function() hum.Jump = true end)
+				-- หลีกเลี่ยงบอสบนทางหลักด้วย Side Hysteresis (ล็อกฝั่งหลบอย่างน้อย 0.85s กันส่ายซิกแซก และไม่กระโดดพร่ำเพรื่อ)
+				if evadeEnemies and safeBounds and cur.X > safeBounds.maxX and cur.Y > 64 and flatDist > 35 then
+					local ePos, eDist = findNearestEnemyPos(cur, 60)
+					if ePos and eDist <= 60 then
+						if not dodgeSide or now >= dodgeSideUntil then
+							dodgeSide = (ePos.Z >= cur.Z) and -1 or 1
+							dodgeSideUntil = now + 0.85
 						end
+						local dodgeZ = math.clamp(safeBounds.center.Z + dodgeSide * 34, safeBounds.center.Z - 42, safeBounds.center.Z + 42)
+						local stepX
+						if targetPos.X < cur.X then
+							stepX = math.max(targetPos.X, cur.X - math.max(90, ws * 0.55))
+						else
+							stepX = math.min(targetPos.X, cur.X + math.max(90, ws * 0.55))
+						end
+						moveTarget = Vector3.new(stepX, targetPos.Y, dodgeZ)
+					elseif now >= dodgeSideUntil then
+						dodgeSide = nil
 					end
 				end
 			end
 
-			if not locked then
-				if hum.Sit then hum.Sit = false end
-				if hum.PlatformStand then hum.PlatformStand = false end
-			end
-			local issueInterval = 0.1
+			local issueInterval = (isFinal and flatDist <= 28) and 0.05 or 0.1
 			local moveFlat = Vector3.new(moveTarget.X - cur.X, 0, moveTarget.Z - cur.Z)
 			local moveFlatDist = moveFlat.Magnitude
 			local flatDir = moveFlatDist > 0.05 and moveFlat.Unit or Vector3.zero
-			local stepTarget = (moveFlatDist > 100 and flatDir ~= Vector3.zero)
-				and Vector3.new(cur.X + flatDir.X * 100, moveTarget.Y, cur.Z + flatDir.Z * 100)
+			local stepLen = math.max(100, ws * 0.7)
+			local stepTarget = (moveFlatDist > stepLen and flatDir ~= Vector3.zero)
+				and Vector3.new(cur.X + flatDir.X * stepLen, moveTarget.Y, cur.Z + flatDir.Z * stepLen)
 				or moveTarget
 			if now - lastIssue >= issueInterval or (not locked and flatDist > 6 and hum.MoveDirection.Magnitude < 0.05) then
 				lastIssue = now
@@ -2426,7 +2788,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				local moved = (cur - lastPos).Magnitude
 				lastCheck = now
 				lastPos = cur
-				if not locked and moved < 2 and fullDist > 6 then
+				if not locked and moved < 2 and flatDist > 6 then
 					pcall(function()
 						if flatDir ~= Vector3.zero then hum:Move(flatDir, false) end
 						hum.Jump = true
@@ -2434,28 +2796,35 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end
 			end
 
-			-- หากกำลังพยายามเดินออกจาก SafeZone เข้าสู่ด่าน แต่ติดสิ่งกีดขวาง/ประตูปิดหน้าด่านเกิน 2.5 วินาที ให้ยกเลิกทันที
-			if safeBounds and targetPos.X > (safeBounds.maxX + 10) and cur.X <= (safeBounds.maxX + 4) then
+			-- หากกำลังพยายามเดินออกจาก SafeZone เข้าสู่ด่าน แต่ติดสิ่งกีดขวาง/ประตูปิดหน้าด่าน (ค่า X ไม่คืบหน้าเกิน 2.5 วินาที) ให้ยกเลิกทันที
+			local finalTarget = getWp(#waypoints) or targetPos
+			if safeBounds and finalTarget.X > (safeBounds.maxX + 10) and cur.X >= (safeBounds.maxX - 18) and cur.X <= (safeBounds.maxX + 4) then
 				if not borderStallStart then
+					borderStallStart = now
+					borderMaxX = cur.X
+				elseif cur.X > (borderMaxX + 1.5) then
+					borderMaxX = cur.X
 					borderStallStart = now
 				elseif now - borderStallStart >= 2.5 then
 					stopMotion(hum, hrp, true)
-					pcall(function()
-						if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
-					end)
 					return false
 				end
 			else
 				borderStallStart = nil
+				borderMaxX = nil
 			end
 
 			RunService.Heartbeat:Wait()
 		end
-		stopMotion(hum, hrp, false)
-		pcall(function()
-			if hum then hum.WalkSpeed = Helpers.GetMoveSpeed() end
-		end)
+		if precise then
+			stopMotion(hum, hrp, false)
+		end
 		return false
+	end
+
+	function Helpers.MoveTo(targetPos, shouldAbort, opts)
+		if typeof(targetPos) ~= "Vector3" then return false end
+		return Helpers.MoveAlongPath({ targetPos }, shouldAbort, opts)
 	end
 
 	-- ปลดล็อคฟิสิกส์กระดานอันดับ (Leaderboard) ให้ตัวละครเดินทะลุได้ 100% ไม่ชน/ไม่ติดค้าง
@@ -2478,12 +2847,103 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end
 	end)
 
-	-- กำลังแบกแพ็คอยู่หรือไม่ (ยืนยันจาก ServerData.Get("Stealing")[UserId])
-	function Helpers.IsCarrying()
+	-- ข้อมูลแพ็คที่กำลังแบกอยู่แบบ Real-Time (ซิงก์ทันทีผ่าน ServerData.Subscribe("Stealing") + fallback ServerData.Get)
+	Helpers.CarryState = {
+		bound = false,
+		hasLive = false,
+		entry = nil,
+		changedAt = 0,
+		listeners = {},
+	}
+
+	function Helpers.OnCarryChanged(fn)
+		if type(fn) == "function" then
+			table.insert(Helpers.CarryState.listeners, fn)
+		end
+	end
+
+	function Helpers.BindCarryListener()
+		if Helpers.CarryState.bound then return end
 		local sd = getServerData()
-		if not sd then return false end
+		if not sd then return end
+		Helpers.CarryState.bound = true
+		local uidStr = tostring(LocalPlayer.UserId)
+
+		local function applyStealingTable(tbl)
+			local newEntry = (type(tbl) == "table") and tbl[uidStr] or nil
+			local prevEntry = Helpers.CarryState.entry
+			Helpers.CarryState.hasLive = true
+			Helpers.CarryState.entry = newEntry
+			if (prevEntry ~= nil) ~= (newEntry ~= nil) then
+				Helpers.CarryState.changedAt = os.clock()
+				for _, fn in ipairs(Helpers.CarryState.listeners) do
+					pcall(fn, newEntry ~= nil, newEntry)
+				end
+			end
+		end
+
+		if type(sd.Get) == "function" then
+			local okG, curTbl = pcall(sd.Get, "Stealing")
+			if okG then applyStealingTable(curTbl) end
+		end
+		if type(sd.Subscribe) == "function" then
+			local okS, sub = pcall(sd.Subscribe, "Stealing", applyStealingTable)
+			if okS and sub then
+				Core:OnCleanup(function()
+					if type(sub) == "function" then
+						pcall(sub)
+					elseif type(sub) == "table" and type(sub.Disconnect) == "function" then
+						pcall(sub.Disconnect)
+					elseif typeof(sub) == "RBXScriptConnection" then
+						pcall(function() sub:Disconnect() end)
+					end
+				end)
+			end
+		end
+	end
+	pcall(Helpers.BindCarryListener)
+
+	function Helpers.GetCarryingEntry()
+		if not Helpers.CarryState.bound then
+			pcall(Helpers.BindCarryListener)
+		end
+		if Helpers.CarryState.hasLive then
+			return Helpers.CarryState.entry
+		end
+		local sd = getServerData()
+		if not sd or type(sd.Get) ~= "function" then return nil end
 		local ok, t = pcall(sd.Get, "Stealing")
-		return ok and type(t) == "table" and t[tostring(LocalPlayer.UserId)] ~= nil
+		if ok and type(t) == "table" then
+			return t[tostring(LocalPlayer.UserId)]
+		end
+		return nil
+	end
+
+	function Helpers.IsCarrying()
+		return Helpers.GetCarryingEntry() ~= nil
+	end
+
+	-- ยืนยันกับเซิร์ฟเวอร์ว่าแพ็คถูกหยิบขึ้นมาถือจริง (ใช้สถานะ Real-Time ไม่หน่วง 0.12s ซ้ำซ้อน)
+	function Helpers.ConfirmCarrying(timeout, settleSec)
+		if Helpers.IsCarrying() then
+			if settleSec and settleSec > 0 then
+				task.wait(settleSec)
+				return Helpers.IsCarrying()
+			end
+			return true
+		end
+		local deadline = os.clock() + (timeout or 0.6)
+		while os.clock() < deadline and Core._alive do
+			if Helpers.IsCarrying() then
+				if settleSec and settleSec > 0 then
+					task.wait(settleSec)
+					return Helpers.IsCarrying()
+				end
+				return true
+			end
+			RunService.Heartbeat:Wait()
+		end
+		return Helpers.IsCarrying()
 	end
 
 	-----------------------------------------------------------------
@@ -2706,33 +3166,27 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		if not pos then return end
 
 		lastEnter = os.clock()
-		-- วาร์ปลงบนแท่นยืนของลู่วิ่งตรงจุด Box หรือ Seat/Primary
-		local targetCf
-		if seat and seat:IsA("BasePart") then
-			targetCf = CFrame.new(seat.Position + Vector3.new(0, 2.5, 0))
-		elseif prim and prim:IsA("BasePart") then
-			targetCf = prim.CFrame * CFrame.new(0, 1.2, 0)
-		elseif box and box:IsA("BasePart") then
-			targetCf = CFrame.new(box.Position + Vector3.new(0, 1.5, 0))
-		else
-			targetCf = CFrame.new(pos + Vector3.new(0, 1.2, 0))
+		-- เดินเข้าสู่แท่นลู่วิ่งด้วย MoveTo (ไม่เทเลพอร์ต เพื่อป้องกันระบบ MovementGrace ดีดตัวกลับ)
+		local targetPos = (seat and seat:IsA("BasePart") and seat.Position)
+			or (prim and prim:IsA("BasePart") and prim.Position)
+			or (box and box:IsA("BasePart") and box.Position)
+			or pos
+		Helpers.MoveTo(targetPos, function()
+			return not Core._alive or Core.Busy or Helpers.IsCarrying() or LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
+		end, { precise = true, arriveDist = 2.5, evadeEnemies = false })
+
+		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then
+			local hum = Helpers.GetHumanoid()
+			if hum and targetPos then
+				pcall(function() hum:MoveTo(targetPos) end)
+			end
+			-- รอการยืนยันสถานะ TrainingOnTreadmill จากเซิร์ฟเวอร์
+			waitUntil(function()
+				return LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil or not Core._alive
+			end, 1.2)
 		end
-
-		Helpers.Teleport(targetCf)
-
-		-- ก้าวเท้าเล็กน้อยเพื่อให้เซิร์ฟเวอร์ตรวจจับ Touched บนสายพาน
-		local hum = Helpers.GetHumanoid()
-		if hum and pos then
-			pcall(function()
-				hum:MoveTo(pos)
-			end)
-		end
-
-		-- รอการยืนยันสถานะ TrainingOnTreadmill จากเซิร์ฟเวอร์
-		waitUntil(function()
-			return LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil or not Core._alive
-		end, 1.2)
 	end
+	Helpers.EnterTreadmill = enterTreadmill
 
 	function Loops.Enter()
 		Core:Loop("enter", "AutoEnter", 1, function()
@@ -2747,9 +3201,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	end
 
 	-----------------------------------------------------------------
-	-- 5. FEATURE: STEAL PACKS (12 ด่าน)
+	-- 5. FEATURE: STEAL PACKS (ล็อกด่านบอสเร็วสุดที่วิ่งทันเพียง 1 ด่าน)
 	-- แพ็คอยู่ที่ Workspace.Game.Packs.Stage<N>.SpawnedPacks.<ชื่อ> มี ProximityPrompt ชื่อ "StealPrompt"
-	-- ลำดับ: (ออกจากลู่วิ่ง) -> วาร์ปไปที่แพ็ค (ตรึงตำแหน่ง) -> กด StealPrompt -> ตรวจว่าแบก -> วาร์ปกลับฐาน -> ตรวจว่าส่งสำเร็จ
+	-- ลำดับ: (ออกจากลู่วิ่ง) -> วิ่งเข้ากลางแมพ -> วิ่งตามเลนกลางไปหน้าด่าน -> สแกนหยิบแพ็คดีที่สุดจนสำเร็จ -> วิ่งกลับเขตปลอดภัย (ไม่วาร์ป)
 	-----------------------------------------------------------------
 	-- พิกัดกลางด่าน 1-12 (ใช้สำหรับ RequestStreamAroundAsync/วาร์ป เมื่อ Area ยังไม่ stream เข้ามา)
 	local function promptPos(prompt)
@@ -2797,114 +3251,164 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return list
 	end
 
+	local StealState = {
+		bossSpeedCache = {},
+		lastOrderSig = "",
+		lastLockedStage = nil,
+		stageStealCounts = {},
+		currentTargetStage = nil,
+		lastResetNightCycle = 0,
+		lastNightActive = nil,
+		lastNoPackLogTime = 0,
+		lastPreMaintenanceTime = 0,
+		lastStreamAt = {},
+		holdBusy = false,
+		phaseResetPending = false,
+		phaseResetReason = nil,
+		wakeSeq = 0,
+		watchersBound = false,
+		boundStageFolders = {},
+		nightBoundFolder = nil,
+	}
+
+	StealState.SignalWake = function()
+		StealState.wakeSeq = (StealState.wakeSeq or 0) + 1
+	end
+
+	StealState.waitInterruptible = function(sec)
+		local startSeq = StealState.wakeSeq
+		local deadline = os.clock() + (sec or 1.0)
+		while os.clock() < deadline and Core._alive and Core.Flags.AutoSteal do
+			if StealState.wakeSeq ~= startSeq then
+				return true
+			end
+			task.wait(0.1)
+		end
+		return StealState.wakeSeq ~= startSeq
+	end
+
 	local function getModelRarity(model)
-		if not model then return nil, 0 end
-		local r = model:GetAttribute("Rarity")
-			or model:GetAttribute("ItemRarity")
-			or model:GetAttribute("PackRarity")
-			or model:GetAttribute("Grade")
-			or model:GetAttribute("PackGrade")
-			or model:GetAttribute("Tier")
+		if not model or Helpers.IsAreaRockModel(model) then return nil, 0 end
+		local r = nil
 		local sr = tonumber(model:GetAttribute("SortRarity"))
 
-		-- ค้นหาบน ProximityPrompt เพิ่มเติม
+		-- 1. ลำดับความสำคัญตรงตามเกมจริง: ค่า DetailRarity บน StealPrompt ที่เซิร์ฟเวอร์แสดงให้ผู้เล่นเห็น
+		local prompt = model:FindFirstChild("StealPrompt", true)
+		if not (prompt and prompt:IsA("ProximityPrompt")) then
+			for _, desc in ipairs(model:GetDescendants()) do
+				if desc:IsA("ProximityPrompt") and string.lower(desc.Name or "") ~= "openprompt" then
+					prompt = desc
+					break
+				end
+			end
+		end
+		if prompt then
+			r = prompt:GetAttribute("DetailRarity") or prompt:GetAttribute("ObjectRarity")
+				or prompt:GetAttribute("Rarity") or prompt:GetAttribute("ItemRarity")
+		end
+
+		-- 2. ค่าจาก CharacterConfig / PacksConfig.GetRecordRarity (ตรงกับเกมจริง แก้ปัญหา Attribute เก่าบน Model เช่น Mob/Lelouch/Goku Black)
+		local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model:GetAttribute("CardName") or model.Name
+		local pc = getPacksConfig()
 		if not r or r == "" then
-			local prompt = model:FindFirstChildWhichIsA("ProximityPrompt", true)
-			if prompt then
-				r = prompt:GetAttribute("Rarity") or prompt:GetAttribute("ItemRarity")
-					or prompt:GetAttribute("Grade") or prompt:GetAttribute("PackGrade")
+			local cc = getCharacterConfig()
+			if cc and type(cc.Get) == "function" then
+				local okC, resC = pcall(cc.Get, packName)
+				if okC and type(resC) == "table" then
+					r = resC.Rarity or resC.ItemRarity or resC.Grade or resC.Tier
+				end
+			end
+		end
+		if (not r or r == "") and pc then
+			if type(pc.GetRecordRarity) == "function" then
+				local okR, resR = pcall(pc.GetRecordRarity, { PackName = packName })
+				if okR and type(resR) == "string" and resR ~= "" then
+					r = resR
+				end
+			end
+			if (not r or r == "") and type(pc.Get) == "function" then
+				local okP, resP = pcall(pc.Get, packName)
+				if okP and type(resP) == "table" then
+					r = resP.Rarity or resP.ItemRarity or resP.Grade or resP.Tier
+					sr = sr or tonumber(resP.SortRarity)
+				end
 			end
 		end
 
+		-- 3. Fallback สุดท้าย: อ่าน Attribute บนตัว Model
 		if not r or r == "" then
-			local packName = model:GetAttribute("PackName") or model:GetAttribute("ItemName") or model:GetAttribute("CardName") or model.Name
-			local cc = getCharacterConfig()
-			local charCfg = cc and cc.Get and cc.Get(packName)
-			if charCfg then
-				r = charCfg.Rarity or charCfg.ItemRarity or charCfg.Grade or charCfg.Tier
-			end
-			if not r or r == "" then
-				local pc = getPacksConfig()
-				local cfg = pc and pc.Get and pc.Get(packName)
-				if cfg then
-					r = cfg.Rarity or cfg.ItemRarity or cfg.Grade or cfg.Tier
-					sr = sr or tonumber(cfg.SortRarity)
-				end
-			end
+			r = model:GetAttribute("Rarity")
+				or model:GetAttribute("ItemRarity")
+				or model:GetAttribute("PackRarity")
+				or model:GetAttribute("Grade")
+				or model:GetAttribute("PackGrade")
+				or model:GetAttribute("Tier")
 		end
 
 		if not r or r == "" then
 			return nil, 0
 		end
 
-		local pc = getPacksConfig()
-		local ranks = (Helpers.GetAllRarityRanks and Helpers.GetAllRarityRanks()) or (pc and pc.RarityRank) or {
-			Common = 1,
-			Uncommon = 2,
-			Rare = 3,
-			Epic = 4,
-			Legendary = 5,
-			Mythical = 6,
-			Cosmic = 7,
-			Divine = 8,
-			Omniversal = 9,
-			Eternal = 10,
-			Primordial = 11,
-			Exclusive = 12,
-			Godlike = 13,
-			Absolute = 14,
-			Secret = 15,
-			Mystery = 15,
-			["???"] = 15,
-		}
-
-		local rName = tostring(r)
-		if rName ~= "???" and type(rName) == "string" and #rName > 0 then
-			rName = rName:sub(1,1):upper() .. rName:sub(2):lower()
+		local rName = Helpers.CanonicalRarityKey(r)
+		if not rName then return nil, 0 end
+		local ranks = Helpers.GetAllRarityRanks()
+		local rank = ranks[rName] or sr
+		if not rank then
+			-- ตรวจพบระดับใหม่แบบเรียลไทม์จากแมพ -> ลงทะเบียนและซิงก์ UI ทันที
+			rName, rank = Helpers.RegisterDiscoveredRarity(rName, sr)
 		end
-		local rank = sr or (ranks[rName]) or 1
 
-		return rName, rank
+		return rName, rank or 1
+	end
+
+	function Helpers.AreAllRaritiesAllowed()
+		local ordered = Helpers.GetOrderedRarities()
+		if #ordered == 0 then return false end
+		for _, item in ipairs(ordered) do
+			if Core.Flags[item.value] == false then
+				return false
+			end
+		end
+		return true
 	end
 
 	local function isPackRarityAllowed(model)
-		if not model then return false end
+		if not model or Helpers.IsAreaRockModel(model) then return false end
 		local rName, rank = getModelRarity(model)
-		if not rName then return false end
-
-		-- 1. ตรวจสอบจากชื่อ Rarity/Grade โดยตรง
-		local flagKey = "Rarity_" .. tostring(rName)
-		if Core.Flags[flagKey] == true or (rName == "???" and Core.Flags["Rarity_Mystery"] == true) or (rName == "Secret" and Core.Flags["Rarity_Mystery"] == true) then
-			return true
+		if not rName then
+			-- หากผู้เล่นติ๊กเลือกทุกเกรดไว้ทั้งหมด แต่แพ็คอ่านเกรดไม่ได้ ให้อนุญาตขโมยแทนการข้ามทิ้ง
+			return Helpers.AreAllRaritiesAllowed()
 		end
 
-		-- Auto-detect real-time: หากเป็นเกดใหม่ที่ยังไม่เคยมีใน Flag ให้เปิดอนุญาตขโมยเป็นค่าเริ่มต้นทันที
-		if Core.Flags[flagKey] == nil and rank and rank >= 1 then
+		-- 1. ตรวจสอบจาก Flag มาตรฐานของระดับจริงในเกม (เช่น "???" -> "Rarity_Mystery", "Immortal" -> "Rarity_Immortal")
+		local flagKey = Helpers.RarityToFlagKey(rName)
+		if flagKey and Core.Flags[flagKey] ~= nil then
+			return Core.Flags[flagKey] == true
+		end
+
+		-- 2. ค้นหาแบบไม่สนตัวพิมพ์เล็ก-ใหญ่
+		local lowerName = string.lower(tostring(rName))
+		for k, v in pairs(Core.Flags) do
+			if type(k) == "string" and string.sub(k, 1, 7) == "Rarity_" and string.lower(string.sub(k, 8)) == lowerName then
+				return v == true
+			end
+		end
+
+		-- 3. Auto-detect real-time: หากเป็นระดับใหม่ที่ยังไม่เคยมีใน Flag ให้ลงทะเบียน + เปิดอนุญาตเป็นค่าเริ่มต้น + ซิงก์ UI ทันที
+		if flagKey and rank and rank >= 1 then
+			Helpers.RegisterDiscoveredRarity(rName, rank)
 			Core.Flags[flagKey] = true
 			return true
 		end
 
-		-- 2. Fallback ตรวจสอบจากลำดับ Rank
-		local rankNames = (Helpers.GetRankNames and Helpers.GetRankNames()) or {
-			[1] = "Common",
-			[2] = "Uncommon",
-			[3] = "Rare",
-			[4] = "Epic",
-			[5] = "Legendary",
-			[6] = "Mythical",
-			[7] = "Cosmic",
-			[8] = "Divine",
-			[9] = "Omniversal",
-			[10] = "Eternal",
-			[11] = "Primordial",
-			[12] = "Exclusive",
-			[13] = "Godlike",
-			[14] = "Absolute",
-			[15] = "Mystery",
-		}
+		-- 4. Fallback ตรวจสอบจากลำดับ Rank จริงในเกม
+		local rankNames = Helpers.GetRankNames()
 		local fallbackName = rankNames[rank]
-		if fallbackName and (Core.Flags["Rarity_" .. fallbackName] == true or (fallbackName == "Mystery" and Core.Flags["Rarity_Secret"] == true)) then
-			return true
+		if fallbackName then
+			local fbKey = Helpers.RarityToFlagKey(fallbackName)
+			if fbKey and Core.Flags[fbKey] == true then
+				return true
+			end
 		end
 
 		return false
@@ -2914,9 +3418,23 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		local pc = getPacksConfig()
 		local mc = getMutationConfig()
 		local packName = (model and (model:GetAttribute("PackName") or model.Name)) or ""
-		local cfg = pc and pc.Get and pc.Get(packName)
-		local luck = (cfg and pc.GetDisplayLuck and pc.GetDisplayLuck(cfg)) or 1
-		local mut = model and model:GetAttribute("Mutation")
+		local cfg = nil
+		if pc and type(pc.Get) == "function" then
+			local okCfg, resCfg = pcall(pc.Get, packName)
+			if okCfg and type(resCfg) == "table" then cfg = resCfg end
+		end
+		local luck = 1
+		if cfg and pc and type(pc.GetDisplayLuck) == "function" then
+			local okL, resL = pcall(pc.GetDisplayLuck, cfg)
+			if okL and type(resL) == "number" then luck = resL end
+		end
+		local mut = model and (model:GetAttribute("Mutation") or model:GetAttribute("ItemMutation"))
+		if (not mut or mut == "") and model then
+			local pr = model:FindFirstChild("StealPrompt", true) or model:FindFirstChildWhichIsA("ProximityPrompt", true)
+			if pr then
+				mut = pr:GetAttribute("DetailMutation") or pr:GetAttribute("ObjectMutation") or pr:GetAttribute("Mutation")
+			end
+		end
 		local mutMult = (mut and mc and mc.Mutations and mc.Mutations[mut] and mc.Mutations[mut].CashMult) or 1
 		local totalMult = luck * mutMult
 		local odd = (cfg and tonumber(cfg.NumericalOdd)) or 0
@@ -2925,7 +3443,12 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			local scOk, sc = pcall(function() return model:GetScale() end)
 			local auth = tonumber(model:GetAttribute("AuthoredModelScale")) or 1
 			local rel = (scOk and type(sc) == "number" and auth > 0) and (sc / auth) or 1
-			weight = (pc and pc.ScaleToWeight and pc.ScaleToWeight(rel)) or rel
+			if pc and type(pc.ScaleToWeight) == "function" then
+				local okW, resW = pcall(pc.ScaleToWeight, rel)
+				weight = (okW and tonumber(resW)) or rel
+			else
+				weight = rel
+			end
 		end
 		return totalMult, odd, weight or 0
 	end
@@ -2977,11 +3500,35 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return (not Helpers.IsCarrying()) and (not Helpers.IsPromptAvailable(prompt))
 	end
 
+	function Helpers.FindPackStealPrompt(model)
+		if not model or not model.Parent or Helpers.IsAreaRockModel(model) then return nil end
+		local direct = model:FindFirstChild("StealPrompt", true)
+		if Helpers.IsPromptAvailable(direct) then return direct end
+		local fallback = nil
+		for _, desc in ipairs(model:GetDescendants()) do
+			if desc:IsA("ProximityPrompt") and Helpers.IsPromptAvailable(desc) then
+				local nm = string.lower(desc.Name or "")
+				local act = string.lower(desc.ActionText or "")
+				if nm ~= "openprompt" and not nm:find("like", 1, true) and not nm:find("sell", 1, true) and not nm:find("upgrade", 1, true) then
+					if nm:find("steal", 1, true) or act:find("steal", 1, true)
+						or nm:find("grab", 1, true) or act:find("grab", 1, true)
+						or nm:find("carry", 1, true) or act:find("carry", 1, true)
+						or nm:find("collect", 1, true) or act:find("collect", 1, true)
+						or nm:find("pick", 1, true) or act:find("pick", 1, true) then
+						return desc
+					end
+					if not fallback then fallback = desc end
+				end
+			end
+		end
+		return fallback
+	end
+
 	function Helpers.BuildPackCandidate(model, hrp, enemies, anyGrade)
-		if not model or not model.Parent then return nil end
-		if not anyGrade and not isPackRarityAllowed(model) then return nil end
-		local p = model:FindFirstChild("StealPrompt", true)
+		if not model or not model.Parent or Helpers.IsAreaRockModel(model) then return nil end
+		local p = Helpers.FindPackStealPrompt(model)
 		if not Helpers.IsPromptAvailable(p) then return nil end
+		if not anyGrade and not isPackRarityAllowed(model) then return nil end
 		local pos = promptPos(p)
 		if not pos then return nil end
 		local minEnemyDist = math.huge
@@ -3000,32 +3547,38 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		}
 	end
 
-	local function findStealPrompt(stageFolder, stageNum)
+	local function findStealPrompt(stageFolder, stageNum, skipModels)
 		stageNum = stageNum or (stageFolder and tonumber(string.match(stageFolder.Name, "%d+")))
 		if not stageFolder and not stageNum then return nil end
 		local hrp = Helpers.GetRoot()
 		local enemies = getStageEnemyPositions(stageFolder)
 		local best, seen = nil, {}
 		local function consider(model)
-			if not model or seen[model] then return end
+			if not model or seen[model] or (skipModels and skipModels[model]) or Helpers.IsAreaRockModel(model) then return end
 			seen[model] = true
 			local cand = Helpers.BuildPackCandidate(model, hrp, enemies)
 			if cand and isBetterCandidate(cand, best) then best = cand end
 		end
-		local root = stageFolder and stageFolder:FindFirstChild("SpawnedPacks")
+		local sc = getStageConfig()
+		local spName = (sc and sc.SpawnedPacksFolderName) or "SpawnedPacks"
+		local root = stageFolder and stageFolder:FindFirstChild(spName)
 		if root then
 			for _, m in ipairs(root:GetChildren()) do consider(m) end
 		end
 		-- แพ็คที่หลุดตกค้างในด่าน (Tag SpawnedPack) ให้แข่งคะแนนกับแพ็คปกติ
-		local center = stageNum and (Helpers.GetStageCenter and Helpers.GetStageCenter(stageNum) or STAGE_CENTERS[stageNum])
+		local center = stageNum and Helpers.GetStageCenter(stageNum)
 		if center then
-			local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, "SpawnedPack")
+			local pc = getPacksConfig()
+			local packTag = (pc and pc.SpawnedPackTag) or "SpawnedPack"
+			local areaBounds = stageNum and Helpers.GetStageAreaBounds(stageNum)
+			local searchRadius = (areaBounds and areaBounds.size and math.max(areaBounds.size.X * 0.6, 120)) or 140
+			local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, packTag)
 			if okT and type(tagged) == "table" then
 				for _, m in ipairs(tagged) do
-					if m.Parent and not seen[m] then
-						local p = m:FindFirstChild("StealPrompt", true)
+					if m.Parent and not seen[m] and not Helpers.IsAreaRockModel(m) then
+						local p = Helpers.FindPackStealPrompt(m)
 						local pos = p and promptPos(p)
-						if pos and (pos - center).Magnitude <= 120 then consider(m) end
+						if pos and (pos - center).Magnitude <= searchRadius then consider(m) end
 					end
 				end
 			end
@@ -3034,57 +3587,76 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return nil
 	end
 
-	-- ยืนนิ่งสนิทและกดค้างตาม HoldDuration จริง (ล็อกตำแหน่ง ไม่สั่ง MoveTo ป้องกัน Roblox ยกเลิกการกดค้าง)
-	-- method "hold" = InputHoldBegin/End + KeyCode, method "fire" = fireproximityprompt
-	-- คืนตาราง diag บอกว่าเหตุการณ์ของ prompt เกิดขึ้นครบหรือไม่
+	-- ยืนนิ่งและกดค้างตาม HoldDuration จริง (แยกช่องทาง InputHoldBegin / Key E ไม่กดซ้อน และออกตัวทันทีในเฟรมที่ Stealing=true)
 	local function holdStationary(prompt, duration, diag)
 		local anchor0 = packAnchorPos(prompt) or promptPos(prompt)
-
-		local function triggerHoldStart()
-			pcall(function() prompt:InputHoldBegin() end)
-			pressPromptKey(prompt, true)
-		end
+		local maxDist = (prompt and prompt.MaxActivationDistance) or 10
+		local activeMethod = "hold" -- "hold" | "key"
 
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local hrp = Helpers.GetRoot()
-		local pPos = promptPos(prompt) or anchor0
-		local aPos = packAnchorPos(prompt) or pPos
 
-		-- ล็อกตำแหน่งและเวกเตอร์ความเร็วให้อยู่นิ่งสนิท
-		if hrp and aPos then
-			local dAnchor = (hrp.Position - aPos).Magnitude
-			if dAnchor > 3.5 then
-				local flat = Vector3.new(hrp.Position.X - aPos.X, 0, hrp.Position.Z - aPos.Z)
-				local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.new(-1, 0, 0)
-				hrp.CFrame = CFrame.new(Vector3.new(aPos.X + dir.X * 2.0, math.max(hrp.Position.Y, 69), aPos.Z + dir.Z * 2.0))
-			end
-			-- หันหน้าตรงเข้าหาแกนการ์ด
-			local lookTarget = Vector3.new(aPos.X, hrp.Position.Y, aPos.Z)
+		local function zeroHorizontal(h, r)
 			pcall(function()
-				hrp.CFrame = CFrame.lookAt(hrp.Position, lookTarget)
-				hrp.AssemblyLinearVelocity = Vector3.zero
-				hrp.AssemblyAngularVelocity = Vector3.zero
+				if h and r then h:MoveTo(r.Position) end
+				if h then h:Move(Vector3.zero) end
+				if r then
+					local lv = r.AssemblyLinearVelocity
+					r.AssemblyLinearVelocity = Vector3.new(0, lv.Y, 0)
+					r.AssemblyAngularVelocity = Vector3.zero
+				end
 			end)
 		end
-		if hum then
-			pcall(function()
-				hum:Move(Vector3.zero)
-			end)
+
+		-- เบรกความเร็วแนวราบจนนิ่ง (สูงสุด 0.08s แทนการหน่วง 0.12s ตายตัว)
+		zeroHorizontal(hum, hrp)
+		local settleEnd = os.clock() + 0.08
+		while os.clock() < settleEnd and Core._alive and Core.Flags.AutoSteal do
+			if Helpers.IsCarrying() then return end
+			hrp = Helpers.GetRoot()
+			if not hrp then return end
+			local lv = hrp.AssemblyLinearVelocity
+			if Vector3.new(lv.X, 0, lv.Z).Magnitude <= 14 then break end
+			zeroHorizontal(hum, hrp)
+			RunService.Heartbeat:Wait()
+		end
+
+		if not (Core._alive and Core.Flags.AutoSteal and Helpers.IsPromptAvailable(prompt)) or Helpers.IsCarrying() then
+			return
 		end
 
 		local t0 = os.clock()
 		local deadline = t0 + duration
-		local maxDeadline = t0 + duration + 1.2
+		local maxDeadline = t0 + duration + 1.6
 		local lastRetryAt = t0
-		triggerHoldStart()
+		pcall(function() prompt:InputHoldBegin() end)
 
-		while os.clock() < deadline and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
-			if diag.trig or Helpers.IsCarrying() then break end
+		while os.clock() < deadline and Core._alive and Core.Flags.AutoSteal and Helpers.IsPromptAvailable(prompt) do
+			-- ออกตัววิ่งกลับทันทีในเฟรมที่เซิร์ฟเวอร์อัปเดตสถานะ Stealing=true (0ms dead delay)
+			if Helpers.IsCarrying() then break end
+			if diag.trig then
+				local waitCarryEnd = os.clock() + 0.55
+				while os.clock() < waitCarryEnd and Core._alive and Core.Flags.AutoSteal do
+					if Helpers.IsCarrying() then break end
+					RunService.Heartbeat:Wait()
+				end
+				break
+			end
 			local curChar = LocalPlayer.Character
 			local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
 			local curHrp = Helpers.GetRoot()
 			if not (curChar and curHum and curHrp) then break end
+
+			-- หากโดนดีดหรือหลุดออกนอกระยะ MaxActivationDistance ให้ยกเลิกการกดค้างทันทีเพื่อเดินเข้าประชิดใหม่
+			local prPos = promptPos(prompt)
+			local anPos = packAnchorPos(prompt) or anchor0
+			local prDist = prPos and (curHrp.Position - prPos).Magnitude or math.huge
+			local anDist = anPos and (curHrp.Position - anPos).Magnitude or math.huge
+			local effDist = math.min(prDist, anDist)
+			if effDist < math.huge and effDist > (maxDist + 1.5) then
+				break
+			end
 
 			if Core.Flags.AntiRagdollMode and (curChar:GetAttribute("Ragdolled") == true or curHum.PlatformStand) then
 				Helpers.RecoverFromHit(curChar)
@@ -3092,29 +3664,52 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			local locked = curChar:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and curChar:GetAttribute("Ragdolled") == true)
 			if locked then break end
 
-			-- ยืนนิ่งสนิท 100% ไม่สั่ง MoveTo ใดๆ ป้องกัน Roblox ยกเลิกการกดค้าง
+			-- ยืนนิ่งสนิท (ล้างเฉพาะความเร็วแนวราบ X/Z ไม่ล้างแรงโน้มถ่วงแกน Y)
 			pcall(function()
 				curHum:Move(Vector3.zero)
-				curHrp.AssemblyLinearVelocity = Vector3.zero
+				local lv = curHrp.AssemblyLinearVelocity
+				curHrp.AssemblyLinearVelocity = Vector3.new(0, lv.Y, 0)
 			end)
 
 			local now = os.clock()
-			if (not diag.began or diag.ended) and now - lastRetryAt >= 0.15 then
+			if diag.ended and now - lastRetryAt >= 0.3 then
+				-- Hold หลุดกลางคัน -> ปล่อยให้สะอาดแล้วเริ่ม InputHoldBegin ใหม่ (ไม่กดซ้อน)
 				lastRetryAt = now
-				if diag.ended then
-					diag.ended = false
-					deadline = math.min(maxDeadline, now + duration)
+				diag.ended = false
+				if activeMethod == "key" then
+					pressPromptKey(prompt, false)
+				else
+					pcall(function() prompt:InputHoldEnd() end)
 				end
-				triggerHoldStart()
+				RunService.Heartbeat:Wait()
+				activeMethod = "hold"
+				deadline = math.min(maxDeadline, os.clock() + duration)
+				pcall(function() prompt:InputHoldBegin() end)
+			elseif (not diag.began) and activeMethod == "hold" and now - lastRetryAt >= 0.35 then
+				-- หาก InputHoldBegin ไม่ตอบสนอง -> ยกเลิก InputHoldEnd ก่อนแล้วค่อยสลับไปใช้คีย์ E เพียงช่องทางเดียว
+				lastRetryAt = now
+				pcall(function() prompt:InputHoldEnd() end)
+				RunService.Heartbeat:Wait()
+				activeMethod = "key"
+				deadline = math.min(maxDeadline, os.clock() + duration)
+				pressPromptKey(prompt, true)
+			elseif (not diag.began) and activeMethod == "key" and fireproximityprompt and now - lastRetryAt >= 0.45 then
+				-- หากทั้ง InputHoldBegin และคีย์ E ไม่ตอบสนอง -> ลองใช้ fireproximityprompt เป็นทางเลือกสำรอง
+				lastRetryAt = now
+				pressPromptKey(prompt, false)
+				RunService.Heartbeat:Wait()
+				activeMethod = "fire"
+				deadline = math.min(maxDeadline, os.clock() + duration)
+				pcall(fireproximityprompt, prompt)
 			end
 
 			RunService.Heartbeat:Wait()
 		end
 
-		local endChar = LocalPlayer.Character
-		local endHum = endChar and endChar:FindFirstChildOfClass("Humanoid")
-		if endHum then
-			pcall(function() endHum.WalkSpeed = Helpers.GetMoveSpeed() end)
+		if activeMethod == "key" then
+			pressPromptKey(prompt, false)
+		else
+			pcall(function() prompt:InputHoldEnd() end)
 		end
 	end
 
@@ -3127,38 +3722,28 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			table.insert(conns, prompt.Triggered:Connect(function() diag.trig = true end))
 		end)
 
-		-- หาก executor รองรับ fireproximityprompt และไม่ได้ระบุ hold_only ให้ลอง trigger ทันที (Instant Trigger)
-		if fireproximityprompt and method ~= "hold_only" then
+		-- ใช้ fireproximityprompt เฉพาะกรณี HoldDuration <= 0 เท่านั้น
+		-- แพ็คในเกมนี้มี HoldDuration = 1.5s ทุกใบ: ห้ามยิง instant trigger เพราะเซิร์ฟเวอร์ปฏิเสธการกด 0 วินาที
+		local hold = prompt.HoldDuration or 1.5
+		local useInstant = fireproximityprompt and method ~= "hold_only" and hold <= 0
+		if useInstant then
 			pcall(fireproximityprompt, prompt, 0, true)
-			pcall(fireproximityprompt, prompt, 10, true)
 			pcall(fireproximityprompt, prompt)
 			local tEnd = os.clock() + 0.35
 			while os.clock() < tEnd and Core._alive and Core.Flags.AutoSteal and prompt.Parent do
-				if Helpers.IsCarrying() or diag.trig then break end
+				if Helpers.IsCarrying() then break end
 				RunService.Heartbeat:Wait()
 			end
-			if Helpers.IsCarrying() or diag.trig then
+			if Helpers.IsCarrying() then
 				for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-				local char = LocalPlayer.Character
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if hum then
-					pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
-				end
 				return diag
 			end
+			diag.trig = false
 		end
 
-		local hold = prompt.HoldDuration or 0.5
-		holdStationary(prompt, hold + 0.25, diag)
-		pcall(function() prompt:InputHoldEnd() end)
-		pressPromptKey(prompt, false)
+		holdStationary(prompt, hold + 0.85, diag)
 
 		for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			pcall(function() hum.WalkSpeed = Helpers.GetMoveSpeed() end)
-		end
 		return diag
 	end
 
@@ -3166,78 +3751,101 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil then return end
 		Net.Fire(Net.Paths.ExitRequest, 0.5)
 
-		-- ปลด Anchored และดีดตัวละครก้าวออกจากแท่นสายพานทันที เพื่อให้หลุดจากระยะ Touched
+		-- ปลด Anchored และกระโดด/ก้าวออกจากสายพานโดยไม่เขียน hrp.CFrame และไม่เขียนทับ WalkSpeed
 		local hrp = Helpers.GetRoot()
 		local hum = Helpers.GetHumanoid()
 		if hrp then
 			pcall(function()
 				hrp.Anchored = false
-				local spawnPos = Helpers.GetPlotSpawnPos()
-				if spawnPos then
-					hrp.CFrame = CFrame.new(spawnPos + Vector3.new(0, 2, 0))
-				else
-					hrp.CFrame = hrp.CFrame * CFrame.new(0, 2, 10)
-				end
 				hrp.AssemblyLinearVelocity = Vector3.zero
 			end)
 		end
 		if hum then
 			pcall(function()
 				hum.Jump = true
+				local spawnPos = Helpers.GetPlotSpawnPos()
+				if spawnPos then hum:MoveTo(spawnPos) end
 			end)
 		end
 
 		waitUntil(function() return LocalPlayer:GetAttribute(TRAINING_ATTR) == nil end, 2.0)
-		local cNow = LocalPlayer.Character
-		local hNow = cNow and cNow:FindFirstChildOfClass("Humanoid")
-		if hNow then
-			pcall(function() hNow.WalkSpeed = Helpers.GetMoveSpeed() end)
-		end
 	end
 	Helpers.LeaveTreadmill = leaveTreadmill
 
-	local function moveToCenterLane(abortFn)
+	local function moveToCenterLane(abortFn, targetStageCenter, targetStageNum)
 		local hrp = Helpers.GetRoot()
-		if not hrp then return end
+		if not hrp then return false end
 		local bounds = Helpers.GetSafeZoneBounds()
 		local centerZ = (bounds and bounds.center and bounds.center.Z) or -364.5
-		local maxX = (bounds and bounds.maxX) or 1203
-		local startX = maxX - 20
-		local centerPos = Vector3.new(startX, 68.5, centerZ)
-		local centerCF = CFrame.lookAt(centerPos, centerPos + Vector3.new(1, 0, 0))
+		local maxX = (bounds and bounds.maxX) or 1203.3
+		-- เลนทางเดินโล่งใน SafeZone (X ≈ 1161 พ้นป้าย Plot/Treadmill และพ้นร้าน/เครื่อง Machine2)
+		local walkwayX = maxX - 42
+		-- จุดกลางแมพหน้าทางออก SafeZone (ผ่านประตูกึ่งกลางออกมาเลนกลางเรียบร้อยแล้ว ไม่ติดกำแพงข้าง)
+		local gateOutX = maxX + 12
 
-		-- หากอยู่ใน SafeZone หรืออยู่บริเวณฐาน ให้เทเลพอร์ตมาตั้งหลักตรงกึ่งกลางหน้าประตูทางออกทันที
-		if Helpers.IsInSafeZone() or hrp.Position.X <= maxX + 15 then
-			Helpers.Teleport(centerCF)
-			task.wait(0.08)
-		else
-			-- หากอยู่นอก SafeZone แล้ว ให้ MoveTo มายังเส้นกลางอย่างแม่นยำ (precise = true)
-			if math.abs(hrp.Position.Z - centerZ) > 4 then
-				Helpers.MoveTo(Vector3.new(hrp.Position.X, hrp.Position.Y, centerZ), abortFn, { precise = true, arriveDist = 3 })
+		local path = {}
+		if hrp.Position.X < (maxX + 4) then
+			if hrp.Position.X < (walkwayX - 6) and math.abs(hrp.Position.Z - centerZ) > 16 then
+				table.insert(path, { pos = Vector3.new(walkwayX, hrp.Position.Y, hrp.Position.Z), arriveDist = 8 })
 			end
+			if math.abs(hrp.Position.Z - centerZ) > 8 or hrp.Position.X < (walkwayX - 8) then
+				table.insert(path, { pos = Vector3.new(walkwayX, hrp.Position.Y, centerZ), arriveDist = 8 })
+			end
+			table.insert(path, { pos = Vector3.new(gateOutX, hrp.Position.Y, centerZ), arriveDist = 8 })
+			if targetStageCenter and (targetStageNum or 1) > 1 and gateOutX < (targetStageCenter.X - 50) then
+				table.insert(path, { pos = Vector3.new(targetStageCenter.X - 45, targetStageCenter.Y, centerZ), arriveDist = 10 })
+			end
+			Helpers.MoveAlongPath(path, abortFn, { precise = false, arriveDist = 8, evadeEnemies = false, noStopOnAbort = true })
+			if (abortFn and abortFn()) or not Helpers.IsAlive() then return false end
+			hrp = Helpers.GetRoot()
+			return hrp ~= nil and hrp.Position.X >= (maxX - 2)
+		else
+			if math.abs(hrp.Position.Z - centerZ) > 12 then
+				table.insert(path, { pos = Vector3.new(hrp.Position.X, hrp.Position.Y, centerZ), arriveDist = 8 })
+			end
+			if targetStageCenter and (targetStageNum or 1) > 1 and hrp.Position.X < (targetStageCenter.X - 50) then
+				table.insert(path, { pos = Vector3.new(targetStageCenter.X - 45, targetStageCenter.Y, centerZ), arriveDist = 10 })
+			end
+			if #path > 0 then
+				Helpers.MoveAlongPath(path, abortFn, { precise = false, arriveDist = 8, evadeEnemies = false, noStopOnAbort = true })
+				if (abortFn and abortFn()) or not Helpers.IsAlive() then return false end
+			end
+			return true
 		end
 	end
 
-	local function findDroppedPackPrompt(maxRadius, skip, anyGrade)
+	local function findDroppedPackPrompt(maxRadius, skip, anyGrade, stageFolder)
 		local hrp = Helpers.GetRoot()
 		if not hrp then return nil end
 		local radius = maxRadius or 80
+		local packsFolder = Helpers.GetPacksRoot()
+		local sc = getStageConfig()
+		local spName = (sc and sc.SpawnedPacksFolderName) or "SpawnedPacks"
+		local pc = getPacksConfig()
+		local packTag = (pc and pc.SpawnedPackTag) or "SpawnedPack"
 		local best, seen = nil, {}
+		local function belongsToOtherStage(model)
+			if not (stageFolder and packsFolder and model) then return false end
+			if model:IsDescendantOf(stageFolder) then return false end
+			return model:IsDescendantOf(packsFolder)
+		end
 		local function consider(model)
-			if not model or seen[model] or (skip and skip[model]) then return end
+			if not model or seen[model] or (skip and skip[model]) or Helpers.IsAreaRockModel(model) then return end
+			if belongsToOtherStage(model) then return end
 			seen[model] = true
 			local cand = Helpers.BuildPackCandidate(model, hrp, nil, anyGrade)
 			if cand and cand.dist <= radius and isBetterCandidate(cand, best) then best = cand end
 		end
-		local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, "SpawnedPack")
+		local okT, tagged = pcall(CollectionService.GetTagged, CollectionService, packTag)
 		if okT and type(tagged) == "table" then
 			for _, m in ipairs(tagged) do consider(m) end
 		end
-		local game_ = Workspace:FindFirstChild("Game")
-		local packsFolder = game_ and game_:FindFirstChild("Packs")
-		if packsFolder then
+		if stageFolder then
+			local container = stageFolder:FindFirstChild(spName) or stageFolder
+			for _, m in ipairs(container:GetChildren()) do consider(m) end
+		elseif packsFolder then
 			for _, stage in ipairs(packsFolder:GetChildren()) do
-				local container = stage:FindFirstChild("SpawnedPacks") or stage
+				local container = stage:FindFirstChild(spName) or stage
 				for _, m in ipairs(container:GetChildren()) do consider(m) end
 			end
 		end
@@ -3250,19 +3858,18 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		if char and Core.Flags.AntiRagdollMode then
 			Helpers.RecoverFromHit(char)
 		end
-		task.wait(0.15)
+		task.wait(0.1)
 
 		local skip, tries = {}, 0
 		local giveUpAt = os.clock() + 10
 		while Core._alive and Core.Flags.AutoSteal and Helpers.IsAlive() and tries < 3 and os.clock() < giveUpAt do
-			-- รอให้แพ็คที่เพิ่งหลุดโผล่/เปิด prompt (สูงสุด ~1.5 วิ) เรียงดีที่สุดก่อน ตามเกรดที่ตั้งค่า
 			local prompt, cand
-			local scanEnd = os.clock() + 1.5
+			local scanEnd = os.clock() + 1.2
 			repeat
-				prompt, cand = findDroppedPackPrompt(90, skip)
-				if not prompt then prompt, cand = findDroppedPackPrompt(45, skip, true) end -- ใบที่เพิ่งหล่นข้างตัว (กันอ่านเกรดไม่ได้)
+				prompt, cand = findDroppedPackPrompt(90, skip, false, stageFolder)
+				if not prompt then prompt, cand = findDroppedPackPrompt(45, skip, true, stageFolder) end
 				if prompt then break end
-				task.wait(0.15)
+				task.wait(0.1)
 			until os.clock() >= scanEnd
 			if not prompt then break end
 
@@ -3270,33 +3877,41 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			skip[cand.model] = true
 			logAction("ขโมย", "แพ็คหลุด! กำลังไปเก็บใบที่ดีที่สุดที่เหลืออยู่...", true)
 
-			local pPos = promptPos(prompt) or packAnchorPos(prompt)
+			local maxDist = (prompt and prompt.MaxActivationDistance) or 10
+			local pPos = packAnchorPos(prompt) or promptPos(prompt)
 			if pPos then
 				Helpers.MoveTo(pPos, function()
 					return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
-				end, { precise = true, arriveDist = 2.5, evadeEnemies = true })
+				end, { precise = true, arriveDist = 3.2, maxArriveDist = math.min(maxDist - 2.0, 5.5), evadeEnemies = true, noStopOnAbort = true })
 			end
 			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then break end
 
 			if Helpers.IsPromptAvailable(prompt) and not Helpers.IsCarrying() then
 				local hrp = Helpers.GetRoot()
-				local pNow = promptPos(prompt) or packAnchorPos(prompt)
-				if hrp and pNow and (hrp.Position - pNow).Magnitude > 4.5 then
-					Helpers.Teleport(CFrame.new(pNow + Vector3.new(0, 1.5, 0)))
-					task.wait(0.05)
+				local pNow = packAnchorPos(prompt) or promptPos(prompt)
+				if hrp and pNow and (hrp.Position - pNow).Magnitude > (maxDist - 1.5) then
+					Helpers.MoveTo(pNow, function()
+						return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
+					end, { precise = true, arriveDist = 3.0, maxArriveDist = math.min(maxDist - 2.2, 5.2), evadeEnemies = false, noStopOnAbort = true })
 				end
 				usePrompt(prompt, "auto", stageFolder)
-				local got = waitUntil(Helpers.IsCarrying, 0.6)
+				local got = Helpers.ConfirmCarrying(0.45, 0)
 				if not got and Helpers.IsPromptAvailable(prompt) and Core.Flags.AutoSteal and Helpers.IsAlive() then
+					local hrp2 = Helpers.GetRoot()
+					local pNow2 = packAnchorPos(prompt) or promptPos(prompt)
+					if hrp2 and pNow2 and (hrp2.Position - pNow2).Magnitude > (maxDist - 1.5) then
+						Helpers.MoveTo(pNow2, function()
+							return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
+						end, { precise = true, arriveDist = 3.0, maxArriveDist = math.min(maxDist - 2.2, 5.2), evadeEnemies = false, noStopOnAbort = true })
+					end
 					usePrompt(prompt, "hold_only", stageFolder)
-					got = waitUntil(Helpers.IsCarrying, 0.8)
+					got = Helpers.ConfirmCarrying(0.55, 0)
 				end
 			end
 			if Helpers.IsCarrying() then
 				logAction("ขโมย", "เก็บแพ็คที่ตกคืนสำเร็จ! กำลังนำส่งต่อ...", true)
 				return true
 			end
-			-- ถูกคนอื่นหยิบ/หาย -> วนหาใบถัดไป (skip กันวนซ้ำ)
 		end
 
 		if Helpers.IsCarrying() then return true end
@@ -3304,41 +3919,33 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	end
 
 	local function deliver(stageFolder)
+		-- ยืนยันทันทีจาก Real-Time CarryState (ไม่หน่วง 0.12s ซ้ำเพื่อให้วิ่งหนีบอสได้ในเฟรมเดียว)
+		if not Helpers.IsCarrying() and not Helpers.ConfirmCarrying(0.35, 0) then
+			return false, "ยังไม่ได้ถือแพ็ค (ยกเลิกการเดินกลับเขตปลอดภัย)"
+		end
 		local origChar = LocalPlayer.Character
 		local pos = Helpers.GetPlotSpawnPos()
 		if not pos then return false, "ไม่พบจุดเกิดของฐาน" end
 		local bounds = Helpers.GetSafeZoneBounds()
 
-		local curHum = origChar and origChar:FindFirstChildOfClass("Humanoid")
-		if curHum then
-			pcall(function() curHum.WalkSpeed = Helpers.GetMoveSpeed() end)
-		end
-
 		local function isSafelyDelivered(livePos)
 			if Helpers.IsCarrying() then return false end
 			local char = LocalPlayer.Character
-			-- หากตัวละครเปลี่ยน instance หรือตาย/เลือดหมด = เกิดใหม่จากการโดนตีตาย ไม่ใช่การส่งสำเร็จ
 			if not char or char ~= origChar or not Helpers.IsAlive() then return false end
 			local hrp = Helpers.GetRoot()
 			if not hrp then return false end
 
-			-- 1) ถึงพื้นที่ฐานตัวเอง (ระยะห่างจากจุดเกิดฐาน <= 35 studs)
-			if livePos and (hrp.Position - livePos).Magnitude <= 35 then return true end
-			if pos and (hrp.Position - pos).Magnitude <= 35 then return true end
-
-			-- 2) หรือตัวละครอยู่ใน SafeZone หรือข้ามฝั่ง SafeZone เข้ามาแล้ว
 			if Helpers.IsInSafeZone(char) then return true end
 			if hrp.Position.X <= (bounds.maxX + 5) then return true end
+			if livePos and (hrp.Position - livePos).Magnitude <= 35 then return true end
+			if pos and (hrp.Position - pos).Magnitude <= 35 then return true end
 
 			return false
 		end
 
 		local stopWhenDelivered = function()
 			if not Core.Flags.AutoSteal then return true end
-			if Helpers.IsCarrying() then
-				return false
-			end
-			return true
+			return not Helpers.IsCarrying()
 		end
 
 		local function checkDeliveryOrRecover(livePos)
@@ -3346,45 +3953,46 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				return true, "DELIVERED"
 			end
 			if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then
-				Helpers.StealRetry.now = Core.Flags.AutoSteal == true -- ตายตอนแบก: เกิดใหม่แล้วออกขโมยต่อทันที
+				Helpers.StealRetry.now = Core.Flags.AutoSteal == true
 				return false, "ยกเลิก/ตัวละครตายขณะเดินกลับ"
 			end
 			local recovered, err = recoverDroppedPack(stageFolder)
 			if recovered and Helpers.IsCarrying() then
 				return false, "RECOVERED"
 			end
-			Helpers.StealRetry.now = true -- เก็บใบที่ตกไม่ได้ -> ไปหาใบถัดไป ไม่กลับฐาน
+			Helpers.StealRetry.now = true
 			return false, err or "โดนตี/แพ็คหลุดกลางทาง"
 		end
 
 		for pass = 1, 5 do
 			local livePos = Helpers.GetPlotSpawnPos() or pos
 			local hrp = Helpers.GetRoot()
-			local atBase = hrp and livePos and (hrp.Position - livePos).Magnitude <= 35
+			if not hrp or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then break end
 
-			-- เฉพาะเมื่อตัวละครยังอยู่นอกฐาน (X > bounds.maxX - 15) และยังไม่ถึงฐาน จึงจะเดินผ่านประตูทางเข้า SafeZone
-			if not atBase and hrp and hrp.Position.X > bounds.maxX - 15 then
-				local entryZ = math.abs(livePos.Z - bounds.center.Z) > 35 and bounds.center.Z or livePos.Z
-				Helpers.MoveTo(Vector3.new(bounds.maxX - 35, livePos.Y, entryZ), stopWhenDelivered, { precise = false, arriveDist = 8, evadeEnemies = true })
-				if not Helpers.IsCarrying() then
-					local okDeliv, state = checkDeliveryOrRecover(livePos)
-					if okDeliv then return true end
-					if state ~= "RECOVERED" then return false, state end
-				end
-				if not Core.Flags.AutoSteal or not Helpers.IsAlive() or LocalPlayer.Character ~= origChar then break end
+			local centerZ = (bounds and bounds.center and bounds.center.Z) or -364.5
+			local gateInX = bounds.maxX - 18
+			local walkwayX = bounds.maxX - 42
+			local returnPath = {}
+
+			-- วิ่งตรงรวดเดียวเข้ากลางประตู SafeZone (ไม่วิ่งเฉียงถอยเข้าหาบอส และไม่หยุดระหว่าง Waypoint)
+			if hrp.Position.X > (bounds.maxX - 15) then
+				table.insert(returnPath, { pos = Vector3.new(gateInX, livePos.Y, centerZ), arriveDist = 10 })
+				table.insert(returnPath, { pos = Vector3.new(walkwayX, livePos.Y, centerZ), arriveDist = 10 })
 			end
+			table.insert(returnPath, { pos = livePos + Vector3.new(0, 3, 0), arriveDist = 8 })
 
-			Helpers.MoveTo(livePos + Vector3.new(0, 3, 0), stopWhenDelivered, { precise = false, arriveDist = 6, evadeEnemies = true })
+			Helpers.MoveAlongPath(returnPath, stopWhenDelivered, { precise = false, arriveDist = 8, evadeEnemies = true, noStopOnAbort = true })
 			if not Helpers.IsCarrying() then
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
 				if state ~= "RECOVERED" then return false, state end
+				continue
 			end
 
-			Helpers.StreamAround(livePos, 3)
+			Helpers.StreamAround(livePos, 2.0)
 			if waitUntil(function()
 				return not Helpers.IsCarrying()
-			end, 3.0) then
+			end, 2.0) then
 				if isSafelyDelivered(livePos) then return true end
 				local okDeliv, state = checkDeliveryOrRecover(livePos)
 				if okDeliv then return true end
@@ -3396,53 +4004,43 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return false, "ส่งแพ็คที่ฐานไม่สำเร็จ"
 	end
 
-	-- ตรึงตำแหน่งตัวละครไว้ที่ cf (หรือฟังก์ชันคืนตำแหน่ง) ระหว่างกดค้าง กันโดนเกมดัน/ดึงออกนอกระยะ prompt
-	-- ใช้ pinGen เป็นโทเคน: เรียก stopPin() หรือ pinTo ใหม่ -> ลูปเก่าหยุดทันที
-	local pinGen = 0
-	local function stopPin()
-		pinGen = pinGen + 1
-	end
-	local function pinTo(target)
-		pinGen = pinGen + 1
-		local mine = pinGen
-		task.spawn(function()
-			while pinGen == mine and Core._alive do
-				local cf = type(target) == "function" and target() or target
-				if cf and Helpers.IsAlive() then Helpers.Teleport(cf) end
-				task.wait(0.1)
-			end
-		end)
-	end
-
 	local function getStageFolder(i)
-		if Helpers.GetStageFolder then return Helpers.GetStageFolder(i) end
-		local game_ = Workspace:FindFirstChild("Game")
-		local packs = game_ and game_:FindFirstChild("Packs")
-		return packs and packs:FindFirstChild("Stage" .. i)
+		return Helpers.GetStageFolder(i)
 	end
 
 	local function checkStageHasPacks(i, noStream)
 		local folder = getStageFolder(i)
-		local basePos = (Helpers.GetStageCenter and Helpers.GetStageCenter(i)) or STAGE_CENTERS[i]
-		if not noStream and basePos and (not folder or not folder:FindFirstChild("SpawnedPacks") or #folder.SpawnedPacks:GetChildren() == 0) then
-			Helpers.StreamAround(basePos, 2.0)
-			task.wait(0.2)
-			folder = getStageFolder(i)
-		end
-
+		local basePos = Helpers.GetStageCenter(i)
 		local prompt, cand = findStealPrompt(folder, i)
+
+		-- จำกัด StreamAround สูงสุด 1 ครั้งต่อ 3 วินาทีต่อด่าน (ตัดปัญหาเรียกซ้ำ 4 รอบจนหน่วง 6-8 วินาที)
+		if not prompt and not noStream and basePos then
+			local now = os.clock()
+			local lastAt = StealState.lastStreamAt[i] or 0
+			if (now - lastAt) >= 3.0 then
+				StealState.lastStreamAt[i] = now
+				Helpers.StreamAround(basePos, 1.5)
+				task.wait(0.15)
+				folder = getStageFolder(i)
+				prompt, cand = findStealPrompt(folder, i)
+			end
+		end
 		if prompt then return prompt, nil, cand end
 
 		local diagReason = "ยังไม่มีแพ็คเกิดในด่าน"
-		local root = folder and folder:FindFirstChild("SpawnedPacks")
+		local sc = getStageConfig()
+		local spName = (sc and sc.SpawnedPacksFolderName) or "SpawnedPacks"
+		local root = folder and folder:FindFirstChild(spName)
 		if root then
 			local count, rarityCounts = 0, {}
 			for _, model in ipairs(root:GetChildren()) do
-				local p = model:FindFirstChild("StealPrompt", true)
-				if Helpers.IsPromptAvailable(p) then
-					count = count + 1
-					local rName = getModelRarity(model) or "ไม่ทราบเกรด"
-					rarityCounts[rName] = (rarityCounts[rName] or 0) + 1
+				if not Helpers.IsAreaRockModel(model) then
+					local p = Helpers.FindPackStealPrompt(model)
+					if Helpers.IsPromptAvailable(p) then
+						count = count + 1
+						local rName = getModelRarity(model) or "ไม่ทราบเกรด"
+						rarityCounts[rName] = (rarityCounts[rName] or 0) + 1
+					end
 				end
 			end
 			if count > 0 then
@@ -3465,168 +4063,227 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				dir = flat.Unit
 			end
 		end
-		return p0 + dir * (radius or 4)
+		return p0 + dir * (radius or 3.5)
 	end
 
 	local function stealFromStage(i, knownPrompt)
-		local prompt = knownPrompt or checkStageHasPacks(i)
-		if not prompt then return false, "ไม่มีแพ็คให้ขโมย/ด่านปิด" end
+		local initPrompt = knownPrompt or checkStageHasPacks(i)
+		if not initPrompt then return false, "ไม่มีแพ็คให้ขโมย/ด่านปิด" end
 
 		Helpers.GetPlotSpawnPos() -- แคชพิกัดฐานก่อนออกจากฐาน (กัน Plot stream out)
-		moveToCenterLane(function()
-			return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt)
-		end)
+
+		-- ขั้นที่ 1+2 รวมเป็นเส้นทางต่อเนื่องเส้นเดียว: ออกจาก SafeZone ผ่านประตูกลาง -> วิ่งตรงตามเลนกลางสู่หน้าด่านเป้าหมาย (ไม่ชะงักกลางทาง)
+		local stageCenter = Helpers.GetStageCenter(i)
+		local reachedStage = moveToCenterLane(function()
+			return not Core.Flags.AutoSteal or Helpers.IsCarrying()
+		end, stageCenter, i)
 		if not Core.Flags.AutoSteal or not Helpers.IsAlive() then return false, "ยกเลิก/ตัวละครตาย" end
-
-		if Helpers.PromptLost(prompt) then
-			prompt = findStealPrompt(getStageFolder(i), i)
-			if not prompt then
-				Helpers.StealRetry.now = true
-				return false, "แพ็คถูกหยิบไปแล้ว/ด่านปิด"
-			end
-		end
-
-		local pos = promptPos(prompt)
-		if not pos then return false, "ไม่มีพิกัดแพ็ค" end
-
-		local stageFolder = getStageFolder(i)
-		local lastDiag = nil
-		local lastDist = -1
-
-		local char = LocalPlayer.Character
-		if char then
-			if Core.Flags.AntiRagdollMode then
-				Helpers.RecoverFromHit(char)
-			end
-			waitUntil(function()
-				local ragLocked = not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true
-				return not ragLocked and not char:GetAttribute("TrapImmobilized")
-			end, 3)
-		end
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
-			return false, "ยกเลิก/ตัวละครตาย"
-		end
-
-		local p0 = promptPos(prompt)
-		if not p0 then return false, "ไม่มีพิกัดแพ็ค" end
-		local a0 = packAnchorPos(prompt) or p0
-
-		local standTarget = safeStandPos(a0, stageFolder, 2.0)
-		local preFired = false
-		local pNow = packAnchorPos(prompt) or p0
-
-		-- หากเป็นด่านที่อยู่ไกล (ด่าน 2 ขึ้นไป) ให้วิ่งเกาะเส้นกลางเลนมาจนถึงหน้าด่านเป้าหมายก่อนเลี้ยวเข้าหาแพ็ค
-		local stageCenter = (Helpers.GetStageCenter and Helpers.GetStageCenter(i)) or STAGE_CENTERS[i]
-		local hrpRun = Helpers.GetRoot()
-		local bounds = Helpers.GetSafeZoneBounds()
-		local corridorZ = (bounds and bounds.center and bounds.center.Z) or -364.5
-		if stageCenter and i > 1 and hrpRun and hrpRun.Position.X < (stageCenter.X - 50) then
-			local corridorTarget = Vector3.new(stageCenter.X - 45, stageCenter.Y, corridorZ)
-			Helpers.MoveTo(corridorTarget, function()
-				return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
-			end, { precise = false, arriveDist = 8, evadeEnemies = false })
-		end
-
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
-			return false, "ยกเลิก/ตัวละครตาย"
-		end
-
 		if Helpers.IsCarrying() then
-			return deliver(stageFolder)
+			local okD, whyD = deliver(getStageFolder(i))
+			return okD, whyD, nil
+		end
+		if not reachedStage then
+			Helpers.StealRetry.now = true
+			return false, "ยังวิ่งไม่ถึงกลางแมพ"
 		end
 
-		-- วิ่งตรงเข้าไปยืนตำแหน่งประชิด 2.0 studs พร้อม Pre-trigger คว้าการ์ดทันทีขณะวิ่งเข้าถึง
-		Helpers.MoveTo(standTarget, function()
-			if not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying() then
-				return true
+		-- ขั้นที่ 3: สแกนหยิบแพ็คที่ดีที่สุด ณ เวลานั้นในด่านเป้าหมาย (หยุดครั้งเดียวด้วย Adaptive Stop ไม่วิ่งเลยสั่นไปมา)
+		local skipModels, failCounts = {}, {}
+		local pickedModel, lastDiag, lastDist = nil, nil, -1
+		local pickupDeadline = os.clock() + 35
+		local attempts = 0
+
+		while Core._alive and Core.Flags.AutoSteal and Helpers.IsAlive() and os.clock() < pickupDeadline and attempts < 10 do
+			if Helpers.IsCarrying() then
+				break
 			end
-			local r = Helpers.GetRoot()
-			if r and pNow and not preFired and (r.Position - pNow).Magnitude <= 8.5 then
-				preFired = true
-				if fireproximityprompt then
-					pcall(fireproximityprompt, prompt, 0, true)
-					pcall(fireproximityprompt, prompt, 10, true)
-					pcall(fireproximityprompt, prompt)
+
+			local char = LocalPlayer.Character
+			if char then
+				if Core.Flags.AntiRagdollMode then
+					Helpers.RecoverFromHit(char)
+				end
+				waitUntil(function()
+					local ragLocked = not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true
+					return not ragLocked and not char:GetAttribute("TrapImmobilized")
+				end, 3)
+			end
+			if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+				return false, "ยกเลิก/ตัวละครตาย"
+			end
+			if Helpers.IsCarrying() then
+				break
+			end
+
+			-- สแกนหาแพ็คที่ดีที่สุด ณ เวลานั้นในด่านเป้าหมายเสมอ (Rank > Mult > Odd > Weight)
+			local stageFolder = getStageFolder(i)
+			local prompt, cand = findStealPrompt(stageFolder, i, skipModels)
+			if not prompt then
+				stageCenter = Helpers.GetStageCenter(i)
+				if stageCenter and (os.clock() - (StealState.lastStreamAt[i] or 0)) >= 2.5 then
+					StealState.lastStreamAt[i] = os.clock()
+					Helpers.StreamAround(stageCenter, 1.5)
+					task.wait(0.15)
+					stageFolder = getStageFolder(i)
+					prompt, cand = findStealPrompt(stageFolder, i, skipModels)
+				end
+				if not prompt then
+					return false, "ไม่มีแพ็คตามเกรดที่เหลือในด่าน"
 				end
 			end
-			return Helpers.IsCarrying()
-		end, { precise = true, arriveDist = 2.0, evadeEnemies = false })
 
-		if not Core.Flags.AutoSteal or not Helpers.IsAlive() or Helpers.PromptLost(prompt) then
-			return false, "ยกเลิก/ตัวละครตาย"
-		end
-
-		if Helpers.IsCarrying() then
-			return deliver(stageFolder)
-		end
-
-		local hrp = Helpers.GetRoot()
-		pNow = packAnchorPos(prompt) or promptPos(prompt)
-		if hrp and pNow then
-			lastDist = (hrp.Position - pNow).Magnitude
-			if lastDist > 3.8 then
-				local flat = Vector3.new(hrp.Position.X - pNow.X, 0, hrp.Position.Z - pNow.Z)
-				local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.new(-1, 0, 0)
-				Helpers.Teleport(CFrame.new(Vector3.new(pNow.X + dir.X * 2.0, math.max(hrp.Position.Y, 69), pNow.Z + dir.Z * 2.0)))
-				lastDist = (hrp.Position - pNow).Magnitude
-			end
-		end
-
-		local promptDiag = usePrompt(prompt, "auto", stageFolder)
-		lastDiag = promptDiag
-		local got = waitUntil(Helpers.IsCarrying, 0.4)
-
-		-- หากยังไม่หยิบ และ prompt ยังอยู่ ให้ลองซ้ำอีก 1 ครั้งด้วย hold_only
-		if not got and Core.Flags.AutoSteal and Helpers.IsAlive() and Helpers.IsPromptAvailable(prompt) then
-			local fallDiag = usePrompt(prompt, "hold_only", stageFolder)
-			got = waitUntil(Helpers.IsCarrying, 0.5)
-			if not got then
-				lastDiag = {
-					began = promptDiag.began or fallDiag.began,
-					trig = promptDiag.trig or fallDiag.trig,
-					fireTrig = promptDiag.trig,
-				}
+			attempts = attempts + 1
+			local targetModel = cand and cand.model
+			local p0 = promptPos(prompt)
+			local a0 = (p0 and packAnchorPos(prompt)) or p0
+			if not a0 then
+				if targetModel then skipModels[targetModel] = true end
 			else
-				lastDiag = fallDiag
+				local maxDist = (prompt and prompt.MaxActivationDistance) or 10
+				local safeRadius = math.clamp(maxDist - 6.0, 2.5, 4.0)
+				local maxStopDist = math.clamp(maxDist - 2.2, 3.5, 5.8)
+
+				-- วิ่งเข้าตำแหน่งยืนที่เหมาะสมและหยุดครั้งเดียวด้วย Adaptive Stop (กัน Overshoot ที่ความเร็ว 200-340)
+				local standTarget = safeStandPos(a0, stageFolder, safeRadius)
+				Helpers.MoveTo(standTarget, function()
+					return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
+				end, { precise = true, arriveDist = 3.2, maxArriveDist = maxStopDist, evadeEnemies = false, noStopOnAbort = true })
+
+				if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+					return false, "ยกเลิก/ตัวละครตาย"
+				end
+				if Helpers.IsCarrying() then
+					pickedModel = targetModel
+					break
+				end
+
+				if Helpers.IsPromptAvailable(prompt) then
+					local hrp = Helpers.GetRoot()
+					local prNow = promptPos(prompt)
+					local anNow = packAnchorPos(prompt)
+					local pNow = prNow or anNow
+					if hrp and pNow then
+						local prDist = prNow and (hrp.Position - prNow).Magnitude or math.huge
+						local anDist = anNow and (hrp.Position - anNow).Magnitude or math.huge
+						lastDist = math.min(prDist, anDist)
+						-- ขยับเข้าใกล้เพิ่มเฉพาะเมื่ออยู่นอกระยะปลอดภัยของ Prompt จริงๆ (ไม่แกว่งเข้าออกหากอยู่ในระยะแล้ว)
+						if lastDist > (maxDist - 1.5) then
+							local retryStand = safeStandPos(pNow, stageFolder, math.min(safeRadius, 3.0))
+							Helpers.MoveTo(retryStand, function()
+								return not Core.Flags.AutoSteal or Helpers.PromptLost(prompt) or Helpers.IsCarrying()
+							end, { precise = true, arriveDist = 3.0, maxArriveDist = math.min(maxStopDist, 4.8), evadeEnemies = false, noStopOnAbort = true })
+							if not Core.Flags.AutoSteal or not Helpers.IsAlive() then
+								return false, "ยกเลิก/ตัวละครตาย"
+							end
+							if Helpers.IsCarrying() then
+								pickedModel = targetModel
+								break
+							end
+							hrp = Helpers.GetRoot()
+							prNow = promptPos(prompt)
+							anNow = packAnchorPos(prompt)
+							if hrp then
+								local d1 = prNow and (hrp.Position - prNow).Magnitude or math.huge
+								local d2 = anNow and (hrp.Position - anNow).Magnitude or math.huge
+								local bestD = math.min(d1, d2)
+								if bestD < math.huge then lastDist = bestD end
+							end
+						end
+
+						if Core.Flags.AutoSteal and Helpers.IsAlive() and Helpers.IsPromptAvailable(prompt) and lastDist <= (maxDist + 1.5) then
+							local prevFails = (targetModel and failCounts[targetModel]) or 0
+							local mode = prevFails == 0 and "auto" or "hold_only"
+							lastDiag = usePrompt(prompt, mode, stageFolder)
+							if Helpers.IsCarrying() or Helpers.ConfirmCarrying(0.45, 0) then
+								pickedModel = targetModel
+								break
+							end
+							if targetModel and Helpers.IsPromptAvailable(prompt) then
+								failCounts[targetModel] = prevFails + 1
+								if failCounts[targetModel] >= 3 then
+									skipModels[targetModel] = true
+								end
+							end
+						end
+					end
+				end
 			end
 		end
 
-		if not (got or Helpers.IsCarrying()) then
+		-- ขั้นที่ 4: ยืนยันสถานะถือแพ็คจริงจาก ServerData("Stealing") แล้วออกตัววิ่งกลับทันที
+		if not Helpers.IsCarrying() then
 			local b = lastDiag and tostring(lastDiag.began) or "?"
 			local t = lastDiag and tostring(lastDiag.trig) or "?"
 			return false, string.format("หยิบไม่สำเร็จ(b=%s,t=%s,d=%.0f)", b, t, lastDist)
 		end
 
-		return deliver(stageFolder)
+		local okDeliver, whyDeliver = deliver(getStageFolder(i))
+		return okDeliver, whyDeliver, pickedModel
 	end
 
 	local function returnToSafeRest(allowTreadmill)
 		if Helpers._enteringDungeon then return end
 		if not Helpers.IsAlive() or Helpers.IsCarrying() then return end
-		-- หากอยู่บนลู่วิ่งอยู่แล้ว ให้คงสถานะวิ่ง ไม่ต้องเดินหรือขยับตัว
 		if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
+		if Core:IsBusyByOther("steal") then return end
 
-		local canEnter = allowTreadmill and (Core.Flags.AutoSteal or Core.Flags.AutoEnter or Core.Flags.AutoTreadmill)
-
-		-- หากต้องการขึ้นลู่วิ่ง ให้ลองขึ้นทันที
-		if canEnter then
-			enterTreadmill()
-			if LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil then return end
-		end
-
+		local canEnter = allowTreadmill and (Core.Flags.AutoEnter == true)
 		local pos = Helpers.GetPlotSpawnPos()
-		if not pos then return end
 		local hrp = Helpers.GetRoot()
-		if not hrp then return end
 		local bounds = Helpers.GetSafeZoneBounds()
-		local flatDistToBase = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
-		if flatDistToBase > 20 or hrp.Position.X > (bounds.maxX - 15) then
-			Helpers.MoveTo(pos + Vector3.new(0, 3, 0), function()
-				return not Core._alive or not Core.Flags.AutoSteal
-			end, { precise = false, arriveDist = 8 })
+		if not pos or not hrp then return end
+
+		local acquiredHere = false
+		if not StealState.holdBusy then
+			if not Core:AcquireBusy("steal") then return end
+			StealState.holdBusy = true
+			acquiredHere = true
 		end
-		if canEnter then
-			enterTreadmill()
+
+		pcall(function()
+			local centerZ = (bounds and bounds.center and bounds.center.Z) or -364.5
+			local walkwayX = (bounds and bounds.maxX or 1203.3) - 42
+			local outsideSafe = hrp.Position.X > (bounds.maxX - 10)
+			local path = {}
+
+			if outsideSafe then
+				table.insert(path, { pos = Vector3.new(walkwayX, hrp.Position.Y, centerZ), arriveDist = 8 })
+			end
+
+			if canEnter then
+				local flatDistToBase = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+				if outsideSafe or flatDistToBase > 20 then
+					if math.abs(hrp.Position.Z - pos.Z) > 16 or outsideSafe then
+						table.insert(path, { pos = Vector3.new(walkwayX, hrp.Position.Y, pos.Z), arriveDist = 8 })
+					end
+					table.insert(path, { pos = pos + Vector3.new(0, 3, 0), arriveDist = 8 })
+				end
+			end
+
+			if #path > 0 then
+				Helpers.MoveAlongPath(path, function()
+					return not Core._alive or (not Core.Flags.AutoSteal and not Core.Flags.AutoEnter) or Helpers.IsCarrying()
+				end, { precise = false, arriveDist = 8, noStopOnAbort = true })
+			end
+
+			if canEnter then
+				local hrpAfter = Helpers.GetRoot()
+				local nearBase = hrpAfter and ((Vector3.new(hrpAfter.Position.X, 0, hrpAfter.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude <= 32 and hrpAfter.Position.X <= (bounds.maxX - 10))
+				if nearBase then
+					-- ปลดล็อกชั่วคราวเพื่อให้ enterTreadmill ไม่ติดเช็ก Core.Busy ของตัวเอง
+					if acquiredHere then
+						StealState.holdBusy = false
+						Core:ReleaseBusy("steal")
+						acquiredHere = false
+					end
+					enterTreadmill()
+				end
+			end
+		end)
+
+		if acquiredHere then
+			StealState.holdBusy = false
+			Core:ReleaseBusy("steal")
 		end
 	end
 
@@ -3652,128 +4309,111 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end
 			end
 		end
+
+		-- Priority 4: กลายพันธุ์ยูนิต/โค้ชซ้ำ 3 ตัวอัตโนมัติ (เมื่ออยู่ฐาน)
+		if Core.Flags.AutoFuse and Helpers.AutoFuseStep then
+			pcall(function() Helpers.AutoFuseStep(true) end)
+		end
 	end
 
-	local StealState = {
-		bossSpeedCache = {},
-		lastOrderSig = "",
-		stageStealCount = 0,
-		stageStealCounts = {},
-		currentTargetStage = nil,
-		waitingForNightReset = false,
-		lastResetNightCycle = 0,
-		lastNightActive = nil,
-		lastQuotaLogTime = 0,
-		holdBusy = false,
-	}
-
-	StealState.resetCycle = function(reason)
-		StealState.waitingForNightReset = false
-		StealState.stageStealCount = 0
-		table.clear(StealState.stageStealCounts)
-		if StealState.holdBusy then
-			StealState.holdBusy = false
-			Core.Busy = false
+	-- แจ้งเตือนรีเซ็ตรอบอย่างปลอดภัย (ห้ามปลด Core.Busy กลางอากาศขณะกำลังวิ่งอยู่ในด่าน)
+	StealState.resetCycle = function(reason, fromEvent)
+		if fromEvent and StealState.holdBusy then
+			StealState.phaseResetPending = true
+			StealState.phaseResetReason = reason
+			StealState.SignalWake()
+			return
 		end
+		table.clear(StealState.stageStealCounts)
+		StealState.lastNoPackLogTime = 0
+		StealState.phaseResetPending = false
+		StealState.phaseResetReason = nil
 		if reason then
 			logAction("ขโมย", tostring(reason), true)
 		end
+		StealState.SignalWake()
 	end
 
-	StealState.initListener = function()
-		local nf = Workspace:FindFirstChild("Night")
-		if nf then
-			pcall(function()
-				nf:GetAttributeChangedSignal("NightActive"):Connect(function()
-					local active = nf:GetAttribute("NightActive") == true
-					StealState.lastNightActive = active
-					local info = active
-						and "🌙 เซิร์ฟเวอร์เข้าสู่เวลากลางคืน (Night Active)! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ -> เริ่มรอบขโมยใหม่"
-						or "☀️ เข้าสู่รอบกลางวันใหม่ -> ปลดล็อกโควต้าพร้อมเริ่มขโมยแพ็คชุดใหม่ทันที"
-					StealState.resetCycle(info)
-				end)
-				nf:GetAttributeChangedSignal("NightPhaseEndsAt"):Connect(function()
-					local endsAt = tonumber(nf:GetAttribute("NightPhaseEndsAt")) or 0
-					if endsAt > 0 and endsAt ~= StealState.lastResetNightCycle then
-						StealState.lastResetNightCycle = endsAt
-						StealState.resetCycle("🔄 ตรวจพบการเปลี่ยนรอบเวลาเซิร์ฟเวอร์ (Phase Reset) -> ปลดล็อกโควต้าและพร้อมเริ่มรอบใหม่")
-					end
-				end)
-			end)
-		end
-	end
-
+	-- อ่านความเร็ววิ่งจริงของบอสจาก StageConfig.GetEnemyWalkSpeed(stageKey) โดยตรง (อัปเดตตามแมพ 100%)
 	local function getStageBossSpeed(i)
-		if StealState.bossSpeedCache[i] then return StealState.bossSpeedCache[i] end
-
 		local sc = getStageConfig()
+		local stageKey = "Stage" .. tostring(i)
+
+		if sc and type(sc.GetEnemyWalkSpeed) == "function" then
+			local okWs, ws = pcall(sc.GetEnemyWalkSpeed, stageKey)
+			if okWs and type(ws) == "number" and ws > 0 then
+				StealState.bossSpeedCache[i] = ws
+				return ws
+			end
+		end
+
+		if StealState.bossSpeedCache[i] then
+			return StealState.bossSpeedCache[i]
+		end
+
 		local spdCfg = getSpeedConfig()
-		local stageKey = "Stage" .. i
 		local stageData = sc and sc.Stages and sc.Stages[stageKey]
 		if stageData then
-			-- ด่าน 1 มีระบุ WalkSpeed ชัดเจนใน Enemy (16)
 			local enemyWalkSpeed = stageData.Enemy and stageData.Enemy.WalkSpeed
 			if enemyWalkSpeed and enemyWalkSpeed > 0 then
 				StealState.bossSpeedCache[i] = enemyWalkSpeed
 				return enemyWalkSpeed
 			end
-			-- ด่านอื่นๆ คำนวณความเร็ววิ่งจริงจาก RecommendedSpeed ผ่าน SpeedConfig.ToWalkSpeed
 			local rec = tonumber(stageData.RecommendedSpeed)
 			if rec and spdCfg and spdCfg.ToWalkSpeed then
 				local ok, ws = pcall(spdCfg.ToWalkSpeed, rec, false)
 				if ok and type(ws) == "number" and ws > 0 then
-					StealState.bossSpeedCache[i] = ws
-					return ws
+					local ratio = (sc.EnemyDifficulty and tonumber(sc.EnemyDifficulty.SpeedRatio)) or 1
+					StealState.bossSpeedCache[i] = ws * ratio
+					return ws * ratio
 				end
 			end
 		end
 
-		-- Fallback ความเร็วมาตรฐานอ้างอิงจาก RecommendedSpeed ของ StageConfig จริง
 		local fallbackSpeeds = {
-			[1] = 16, [2] = 36, [3] = 64, [4] = 85,
-			[5] = 101, [6] = 117, [7] = 135, [8] = 157,
-			[9] = 207, [10] = 215, [11] = 226, [12] = 241,
-			[13] = 250
+			[1] = 16, [2] = 36.27, [3] = 64.25, [4] = 84.97,
+			[5] = 101.55, [6] = 117.1, [7] = 134.72, [8] = 157.51,
+			[9] = 207.25, [10] = 214, [11] = 226.25, [12] = 241.25,
+			[13] = 252.64
 		}
-		local spd = fallbackSpeeds[i] or (16 + i * 18)
-		StealState.bossSpeedCache[i] = spd
-		return spd
+		return fallbackSpeeds[i] or (16 + i * 18)
 	end
 
 	local function getSelectedCandidateStages()
 		local mySpeed = Helpers.GetMoveSpeed()
 		local margin = Core.Flags.OutrunMargin or 1.0
 
-		local candidates = {}
-		local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
-		for i = 1, maxStages do
-			if Core.Flags["Stage" .. i] then
+		local bestCandidate = nil
+		local runtimeStages = Helpers.GetRuntimeStages()
+		for _, st in ipairs(runtimeStages) do
+			local i = st.num
+			if Core.Flags["Stage" .. tostring(i)] then
 				local bSpd = getStageBossSpeed(i)
-				-- ด่านที่ 1 เป็นด่านสอนเริ่มต้น (Tutorial) อยู่ชิด SafeZone เสมอ ตัวละครความเร็วเริ่มต้น (16) สามารถขโมยได้ปลอดภัย
-				local canOutrun = (not Core.Flags.OutrunOnly) or (i == 1) or (mySpeed >= (bSpd * margin))
+				-- บังคับล็อกเฉพาะ 1 ด่านที่ความเร็วเราวิ่งหนีบอสทันและบอสเร็วที่สุด (ตัวเลือก A)
+				local canOutrun = (i == 1) or (mySpeed >= (bSpd * margin))
 				if canOutrun then
-					table.insert(candidates, {
-						stage = i,
-						bossSpeed = bSpd,
-						canOutrun = canOutrun
-					})
+					if (not bestCandidate)
+						or (bSpd > bestCandidate.bossSpeed)
+						or (bSpd == bestCandidate.bossSpeed and i > bestCandidate.stage) then
+						bestCandidate = {
+							stage = i,
+							bossSpeed = bSpd,
+							canOutrun = true,
+							meta = st,
+						}
+					end
 				end
 			end
 		end
 
-		-- เรียงลำดับจากด่านสูงสุด/บอสเร็วสุดลงไปหาด่านต่ำสุด
-		table.sort(candidates, function(a, b)
-			if a.bossSpeed ~= b.bossSpeed then
-				return a.bossSpeed > b.bossSpeed
-			end
-			return a.stage > b.stage
-		end)
-
-		return candidates
+		if bestCandidate then
+			return { bestCandidate }
+		end
+		return {}
 	end
 
 	-----------------------------------------------------------------
-	-- NIGHT & PACK RESET HELPERS
+	-- REAL-TIME MAP, NIGHT, PACK & SPEED WATCHERS (ผ่าน Core:Connect ปิด Leak 100%)
 	-----------------------------------------------------------------
 	local function getNightFolder()
 		return Workspace:FindFirstChild("Night")
@@ -3789,27 +4429,166 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return nf and tonumber(nf:GetAttribute("NightPhaseEndsAt")) or 0
 	end
 
-	local function getTimeUntilNight()
-		local nf = getNightFolder()
-		if not nf then return 0 end
-		if nf:GetAttribute("NightActive") == true then return 0 end
-		local endsAt = tonumber(nf:GetAttribute("NightPhaseEndsAt")) or 0
-		local now = workspace:GetServerTimeNow()
-		return math.max(0, math.ceil(endsAt - now))
+	StealState.bindNightFolder = function(nf)
+		if not nf or StealState.nightBoundFolder == nf then return end
+		StealState.nightBoundFolder = nf
+		pcall(function()
+			Core:Connect(nf:GetAttributeChangedSignal("NightActive"), function()
+				local active = nf:GetAttribute("NightActive") == true
+				StealState.lastNightActive = active
+				local info = active
+					and "🌙 เซิร์ฟเวอร์เข้าสู่เวลากลางคืน (Night Active)! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ -> เริ่มรอบขโมยใหม่"
+					or "☀️ เข้าสู่รอบกลางวันใหม่ -> แพ็คการ์ดรีเซ็ตพร้อมเริ่มขโมยชุดใหม่ทันที"
+				StealState.resetCycle(info, true)
+			end)
+			Core:Connect(nf:GetAttributeChangedSignal("NightPhaseEndsAt"), function()
+				local endsAt = tonumber(nf:GetAttribute("NightPhaseEndsAt")) or 0
+				if endsAt > 0 and endsAt ~= StealState.lastResetNightCycle then
+					StealState.lastResetNightCycle = endsAt
+					StealState.resetCycle("🔄 ตรวจพบการเปลี่ยนรอบเวลาเซิร์ฟเวอร์ (Phase Reset) -> พร้อมเริ่มรอบขโมยใหม่", true)
+				end
+			end)
+		end)
 	end
 
-	StealState.initListener()
-	pcall(function()
-		Workspace.ChildAdded:Connect(function(child)
-			if child.Name == "Night" then
-				task.wait(0.5)
-				StealState.initListener()
+	StealState.bindStageFolder = function(stageFolder)
+		if not stageFolder or StealState.boundStageFolders[stageFolder] then return end
+		local stageNum = tonumber(string.match(stageFolder.Name, "^Stage(%d+)$"))
+		if not stageNum then return end
+		StealState.boundStageFolders[stageFolder] = true
+
+		local sc = getStageConfig()
+		local spName = (sc and sc.SpawnedPacksFolderName) or "SpawnedPacks"
+		local areaName = (sc and sc.AreaPartName) or "Area"
+
+		local function onPackAdded(child)
+			if not child or Helpers.IsAreaRockModel(child) then return end
+			task.defer(function()
+				if Core._alive and child.Parent then
+					pcall(getModelRarity, child) -- ตรวจจับเกรดใหม่แบบเรียลไทม์อัตโนมัติ
+					if StealState.lastLockedStage == nil or StealState.lastLockedStage == stageNum then
+						StealState.SignalWake()
+					end
+				end
+			end)
+		end
+
+		local function bindSpawnedFolder(sp)
+			if not sp then return end
+			Core:Connect(sp.ChildAdded, onPackAdded)
+		end
+
+		local sp = stageFolder:FindFirstChild(spName)
+		if sp then bindSpawnedFolder(sp) end
+
+		Core:Connect(stageFolder.ChildAdded, function(ch)
+			if ch.Name == spName then
+				bindSpawnedFolder(ch)
+				StealState.SignalWake()
+			elseif ch.Name == areaName and ch:IsA("BasePart") then
+				Helpers.GetStageAreaBounds(stageNum)
 			end
 		end)
-	end)
+	end
+
+	StealState.bindRealtimeWatchers = function()
+		if StealState.watchersBound then return end
+		StealState.watchersBound = true
+
+		-- 1. Night / Day Reset Listener
+		StealState.bindNightFolder(getNightFolder())
+		Core:Connect(Workspace.ChildAdded, function(child)
+			if child.Name == "Night" then
+				task.defer(StealState.bindNightFolder, child)
+			end
+		end)
+
+		-- 2. Stage & Pack Spawn Listeners (ตรวจพบด่านใหม่/แพ็คเกิดใหม่/ระดับใหม่แบบเรียลไทม์)
+		local function bindPacksRoot(packsRoot)
+			if not packsRoot then return end
+			for _, st in ipairs(packsRoot:GetChildren()) do
+				StealState.bindStageFolder(st)
+			end
+			Core:Connect(packsRoot.ChildAdded, function(child)
+				StealState.bindStageFolder(child)
+				local num = tonumber(string.match(child.Name, "^Stage(%d+)$"))
+				if num then
+					StealState.bossSpeedCache[num] = nil
+					Helpers.GameCatalog.areaCenters[num] = nil
+					Helpers.GameCatalog.areaBounds[num] = nil
+				end
+				Helpers.GetRuntimeStages()
+				Helpers.TriggerCatalogUISync()
+				StealState.SignalWake()
+			end)
+			Core:Connect(packsRoot.ChildRemoved, function(child)
+				StealState.boundStageFolders[child] = nil
+				Helpers.TriggerCatalogUISync()
+			end)
+		end
+
+		local packsRoot = Helpers.GetPacksRoot()
+		if packsRoot then
+			bindPacksRoot(packsRoot)
+		else
+			local gameFolder = Workspace:FindFirstChild("Game")
+			if gameFolder then
+				Core:Connect(gameFolder.ChildAdded, function(ch)
+					if ch.Name == "Packs" then bindPacksRoot(ch) end
+				end)
+			end
+		end
+
+		-- 3. CollectionService SpawnedPack Listener (ดักจับแพ็คเกิดใหม่หรือตกหล่นพร้อมตรวจ Rarity ใหม่ทันที)
+		local pc = getPacksConfig()
+		local packTag = (pc and pc.SpawnedPackTag) or "SpawnedPack"
+		pcall(function()
+			Core:Connect(CollectionService:GetInstanceAddedSignal(packTag), function(inst)
+				if inst and not Helpers.IsAreaRockModel(inst) then
+					task.defer(function()
+						if Core._alive and inst.Parent then
+							pcall(getModelRarity, inst)
+							StealState.SignalWake()
+						end
+					end)
+				end
+			end)
+		end)
+
+		-- 4. Speed Subscriber (ปลดล็อกด่านสูงกว่าหรือสลับด่านทันทีเมื่อ Speed เปลี่ยนแบบเรียลไทม์)
+		local pd = getPlayerData()
+		if pd and type(pd.Subscribe) == "function" then
+			local okSpd, subSpd = pcall(pd.Subscribe, "Speed", function()
+				StealState.SignalWake()
+			end)
+			if okSpd and subSpd then
+				Core:OnCleanup(function()
+					if type(subSpd) == "function" then
+						pcall(subSpd)
+					elseif type(subSpd) == "table" and type(subSpd.Disconnect) == "function" then
+						pcall(subSpd.Disconnect)
+					elseif typeof(subSpd) == "RBXScriptConnection" then
+						pcall(function() subSpd:Disconnect() end)
+					end
+				end)
+			end
+		end
+
+		-- 5. Carry Subscriber -> ปลุกลูปเมื่อส่งแพ็คสำเร็จ
+		Helpers.OnCarryChanged(function(carrying)
+			if not carrying then
+				StealState.SignalWake()
+			end
+		end)
+	end
+
+	StealState.bindRealtimeWatchers()
 
 	StealState.cycleInner = function()
-		-- 0. ตรวจจับการรีเซ็ตเฟสกลางคืน/กลางวันของเซิร์ฟเวอร์ที่บนสุดของลูป
+		-- 0. ตรวจจับและเคลียร์รอบรีเซ็ตกลางวัน/กลางคืนที่จุดปลอดภัยบนสุดของลูปเท่านั้น
+		if StealState.phaseResetPending then
+			StealState.resetCycle(StealState.phaseResetReason, false)
+		end
 		local isNight = isNightActive()
 		local currentPhaseEndsAt = getNightPhaseEndsAt()
 		local phaseChanged = (currentPhaseEndsAt > 0 and StealState.lastResetNightCycle > 0 and currentPhaseEndsAt ~= StealState.lastResetNightCycle)
@@ -3824,21 +4603,24 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			StealState.lastResetNightCycle = currentPhaseEndsAt
 			local info = isNight
 				and "🌙 เซิร์ฟเวอร์เข้าสู่เวลากลางคืน (Night Active)! แพ็คการ์ดทุกด่านรีเซ็ตใหม่ -> เริ่มรอบขโมยใหม่"
-				or "☀️ เข้าสู่รอบกลางวันใหม่ -> ปลดล็อกโควต้าพร้อมเริ่มขโมยแพ็คชุดใหม่ทันที"
-			StealState.resetCycle(info)
-		elseif isNight and StealState.waitingForNightReset then
-			StealState.resetCycle("🌙 อยู่ในช่วงเวลากลางคืน -> ปลดล็อกโควต้าและเริ่มรอบขโมยใหม่")
+				or "☀️ เข้าสู่รอบกลางวันใหม่ -> แพ็คการ์ดรีเซ็ตพร้อมเริ่มขโมยชุดใหม่ทันที"
+			StealState.resetCycle(info, false)
 		end
 
-		-- 1. ค้นหาด่านทั้งหมดที่ผู้ใช้ติ๊กเลือกและตัวละครวิ่งหนีบอสทัน
+		-- หากมีลูปอื่น (เช่น Dungeon) ถือสิทธิ์ Busy อยู่ ให้รออย่างปลอดภัยไม่แย่ง MoveTo ซ้อน
+		if Core:IsBusyByOther("steal") then
+			StealState.waitInterruptible(0.25)
+			return
+		end
+
+		-- 1. ค้นหาด่านเดียวที่บอสเร็วที่สุดและตัวละครวิ่งหนีบอสทัน (ล็อกแค่ 1 ด่านเสมอ — ตัวเลือก A)
 		local candidateStages = getSelectedCandidateStages()
 		if #candidateStages == 0 then
 			local mySpeed = Helpers.GetMoveSpeed()
 			local lowestSelected = nil
-			local maxStages = (Helpers.GetMaxStage and Helpers.GetMaxStage()) or 13
-			for s = 1, maxStages do
-				if Core.Flags["Stage" .. s] then
-					lowestSelected = s
+			for _, st in ipairs(Helpers.GetRuntimeStages()) do
+				if Core.Flags["Stage" .. tostring(st.num)] then
+					lowestSelected = st.num
 					break
 				end
 			end
@@ -3857,85 +4639,65 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end
 			end
 
-			-- เข้าลู่วิ่งทันที
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			task.wait(1.5)
+			StealState.waitInterruptible(1.2)
 			return
 		end
 
-		local quotaActive = (Core.Flags.MaxStageStealPacks ~= nil and Core.Flags.MaxStageStealPacks < 999)
-		local maxPacks = Core.Flags.MaxStageStealPacks or 4
-
-		-- 2. สแกนหาแพ็คที่ตรงตามเกรดที่เลือกในด่านเป้าหมายทั้งหมด (จากด่านสูงสุดลงไปหาด่านต่ำสุด)
-		local targetStage, targetPrompt, targetCand = nil, nil, nil
-		local lastDiag = nil
-		local anySelectedStageAvailable = false
-
-		for _, cand in ipairs(candidateStages) do
-			local sNum = cand.stage
-			local sCount = StealState.stageStealCounts[sNum] or 0
-			if not (quotaActive and sCount >= maxPacks) then
-				anySelectedStageAvailable = true
-				-- เจอแพ็คแล้ว -> ด่านที่เหลือสแกนแบบไม่สตรีม (เร็ว) เพื่อเทียบหาใบที่ดีที่สุด
-				local prompt, diag, pc = checkStageHasPacks(sNum, targetPrompt ~= nil)
-				if not prompt and not targetPrompt then
-					local basePos = (Helpers.GetStageCenter and Helpers.GetStageCenter(sNum)) or STAGE_CENTERS[sNum]
-					if basePos then
-						Helpers.StreamAround(basePos, 1.5)
-						task.wait(0.15)
-						prompt, diag, pc = checkStageHasPacks(sNum, false)
-					end
-				end
-				if prompt and pc then
-					if isBetterCandidate(pc, targetCand) then
-						targetStage, targetPrompt, targetCand = sNum, prompt, pc
-					end
-				elseif diag then
-					lastDiag = diag
-				end
-			end
+		-- 2. สแกนหาแพ็คที่ดีที่สุดตามเกรดจริงในเกม เฉพาะในด่านเป้าหมายเดียวที่วิ่งหนีบอสทันและเร็วที่สุด
+		local lockedCand = candidateStages[1]
+		local sNum = lockedCand.stage
+		if StealState.lastLockedStage ~= sNum then
+			StealState.lastLockedStage = sNum
+			local stLabel = (lockedCand.meta and lockedCand.meta.text) and (" (" .. lockedCand.meta.text .. ")") or ""
+			logAction("ด่านเป้าหมาย", string.format("ล็อกเก็บเฉพาะด่าน %d%s (ความเร็วเรา %.0f / บอส %.0f)", sNum, stLabel, Helpers.GetMoveSpeed(), lockedCand.bossSpeed or 0), true)
 		end
 
-		-- 3. หากไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านใดเลย หรือครบโควต้าทุกด่านแล้ว -> เข้าลู่วิ่งฝึกซ้อม
+		local promptFound, lastDiag = checkStageHasPacks(sNum, false)
+		local targetStage, targetPrompt = nil, nil
+		if promptFound then
+			targetStage, targetPrompt = sNum, promptFound
+		end
+
+		-- 3. หากไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย -> พักบนลู่วิ่งและรอปลุกทันทีแบบ Real-Time เมื่อแพ็คเกิด
 		if not targetStage or not targetPrompt then
 			local now = os.clock()
-			if not anySelectedStageAvailable and quotaActive then
-				StealState.waitingForNightReset = true
-				if now - StealState.lastQuotaLogTime > 15 then
-					StealState.lastQuotaLogTime = now
-					local secUntilNight = getTimeUntilNight()
-					local timeStr = isNight and "กำลังอยู่ในช่วงกลางคืน (แพ็ครีเซ็ตแล้ว)"
-						or (secUntilNight > 60 and string.format("เหลืออีก %d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
-							or string.format("เหลืออีก %d วิ", secUntilNight))
-					logAction("ขโมย", string.format("ขโมยครบโควต้า %d ใบในทุกด่านที่เลือกแล้ว -> พักบนลู่วิ่ง รอแพ็คการ์ดรีเซ็ต (%s)", maxPacks, timeStr), false)
-				end
-			else
-				if now - StealState.lastQuotaLogTime > 15 then
-					StealState.lastQuotaLogTime = now
-					local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
-					logAction("ขโมย", string.format("%s -> เก็บครบทุกใบแล้ว พักบนลู่วิ่ง รอแพ็ครีเซ็ต (เช็กทุก ~1.5 วิ แล้วออกไปเก็บต่อทันที)", reason), false)
-				end
+			if now - (StealState.lastNoPackLogTime or 0) > 15 then
+				StealState.lastNoPackLogTime = now
+				local reason = lastDiag or "ไม่มีแพ็คตามเกรดที่เลือกเกิดในด่านเป้าหมาย"
+				logAction("ขโมย", string.format("ด่าน %d: %s -> พักบนลู่วิ่ง รอแพ็คเกิดใหม่ (Real-Time)", sNum, reason), false)
 			end
 
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			if runBaseMaintenance then pcall(runBaseMaintenance) end
-			task.wait(1.5)
+			if runBaseMaintenance and Core:AcquireBusy("steal") then
+				StealState.holdBusy = true
+				pcall(runBaseMaintenance)
+				StealState.holdBusy = false
+				Core:ReleaseBusy("steal")
+			end
+			StealState.waitInterruptible(1.5)
 			return
 		end
 
 		local i = targetStage
 		StealState.currentTargetStage = i
-		StealState.waitingForNightReset = false
 
-		if not Core.Flags["Stage" .. i] or not Helpers.IsAlive() then
+		if not Core.Flags["Stage" .. tostring(i)] or not Helpers.IsAlive() then
 			return
 		end
 
-		-- จัดการงานฐาน (รวมแพ็คซ้ำ + วางแพ็คลงแปลงเพาะ) ให้เรียบร้อยก่อนออกจากฐานไปขโมย (Throttled 10s ป้องกันลูปค้าง)
+		-- ถือ Exclusive Busy Lock ("steal") ครอบทั้ง Pre-Maintenance -> LeaveTreadmill -> Steal -> Post-Maintenance (กันคำสั่งอื่นแทรก 100%)
+		if not Core:AcquireBusy("steal") then
+			StealState.waitInterruptible(0.2)
+			return
+		end
+		StealState.holdBusy = true
+
+		-- จัดการงานฐาน (รวมแพ็คซ้ำ + วางแพ็คลงแปลงเพาะ) ให้เรียบร้อยก่อนออกจากฐานไปขโมย (Throttled 10s)
 		if not Helpers.IsCarrying() and runBaseMaintenance then
 			local hrp = Helpers.GetRoot()
 			local bPos = Helpers.GetPlotSpawnPos()
@@ -3943,8 +4705,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				local now = os.clock()
 				if (now - (StealState.lastPreMaintenanceTime or 0)) >= 10 then
 					local hasPacks = (getPacksToPlace and #getPacksToPlace() > 0)
-					local hasMerges = (Core.Flags.AutoMerge and getBackpackCandidates and #getBackpackCandidates("merge") >= 2)
-					if hasPacks or hasMerges then
+					local hasMerges = (Core.Flags.AutoMerge and Helpers.HasReadyMerges and Helpers.HasReadyMerges()) or false
+					local hasFuses = (Core.Flags.AutoFuse and Helpers.HasReadyFuses and Helpers.HasReadyFuses()) or false
+					if hasPacks or hasMerges or hasFuses then
 						StealState.lastPreMaintenanceTime = now
 						pcall(runBaseMaintenance)
 					end
@@ -3953,79 +4716,52 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end
 
 		local prompt = targetPrompt
-		if not prompt or not prompt.Parent then
-			prompt = checkStageHasPacks(i)
+		if not Helpers.IsPromptAvailable(prompt) then
+			prompt = checkStageHasPacks(i, true)
 		end
 		if not prompt then
+			StealState.holdBusy = false
+			Core:ReleaseBusy("steal")
 			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
 				returnToSafeRest(true)
 			end
-			task.wait(1.0)
+			StealState.waitInterruptible(0.8)
 			return
 		end
 
-		Core.Busy = true
-		StealState.holdBusy = true
 		leaveTreadmill()
 		local curHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if curHum then pcall(function() curHum:UnequipTools() end) end
-		local packModel = prompt.Parent
-		while packModel and packModel ~= Workspace and not packModel:IsA("Model") do
-			packModel = packModel.Parent
+		local fallbackModel = prompt.Parent
+		while fallbackModel and fallbackModel ~= Workspace and not fallbackModel:IsA("Model") do
+			fallbackModel = fallbackModel.Parent
 		end
-		local rName = packModel and getModelRarity(packModel) or "Pack"
-		local pName = packModel and (packModel:GetAttribute("PackName") or packModel.Name) or ""
-		local ok, res, why = pcall(stealFromStage, i, prompt)
-		stopPin()
+		local ok, res, why, pickedModel = pcall(stealFromStage, i, prompt)
 
 		if ok and res then
 			StealState.stageStealCounts[i] = (StealState.stageStealCounts[i] or 0) + 1
-			StealState.stageStealCount = StealState.stageStealCounts[i]
 			Stats.stealOk = Stats.stealOk + 1
 			Helpers.StealRetry.streak = 0
-			local cntTxt = quotaActive and string.format("%d/%d", StealState.stageStealCounts[i], maxPacks)
-				or tostring(StealState.stageStealCounts[i])
+			local finalModel = pickedModel or fallbackModel
+			local rName = finalModel and getModelRarity(finalModel) or "Pack"
+			local pName = finalModel and (finalModel:GetAttribute("PackName") or finalModel.Name) or ""
+			local cntTxt = tostring(StealState.stageStealCounts[i])
 			local info = (pName ~= "" and pName ~= rName)
 				and string.format("ด่าน %d [%s - %s]: สำเร็จ (ใบที่ %s)", i, tostring(rName), tostring(pName), cntTxt)
 				or string.format("ด่าน %d [%s]: สำเร็จ (ใบที่ %s)", i, tostring(rName), cntTxt)
 			logAction("ขโมย", info, true)
 
-			-- จัดการนำแพ็คไปรวม/วางที่ฐาน (Core.Busy ยังคงล็อกเป็น true ป้องกันคำสั่งอื่นชนกัน)
-			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks) and runBaseMaintenance then
-				local waitSyncEnd = os.clock() + 2.0
-				while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
-					local count = (getPacksToPlace and #getPacksToPlace()) or 0
-					if count > 0 then break end
-					task.wait(0.15)
-				end
-				pcall(runBaseMaintenance)
-			end
-
-			-- ตรวจสอบโควต้าของด่านนี้
-			if quotaActive and StealState.stageStealCounts[i] >= maxPacks then
-				local otherAvailable = false
-				for _, cand in ipairs(candidateStages) do
-					local cNum = cand.stage
-					if cNum ~= i and (StealState.stageStealCounts[cNum] or 0) < maxPacks then
-						otherAvailable = true
-						break
+			-- จัดการงานฐานตามคิวภายใต้ Lock "steal" (ไม่ปล่อยให้ลูป Merge/Fuse แทรกกลางทาง)
+			if (Core.Flags.AutoPlacePacks or Core.Flags.AutoOpenPacks or Core.Flags.AutoMerge or Core.Flags.AutoFuse) and runBaseMaintenance then
+				if Core.Flags.AutoPlacePacks then
+					local waitSyncEnd = os.clock() + 1.5
+					while os.clock() < waitSyncEnd and Core._alive and Core.Flags.AutoSteal do
+						local count = (getPacksToPlace and #getPacksToPlace()) or 0
+						if count > 0 then break end
+						task.wait(0.1)
 					end
 				end
-
-				if not otherAvailable then
-					StealState.waitingForNightReset = true
-					local secUntilNight = getTimeUntilNight()
-					local timeStr = secUntilNight > 60
-						and string.format("%d นาที %02d วิ", math.floor(secUntilNight / 60), secUntilNight % 60)
-						or string.format("%d วิ", secUntilNight)
-					logAction("ขโมย", string.format("ขโมยครบโควต้า %d ใบในทุกด่านที่เลือกแล้ว -> กลับฐานขึ้นลู่วิ่งรอแพ็คการ์ดรีเซ็ต (เหลืออีก %s)", maxPacks, timeStr), true)
-					if runBaseMaintenance then pcall(runBaseMaintenance) end
-					Core.Busy = false
-					StealState.holdBusy = false
-					returnToSafeRest(true)
-				else
-					logAction("ขโมย", string.format("ด่าน %d ครบโควต้า %d ใบแล้ว -> สลับไปหาแพ็คในด่านอื่นที่เลือกไว้ต่อ", i, maxPacks), true)
-				end
+				pcall(runBaseMaintenance)
 			end
 		else
 			Stats.stealFail = Stats.stealFail + 1
@@ -4034,8 +4770,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			logAction("ขโมย", "ด่าน " .. i .. ": " .. tostring(reason), false)
 
 			local retry = Helpers.StealRetry
-			local lostTarget = ok and Core.Flags.AutoSteal and Helpers.PromptLost(prompt)
-			if (retry.now or lostTarget) and Core.Flags.AutoSteal and retry.streak < 6 then
+			local stageEmpty = ok and reason == "ไม่มีแพ็คตามเกรดที่เหลือในด่าน"
+			local lostTarget = ok and not stageEmpty and Core.Flags.AutoSteal and Helpers.PromptLost(prompt)
+			if not stageEmpty and (retry.now or lostTarget) and Core.Flags.AutoSteal and retry.streak < 6 then
 				retry.now = false
 				retry.streak = retry.streak + 1
 				logAction("ขโมย", "แพ็คหลุด/ถูกคนอื่นหยิบ/โดนตี -> หาแพ็คที่ดีที่สุดถัดไปในด่านที่ตั้งค่าทันที", true)
@@ -4044,45 +4781,39 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 					local h = c and c:FindFirstChildOfClass("Humanoid")
 					return c and h and h.Health > 0
 				end, 3.0)
-				Core.Busy = false
 				StealState.holdBusy = false
-				task.wait(0.1)
+				Core:ReleaseBusy("steal")
+				task.wait(0.08)
 				return
 			end
 			retry.now = false
 			retry.streak = 0
 
-			-- รอให้ตัวละครฟื้นตัว/เกิดใหม่สมบูรณ์ก่อนเริ่มรอบถัดไป
-			task.wait(1.2)
+			task.wait(0.5)
 			waitUntil(function()
 				local char = LocalPlayer.Character
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				return char and hum and hum.Health > 0
 			end, 3.0)
-			if runBaseMaintenance then pcall(runBaseMaintenance) end
-			Core.Busy = false
-			StealState.holdBusy = false
-			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil and Helpers.IsAlive() and not Helpers.IsCarrying() then
-				returnToSafeRest(true)
-			end
 		end
 
-		Core.Busy = false
 		StealState.holdBusy = false
-		task.wait(Core.Flags.StealDelay)
+		Core:ReleaseBusy("steal")
+		if (Core.Flags.StealDelay or 0) > 0 then
+			StealState.waitInterruptible(Core.Flags.StealDelay)
+		end
 	end
 
 	local function stealCycle()
 		if Helpers.IsDungeonPlace() or Helpers._enteringDungeon then return end
-		-- ล้างล็อก Busy ที่ค้างจากรอบที่ถูก cancel/พัง (เฉพาะที่ลูปขโมยล็อกเอง)
 		if StealState.holdBusy then
 			StealState.holdBusy = false
-			Core.Busy = false
+			Core:ReleaseBusy("steal")
 		end
 		local ok, err = pcall(StealState.cycleInner)
 		if StealState.holdBusy then
 			StealState.holdBusy = false
-			Core.Busy = false
+			Core:ReleaseBusy("steal")
 		end
 		if not ok then
 			logAction("ขโมย", "รอบขโมยพัง: " .. tostring(err) .. " -> ปลดล็อกแล้วกลับลู่วิ่ง", false)
@@ -4092,19 +4823,23 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 					returnToSafeRest(true)
 				end
 			end)
-			task.wait(1.0)
+			task.wait(0.8)
 		end
 	end
 
 	function Loops.Steal()
 		if StealState.holdBusy then
 			StealState.holdBusy = false
-			Core.Busy = false
+			Core:ReleaseBusy("steal")
 		end
-		Core:Loop("steal", "AutoSteal", 0.5, stealCycle)
+		StealState.lastOrderSig = ""
+		StealState.lastLockedStage = nil
+		StealState.lastNoPackLogTime = 0
+		StealState.bindRealtimeWatchers()
+		Core:Loop("steal", "AutoSteal", 0.15, stealCycle)
 	end
 
-	Core:OnCleanup(stopPin)
+	Core:OnCleanup(Helpers.StopMove)
 
 	-----------------------------------------------------------------
 	-- 5.5. FEATURE: COACHES & AURAS (Auto Buy / Auto Equip Best)
@@ -4407,144 +5142,290 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		return nil
 	end
 
+	Helpers.MutateState = {
+		mergeRunning = false,
+		fuseRunning = false,
+		lastInvokeAt = 0,
+		requiresPad = nil,
+		realtimeBound = false,
+		mergeScheduled = false,
+		fuseScheduled = false,
+	}
+
+	function Helpers.ResolveMutateRemote(actionKey, fallbackPath)
+		local mc = getMutateConfig()
+		local ns = (mc and mc.Remote and mc.Remote.Namespace) or "Mutate"
+		local rName = (mc and mc.Remote and mc.Remote[actionKey]) or actionKey
+		local dynPath = RP .. tostring(ns) .. "." .. tostring(rName)
+		local r = Net.Get(dynPath)
+		if r then return r end
+		return fallbackPath and Net.Get(fallbackPath) or nil
+	end
+
+	function Helpers.GetMutateRateLimit()
+		local mc = getMutateConfig()
+		local base = (mc and tonumber(mc.RateLimit)) or 1.0
+		return math.max(base, 0.35) + 0.12
+	end
+
+	function Helpers.WaitMutateRateLimit()
+		local rl = Helpers.GetMutateRateLimit()
+		local waitSec = rl - (os.clock() - (Helpers.MutateState.lastInvokeAt or 0))
+		if waitSec > 0 then
+			task.wait(waitSec)
+		end
+		Helpers.MutateState.lastInvokeAt = os.clock()
+		return rl
+	end
+
 	local function getBackpackCandidates(mode) -- mode: "merge" or "fuse"
 		local now = os.clock()
 		local favMap = getPlayerDataKey("Favorited")
 		local pd = getPlayerData()
 		local inv = pd and pd.Get and pd.Get("Inventory")
-		local packsData = inv and inv.Packs or {}
+		local packsData = type(inv) == "table" and type(inv.Packs) == "table" and inv.Packs or nil
+		local hasPdInventory = packsData ~= nil
 		local pc = getPacksConfig()
-		local maxMerges = (pc and pc.MaxMergesPerPack) or math.huge
+		local mc = getMutateConfig()
+		local chc = getCharacterConfig()
+		local upgradesMap = (mc and type(mc.Upgrades) == "table" and mc.Upgrades) or nil
+		local maxMerges = (pc and tonumber(pc.MaxMergesPerPack)) or math.huge
 		local seenIds = {}
+		local knownPdIds = {}
 		local candidates = {}
 
-		local function isFav(id, tool)
+		local function isFav(id, tool, rec)
 			if type(favMap) == "table" and favMap[id] == true then return true end
+			if type(rec) == "table" and (rec.Favorited == true or rec.Locked == true) then return true end
 			if tool and isToolFavorited and isToolFavorited(tool, id, favMap) then return true end
 			return false
 		end
 
-		local function normMutation(mut)
-			if mut == nil or mut == "" or mut == "None" or mut == false then
-				return "Normal"
+		local function canUpgradeMutation(rawMut)
+			if rawMut == nil or rawMut == "" then return true end
+			if upgradesMap then
+				return upgradesMap[rawMut] ~= nil
 			end
-			return tostring(mut)
+			return rawMut ~= "Mystic"
 		end
 
-		-- 1. สแกนจาก Tools ใน Backpack / Character
+		-- 1. แหล่งข้อมูลหลัก (Authoritative): PlayerData.Inventory.Packs (ตรงกับ MutateMachine ของแมพ 100%)
+		if packsData then
+			for _, containerName in ipairs({ "Backpack", "Placed" }) do
+				local list = (type(packsData[containerName]) == "table" and packsData[containerName]) or {}
+				for k, item in pairs(list) do
+					local packId = (type(item) == "table" and (item.Id or item.PackId or item.UUID)) or (type(k) == "string" and #k >= 20 and k) or nil
+					if type(packId) == "string" and packId ~= "" and type(item) == "table" then
+						knownPdIds[packId] = true
+						if not seenIds[packId] then
+							local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
+							if not isSkip and not isFav(packId, nil, item) and item.OpeningCommittedAt == nil then
+								local isChar
+								if pc and pc.IsCharacter then
+									isChar = pc.IsCharacter(item)
+								else
+									isChar = item.Kind == "Character" or (type(item.CharacterName) == "string" and item.CharacterName ~= "") or item.ItemCategory == "Units"
+								end
+								local rawMut = (type(item.Mutation) == "string" and item.Mutation ~= "") and item.Mutation or nil
+								local weight = (pc and pc.ClampWeight and pc.ClampWeight(item.Weight, item.Size)) or tonumber(item.Weight) or 0
+
+								if mode == "merge" and not isChar then
+									local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item)) or false
+									local packName = item.PackName
+									local hasCfg = (not pc or not pc.Get or (type(packName) == "string" and pc.Get(packName) ~= nil))
+									local mergeCount = (pc and pc.GetMergeCount and pc.GetMergeCount(item)) or tonumber(item.MergeCount) or 0
+									if not isPath and type(packName) == "string" and packName ~= "" and hasCfg and mergeCount < maxMerges then
+										seenIds[packId] = true
+										local dispName = (pc and pc.GetDisplayName and pc.GetDisplayName(item)) or packName
+										table.insert(candidates, {
+											Id = packId,
+											GroupKey = packName .. "|" .. tostring(rawMut or ""),
+											Name = packName,
+											DisplayName = dispName,
+											Mutation = rawMut,
+											MergeCount = mergeCount,
+											Weight = weight,
+											InBase = (containerName == "Placed"),
+											Raw = item,
+										})
+									end
+								elseif mode == "fuse" and isChar then
+									local charName = item.CharacterName
+									local hasCharCfg = (not chc or not chc.Get or (type(charName) == "string" and chc.Get(charName) ~= nil))
+									if type(charName) == "string" and charName ~= "" and hasCharCfg and canUpgradeMutation(rawMut) then
+										seenIds[packId] = true
+										local dispName = (chc and chc.GetDisplayName and chc.GetDisplayName(charName)) or charName
+										table.insert(candidates, {
+											Id = packId,
+											GroupKey = charName .. (rawMut and ("|" .. rawMut) or ""),
+											Name = charName,
+											DisplayName = dispName,
+											Mutation = rawMut,
+											Weight = weight,
+											Kind = "Character",
+											InBase = (containerName == "Placed"),
+											Raw = item,
+										})
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+
+		-- 2. สแกนโค้ชแบบไดนามิกจาก CoachConfig.DataKey สำหรับ mode == "fuse" (ตรงกับ MutateMachine ของแมพ)
+		if mode == "fuse" then
+			local cu = getCoachUtil()
+			local cc = getCoachConfig()
+			local coachKey = (cc and cc.DataKey) or "Coaches"
+			local coachData = getPlayerDataKey(coachKey)
+			if cu and cu.GetItems and type(coachData) == "table" then
+				local coachItems = cu.GetItems(coachData)
+				for _, item in ipairs(coachItems) do
+					local cId = item.Id
+					if type(cId) == "string" and cId ~= "" and not seenIds[cId] then
+						local isSkip = (itemSkipUntil[mode .. ":" .. cId] or 0) > now or permSkipItems[mode .. ":" .. cId]
+						local canMut = cu.CanMutate and cu.CanMutate(item.CoachId)
+						if not isSkip and canMut then
+							local dispName = (cu.GetDisplayName and cu.GetDisplayName(item.CoachId))
+								or (cu.Get and cu.Get(item.CoachId) and cu.Get(item.CoachId).Name)
+								or tostring(item.CoachId)
+							seenIds[cId] = true
+							table.insert(candidates, {
+								Id = cId,
+								GroupKey = "Coach:" .. tostring(item.CoachId),
+								Name = tostring(item.CoachId),
+								DisplayName = dispName,
+								Mutation = item.Mutation,
+								Weight = 0,
+								Kind = "Coach",
+								CoachId = item.CoachId,
+								InBase = false,
+								Raw = item,
+							})
+						end
+					end
+				end
+			end
+		end
+
+		-- 3. Fallback สแกนจาก Tools ใน Backpack / Character เฉพาะกรณีข้อมูลไม่อยู่ใน PlayerData
 		for _, tool in ipairs(getBagTools(true)) do
 			local packId = tool:GetAttribute("PackId")
-			if type(packId) == "string" and packId ~= "" and not seenIds[packId] then
+			if type(packId) == "string" and packId ~= "" and not knownPdIds[packId] and not seenIds[packId] then
 				local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
-				if not isSkip and not isFav(packId, tool) then
+				if not isSkip and not isFav(packId, tool, nil) then
 					local itemCat = tool:GetAttribute("ItemCategory")
 					local cardIsPack = tool:GetAttribute("CardIsPack")
 					local charName = tool:GetAttribute("CharacterName")
-					local isUnit = (itemCat == "Units") or (cardIsPack == false) or (charName ~= nil)
-					local isPack = not isUnit and (cardIsPack == true or itemCat == "Packs" or itemCat == "Pack" or (type(packId) == "string" and packId ~= ""))
-					local mut = normMutation(getToolMutation(tool))
+					local isUnit = (itemCat == "Units") or (cardIsPack == false) or (type(charName) == "string" and charName ~= "")
+					local isPack = not isUnit and (cardIsPack == true or itemCat == "Packs" or itemCat == "Pack")
+					local rawMut = tool:GetAttribute("Mutation")
+					if type(rawMut) ~= "string" or rawMut == "" then rawMut = nil end
+					local weight = tonumber(tool:GetAttribute("SortWeight")) or 0
 
-					if mode == "merge" and isPack then
-						local name = tool:GetAttribute("ItemName") or tool:GetAttribute("PackName") or tool:GetAttribute("CardName") or tool.Name
+					if mode == "merge" and isPack and not hasPdInventory then
+						local name = tool:GetAttribute("PackName") or tool:GetAttribute("ItemName") or tool.Name
 						local mergeCount = tonumber(tool:GetAttribute("MergeCount")) or 0
 						if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
 							seenIds[packId] = true
 							table.insert(candidates, {
 								Id = packId,
+								GroupKey = name .. "|" .. tostring(rawMut or ""),
 								Name = name,
-								Mutation = mut,
+								DisplayName = name,
+								Mutation = rawMut,
 								MergeCount = mergeCount,
+								Weight = weight,
+								InBase = false,
 								Raw = tool,
 							})
 						end
 					elseif mode == "fuse" and isUnit then
-						local name = tool:GetAttribute("CharacterName") or tool:GetAttribute("ItemName") or tool.Name
-						if type(name) == "string" and name ~= "" then
+						local name = (type(charName) == "string" and charName ~= "" and charName) or tool.Name
+						if type(name) == "string" and name ~= "" and canUpgradeMutation(rawMut) then
 							seenIds[packId] = true
 							table.insert(candidates, {
 								Id = packId,
+								GroupKey = name .. (rawMut and ("|" .. rawMut) or ""),
 								Name = name,
-								Mutation = mut,
+								DisplayName = name,
+								Mutation = rawMut,
+								Weight = weight,
+								Kind = "Character",
+								InBase = false,
 								Raw = tool,
 							})
 						end
-					end
-				end
-			end
-		end
-
-		-- 2. สแกนจาก Inventory.Packs.Backpack และ Inventory.Packs.Placed (PlayerData)
-		for _, containerName in ipairs({ "Backpack", "Placed" }) do
-			local list = (type(packsData[containerName]) == "table" and packsData[containerName]) or {}
-			for k, item in pairs(list) do
-				local packId = (type(item) == "table" and (item.Id or item.PackId or item.UUID)) or (type(k) == "string" and #k >= 20 and k) or nil
-				if type(packId) == "string" and packId ~= "" and not seenIds[packId] and type(item) == "table" then
-					local isSkip = (itemSkipUntil[mode .. ":" .. packId] or 0) > now or permSkipItems[mode .. ":" .. packId]
-					if not isSkip and not isFav(packId, nil) and item.OpeningCommittedAt == nil then
-						local isChar = (pc and pc.IsCharacter and pc.IsCharacter(item)) or item.Kind == "Character" or item.CharacterName ~= nil or item.ItemCategory == "Units"
-						local isPath = (pc and pc.IsPathPack and pc.IsPathPack(item))
-						local mut = normMutation(item.Mutation)
-
-						if mode == "merge" and not isChar and not isPath then
-							local name = item.ItemName or item.PackName or item.Name or item.DisplayName
-							local mergeCount = (pc and pc.GetMergeCount and pc.GetMergeCount(item)) or tonumber(item.MergeCount) or 0
-							if type(name) == "string" and name ~= "" and mergeCount < maxMerges then
-								seenIds[packId] = true
-								table.insert(candidates, {
-									Id = packId,
-									Name = name,
-									Mutation = mut,
-									MergeCount = mergeCount,
-									Raw = item,
-									InBase = (containerName == "Placed"),
-								})
-							end
-						elseif mode == "fuse" and isChar then
-							local name = item.CharacterName or item.ItemName or item.PackName or item.Name
-							if type(name) == "string" and name ~= "" then
-								seenIds[packId] = true
-								table.insert(candidates, {
-									Id = packId,
-									Name = name,
-									Mutation = mut,
-									Raw = item,
-									InBase = (containerName == "Placed"),
-								})
-							end
-						end
-					end
-				end
-			end
-		end
-
-		-- 4. สแกนจาก Coaches (PlayerData.Coaches) สำหรับ mode == "fuse"
-		if mode == "fuse" then
-			local cu = getCoachUtil()
-			local coachData = getPlayerDataKey("Coaches")
-			if cu and cu.GetItems and type(coachData) == "table" then
-				local coachItems = cu.GetItems(coachData)
-				for _, item in ipairs(coachItems) do
-					local cId = item.Id
-					local isSkip = (itemSkipUntil[mode .. ":" .. cId] or 0) > now or permSkipItems[mode .. ":" .. cId]
-					local canMut = cu.CanMutate and cu.CanMutate(item.CoachId)
-					if not isSkip and canMut and not seenIds[cId] then
-						local cEntry = cu.Get and cu.Get(item.CoachId)
-						local name = (cEntry and cEntry.Name) or item.CoachId
-						local mut = normMutation(item.Mutation)
-						seenIds[cId] = true
-						table.insert(candidates, {
-							Id = cId,
-							Name = name,
-							Mutation = mut,
-							Kind = "Coach",
-							Raw = item,
-						})
 					end
 				end
 			end
 		end
 
 		return candidates
+	end
+	Helpers.GetMutateCandidates = getBackpackCandidates
+
+	function Helpers.GetMutateGroups(mode)
+		local mc = getMutateConfig()
+		local minCount
+		if mode == "merge" then
+			minCount = (mc and mc.Merge and type(mc.Merge.Slots) == "table" and math.max(#mc.Merge.Slots, 2)) or 2
+		else
+			minCount = math.max((mc and tonumber(mc.Slots)) or 3, 2)
+		end
+
+		local candidates = getBackpackCandidates(mode)
+		local groupMap = {}
+		for _, c in ipairs(candidates) do
+			local key = c.GroupKey or (tostring(c.Name or "") .. "|" .. tostring(c.Mutation or ""))
+			local g = groupMap[key]
+			if not g then
+				g = {
+					key = key,
+					name = c.Name or "",
+					displayName = c.DisplayName or c.Name or "",
+					mut = c.Mutation,
+					kind = c.Kind,
+					list = {},
+				}
+				groupMap[key] = g
+			end
+			table.insert(g.list, c)
+		end
+
+		local eligible = {}
+		for _, g in pairs(groupMap) do
+			if #g.list >= minCount then
+				table.sort(g.list, function(a, b)
+					local wa, wb = tonumber(a.Weight) or 0, tonumber(b.Weight) or 0
+					if wa ~= wb then return wa > wb end
+					return (a.InBase and 1 or 0) > (b.InBase and 1 or 0)
+				end)
+				table.insert(eligible, g)
+			end
+		end
+
+		table.sort(eligible, function(a, b)
+			local wa = (a.list[1] and tonumber(a.list[1].Weight)) or 0
+			local wb = (b.list[1] and tonumber(b.list[1].Weight)) or 0
+			if wa ~= wb then return wa > wb end
+			return #a.list > #b.list
+		end)
+
+		return eligible, minCount
+	end
+
+	function Helpers.HasReadyMerges()
+		local groups = Helpers.GetMutateGroups("merge")
+		return #groups > 0
+	end
+
+	function Helpers.HasReadyFuses()
+		local groups = Helpers.GetMutateGroups("fuse")
+		return #groups > 0
 	end
 
 	-- (ระบบ openReadyPlacedPacks และ placePacksInBase ถูกย้ายไปอยู่หลัง autoFuseStep เพื่อให้เรียกใช้ autoMergeStep ได้อย่างสมบูรณ์)
@@ -4665,238 +5546,407 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end
 	end
 
-	autoMergeStep = function(forceMulti)
-		if (not forceMulti and Core.Busy) or Helpers.IsCarrying() then return end
-		local now = os.clock()
-		local mc = getMutateConfig()
-		local rl = math.max((mc and mc.RateLimit) or 1.0, 1.05)
-		if not forceMulti and (now - lastMerge < 3.0) then return end
+	function Helpers.MutateState.NormReason(reason)
+		return string.upper(tostring(reason or "")):gsub("[^A-Z0-9]", "")
+	end
 
-		-- ตรวจสอบสถานะตัวละคร: ต้องมีชีวิต ไม่ติดล้ม (Ragdolled) และไม่กำลังถือของ
+	function Helpers.MutateState.IsRateLimit(nr)
+		return nr:find("RATELIMIT") ~= nil or nr:find("SLOWDOWN") ~= nil or nr:find("COOLDOWN") ~= nil
+	end
+
+	function Helpers.MutateState.IsMachineProximity(nr)
+		return nr:find("USEMACHINE") ~= nil
+			or nr:find("MACHINE") ~= nil
+			or nr:find("PAD") ~= nil
+			or nr:find("NEAR") ~= nil
+			or nr:find("TOOFAR") ~= nil
+			or nr:find("RANGE") ~= nil
+			or nr:find("DIST") ~= nil
+	end
+
+	function Helpers.MutateState.IsGenericReject(nr)
+		return nr == "" or nr == "FAILED" or nr == "REJECTED" or nr == "NIL"
+	end
+
+	autoMergeStep = function(forceMulti)
+		if not Core._alive then return 0 end
+		if Helpers.MutateState.mergeRunning then return 0 end
+		if (not forceMulti and Core.Busy) or Helpers.IsCarrying() then return 0 end
+
 		local char = LocalPlayer.Character
-		if not Helpers.IsAlive() or Helpers.IsCarrying() or (char and char:GetAttribute("Ragdolled") == true) then
-			return
+		if not Helpers.IsAlive() or (char and char:GetAttribute("Ragdolled") == true) then
+			return 0
 		end
 
+		local preGroups = Helpers.GetMutateGroups("merge")
+		if #preGroups == 0 then return 0 end
+
+		Helpers.MutateState.mergeRunning = true
 		local totalMergedOverall = 0
-		local passCount = 0
 
-		-- ลูป Exhaustive Multi-Pass: รวมแพ็คที่ซ้ำทั้งหมดจนกว่าจะไม่เหลือคู่ซ้ำในกระเป๋าและบนฐาน (จำกัดสูงสุด 10 รอบเพื่อความปลอดภัย)
-		while Core._alive and passCount < 10 do
-			passCount = passCount + 1
+		local okAllRun, errAllRun = pcall(function()
+			local pc = getPacksConfig()
+			local mergeAllRemote = Helpers.ResolveMutateRemote("MergeAll", Net.Paths.MutateMergeAll)
+			local mergeRemote = Helpers.ResolveMutateRemote("Merge", Net.Paths.MutateMerge)
+			local rateRetries = 0
 
-			local candidates = getBackpackCandidates("merge")
-			local groups = {}
-			for _, c in ipairs(candidates) do
-				local packName = c.Name or ""
-				local key = packName .. "|" .. tostring(c.Mutation or "")
-				groups[key] = groups[key] or { name = packName, mut = c.Mutation, list = {} }
-				table.insert(groups[key].list, c)
-			end
+			local function runMergePasses(onPad)
+				local mergedHere = 0
+				local passCount = 0
 
-			-- คัดกรองเฉพาะกลุ่มที่มีแพ็คพร้อมรวมตั้งแต่ 2 ชิ้นขึ้นไปเท่านั้น (Readiness Pre-check)
-			local eligibleGroups = {}
-			local totalPairs = 0
-			for _, g in pairs(groups) do
-				if #g.list >= 2 then
-					table.insert(eligibleGroups, g)
-					totalPairs = totalPairs + math.floor(#g.list / 2)
-				end
-			end
+				while Core._alive and (Core.Flags.AutoMerge or Core.Flags.AutoPlacePacks or forceMulti) and passCount < 15 do
+					if Helpers.IsCarrying() or not Helpers.IsAlive() then break end
+					passCount = passCount + 1
 
-			-- หากไม่มีแพ็คที่พร้อมรวมเป็นคู่แล้ว ให้หยุดทันที
-			if totalPairs == 0 then
-				break
-			end
-
-			lastMerge = os.clock()
-
-			-- ฟังก์ชันรวมการ์ดจริง (Direct Remote First)
-			local function executeMergeRoutine()
-				local count = 0
-				local atMachine = (Helpers.IsAtMutateMachine and Helpers.IsAtMutateMachine()) or false
-				for _, g in ipairs(eligibleGroups) do
-					if not Core._alive then break end
-					local list = g.list
-					local pName = g.name
-					local firstId = list[1] and list[1].Id
-
-					local groupMerged = false
-					-- 1. ลองใช้ MergeAll ก่อน (ยิงคำสั่งเดียวเพื่อรวมทั้งกลุ่ม)
-					if firstId then
-						local okAll, resAll = Net.Invoke(Net.Paths.MutateMergeAll, firstId)
-						local sAll, rAll = isRemoteOk(resAll)
-						if okAll and sAll then
-							local pairsInGroup = math.floor(#list / 2)
-							count = count + math.max(pairsInGroup, 1)
-							groupMerged = true
-							logAction("Merge", string.format("รวมกลุ่ม %s สำเร็จ (%d คู่)", tostring(pName), pairsInGroup), true)
-							task.wait(rl)
-						end
+					local eligibleGroups, minCount = Helpers.GetMutateGroups("merge")
+					if #eligibleGroups == 0 then
+						return mergedHere, "DONE"
 					end
 
-					-- 2. Fallback รวมทีละคู่ (Multi-Remote Strategy: Mutate.Merge -> Packs.Merge)
-					if not groupMerged then
-						local i = 1
-						while i + 1 <= #list do
-							if not Core._alive then break end
-							local idA = list[i].Id
-							local idB = list[i + 1].Id
+					lastMerge = os.clock()
+					local passMerged = 0
+					local retryPass = false
 
-							local okPair, resPair = false, nil
-							local sPair, rPair = false, nil
+					for _, g in ipairs(eligibleGroups) do
+						if not Core._alive then break end
+						local list = g.list
+						local pName = g.displayName or g.name
+						local firstItem = list[1]
+						local groupHandled = false
 
-							-- วิธีที่ 1: เรียกผ่าน Mutate.Merge ({ idA, idB })
-							if Net.Paths.MutateMerge then
-								okPair, resPair = Net.Invoke(Net.Paths.MutateMerge, { idA, idB })
-								sPair, rPair = isRemoteOk(resPair)
-							end
-
-							-- วิธีที่ 2: หากไม่สำเร็จ สลับเรียก Packs.Merge ({ idA, idB })
-							if not (okPair and sPair) and Net.Paths.PacksMerge then
-								local okP2, resP2 = Net.Invoke(Net.Paths.PacksMerge, { idA, idB })
-								local sP2, rP2 = isRemoteOk(resP2)
-								if okP2 and sP2 then
-									okPair, resPair, sPair, rPair = okP2, resP2, sP2, rP2
-								else
-									-- วิธีที่ 3: เรียก Packs.Merge แบบแยกพารามิเตอร์ (idA, idB)
-									local okP3, resP3 = Net.Invoke(Net.Paths.PacksMerge, idA, idB)
-									local sP3, rP3 = isRemoteOk(resP3)
-									if okP3 and sP3 then
-										okPair, resPair, sPair, rPair = okP3, resP3, sP3, rP3
+						-- นับจำนวนที่อยู่ใน Backpack (Mutate.MergeAll รวมเฉพาะ Backpack + ตัวแรกที่เลือกตาม MutateMachine)
+						local bpCount = 0
+						local hasMergeableBp = false
+						for idx = 1, #list do
+							if not list[idx].InBase then
+								bpCount = bpCount + 1
+								if idx > 1 then
+									if pc and pc.CanMerge and type(firstItem.Raw) == "table" and type(list[idx].Raw) == "table" then
+										if pc.CanMerge(firstItem.Raw, list[idx].Raw) then
+											hasMergeableBp = true
+										end
+									else
+										hasMergeableBp = true
 									end
 								end
 							end
+						end
+						local mergeAllEligible = bpCount + ((firstItem and firstItem.InBase) and 1 or 0)
 
-							if okPair and sPair then
-								count = count + 1
-								itemSkipUntil["merge:" .. idA] = nil
-								itemSkipUntil["merge:" .. idB] = nil
-								logAction("Merge", string.format("รวม %s สำเร็จ (+1 คู่)", tostring(pName)), true)
-								task.wait(rl)
-							else
-								local failReason = string.upper(tostring(rPair or "REJECTED"))
-								if not atMachine and (failReason:find("MACHINE") or failReason:find("PAD") or failReason:find("NEAR")) then
-									return count, "NEED_MACHINE"
-								elseif failReason:find("LIMIT") then
-									permSkipItems["merge:" .. idA] = true
-									permSkipItems["merge:" .. idB] = true
-									logAction("Merge", pName .. " ถึงลิมิตรวมซ้ำแล้ว (Max)", false)
-								else
-									itemSkipUntil["merge:" .. idA] = os.clock() + 8
-									itemSkipUntil["merge:" .. idB] = os.clock() + 8
-									logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failReason), false)
+						-- 1. ใช้ Mutate.MergeAll เมื่อมีแพ็คใน Backpack ที่รวมกับตัวแรกได้ (ลดจำนวน RPC เหลือครั้งเดียวต่อกลุ่ม)
+						if firstItem and mergeAllRemote and mergeAllEligible >= minCount and hasMergeableBp then
+							local rl = Helpers.WaitMutateRateLimit()
+							local okAll, resAll = Net.Invoke(mergeAllRemote, firstItem.Id)
+							local sAll, rAll = isRemoteOk(resAll)
+							if okAll and sAll then
+								local mCnt = (type(resAll) == "table" and tonumber(resAll.Count)) or mergeAllEligible
+								mergedHere = mergedHere + math.max(mCnt - 1, 1)
+								passMerged = passMerged + 1
+								for _, item in ipairs(list) do
+									itemSkipUntil["merge:" .. item.Id] = nil
 								end
-								break -- หากคู่นี้รวมไม่ได้ ให้ข้ามกลุ่มนี้ไปก่อน
+								logAction("Merge", string.format("รวมกลุ่ม %s สำเร็จ (%d ชิ้น)", tostring(pName), mCnt), true)
+								groupHandled = true
+								break -- สแกน PlayerData ใหม่ทันทีหลังรวมสำเร็จ
+							else
+								local failAll = (not okAll and resAll) or rAll
+								local nr = Helpers.MutateState.NormReason(failAll)
+								if Helpers.MutateState.IsRateLimit(nr) then
+									rateRetries = rateRetries + 1
+									if rateRetries <= 3 then
+										task.wait(rl)
+										retryPass = true
+									end
+									groupHandled = true
+									break
+								elseif nr == "TIMEOUT" then
+									itemSkipUntil["merge:" .. firstItem.Id] = os.clock() + 5
+									logAction("Merge", "รวมกลุ่ม " .. tostring(pName) .. " หมดเวลา (TIMEOUT)", false)
+									groupHandled = true
+								elseif not onPad and (Helpers.MutateState.IsMachineProximity(nr) or Helpers.MutateState.IsGenericReject(nr)) then
+									return mergedHere, "NEED_MACHINE"
+								elseif nr:find("MERGELIMIT") or nr:find("PATHPACK") then
+									for _, item in ipairs(list) do
+										permSkipItems["merge:" .. item.Id] = true
+									end
+									logAction("Merge", tostring(pName) .. " ข้ามกลุ่ม (" .. tostring(failAll) .. ")", false)
+									groupHandled = true
+								elseif nr:find("NOTHINGTOMERGE") then
+									-- ให้ fallback ไปรวมแบบคู่ด้านล่าง (กรณีมีแพ็คใน Placed)
+								else
+									itemSkipUntil["merge:" .. firstItem.Id] = os.clock() + 5
+									logAction("Merge", "รวมกลุ่ม " .. tostring(pName) .. " พลาด: " .. tostring(failAll or "REJECTED"), false)
+									groupHandled = true
+								end
 							end
-							i = i + 2
+						end
+
+						-- 2. รวมทีละชุดด้วย Mutate.Merge ({ id1, id2, ... }) ตามจำนวนสล็อตจริงของแมพ
+						if not groupHandled and #list >= minCount then
+							local picked = { firstItem }
+							for idx = 2, #list do
+								if #picked >= minCount then break end
+								local cand = list[idx]
+								local validPair = true
+								if pc and pc.CanMerge and type(firstItem.Raw) == "table" and type(cand.Raw) == "table" then
+									local canOk = pc.CanMerge(firstItem.Raw, cand.Raw)
+									if not canOk then validPair = false end
+								end
+								if validPair then
+									table.insert(picked, cand)
+								end
+							end
+
+							if #picked >= minCount then
+								local payloadIds = {}
+								for _, item in ipairs(picked) do
+									table.insert(payloadIds, item.Id)
+								end
+
+								local rl = Helpers.WaitMutateRateLimit()
+								local okPair, resPair = false, nil
+								local sPair, rPair = false, nil
+
+								if mergeRemote then
+									okPair, resPair = Net.Invoke(mergeRemote, payloadIds)
+									sPair, rPair = isRemoteOk(resPair)
+								elseif Net.Paths.PacksMerge and #payloadIds >= 2 then
+									okPair, resPair = Net.Invoke(Net.Paths.PacksMerge, {
+										SourcePackId = payloadIds[1],
+										TargetPackId = payloadIds[2],
+									})
+									sPair, rPair = isRemoteOk(resPair)
+								end
+
+								if okPair and sPair then
+									mergedHere = mergedHere + 1
+									passMerged = passMerged + 1
+									for _, id in ipairs(payloadIds) do
+										itemSkipUntil["merge:" .. id] = nil
+									end
+									logAction("Merge", string.format("รวม %s สำเร็จ (+1 คู่)", tostring(pName)), true)
+									break -- สแกน PlayerData ใหม่ทันทีเพื่อให้แพ็คที่รวมแล้วต่อยอดรวมซ้ำได้
+								else
+									local failPair = (not okPair and resPair) or rPair
+									local nr = Helpers.MutateState.NormReason(failPair)
+									if Helpers.MutateState.IsRateLimit(nr) then
+										rateRetries = rateRetries + 1
+										if rateRetries <= 3 then
+											task.wait(rl)
+											retryPass = true
+										end
+										break
+									elseif nr == "TIMEOUT" then
+										for _, id in ipairs(payloadIds) do
+											itemSkipUntil["merge:" .. id] = os.clock() + 5
+										end
+										logAction("Merge", "รวม " .. tostring(pName) .. " หมดเวลา (TIMEOUT)", false)
+									elseif not onPad and (Helpers.MutateState.IsMachineProximity(nr) or Helpers.MutateState.IsGenericReject(nr)) then
+										return mergedHere, "NEED_MACHINE"
+									elseif nr:find("MERGELIMIT") or nr:find("PATHPACK") then
+										for _, id in ipairs(payloadIds) do
+											permSkipItems["merge:" .. id] = true
+										end
+										logAction("Merge", tostring(pName) .. " ข้าม (" .. tostring(failPair) .. ")", false)
+									else
+										for _, id in ipairs(payloadIds) do
+											itemSkipUntil["merge:" .. id] = os.clock() + 6
+										end
+										logAction("Merge", "รวม " .. tostring(pName) .. " พลาด: " .. tostring(failPair or "REJECTED"), false)
+									end
+								end
+							end
+						end
+					end
+
+					if passMerged == 0 and not retryPass then
+						break
+					end
+					task.wait(0.25)
+				end
+
+				return mergedHere, "DONE"
+			end
+
+			local atMachine = Helpers.IsAtMutateMachine and Helpers.IsAtMutateMachine() or false
+			if Helpers.MutateState.requiresPad == true and not atMachine and Helpers.VisitMutateMachine then
+				local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+					local c = runMergePasses(true)
+					return c or 0
+				end, forceMulti == true)
+				if okVisit and type(visitCount) == "number" then
+					totalMergedOverall = totalMergedOverall + visitCount
+				end
+			else
+				local directCount, directStatus = runMergePasses(atMachine)
+				totalMergedOverall = totalMergedOverall + (directCount or 0)
+				if directStatus == "NEED_MACHINE" and not atMachine and Helpers.VisitMutateMachine then
+					local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+						local c = runMergePasses(true)
+						return c or 0
+					end, forceMulti == true)
+					if okVisit and type(visitCount) == "number" then
+						totalMergedOverall = totalMergedOverall + visitCount
+						if visitCount > 0 then
+							Helpers.MutateState.requiresPad = true
 						end
 					end
 				end
-				return count, "DONE"
 			end
+		end)
 
-			-- ขั้นตอนที่ 1: ลองยิงคำสั่งโดยตรงก่อนโดยไม่ต้องวาร์ปไปเครื่อง
-			local directCount, directStatus = executeMergeRoutine()
-			local passMerged = directCount or 0
-
-			-- ขั้นตอนที่ 2: หากเซิร์ฟเวอร์ตอบว่าต้องยืนที่เครื่อง (USE_MACHINE) จึงค่อยวาร์ปไปเครื่อง
-			if directStatus == "NEED_MACHINE" and Helpers.VisitMutateMachine then
-				local okVisit, visitCount = Helpers.VisitMutateMachine(function()
-					local c, _ = executeMergeRoutine()
-					return c or 0
-				end, true)
-				if okVisit and type(visitCount) == "number" then
-					passMerged = passMerged + visitCount
-				end
-			end
-
-			totalMergedOverall = totalMergedOverall + passMerged
-
-			-- ถ้าในรอบนี้รวมไม่ได้เลยแม้แต่คู่เดียว ให้จบลูปทันที
-			if passMerged == 0 then
-				break
-			end
-
-			-- รอให้อินเวนทอรีอัปเดตสั้นๆ ก่อนสแกนรอบถัดไป
-			task.wait(0.35)
+		Helpers.MutateState.mergeRunning = false
+		if not okAllRun then
+			warn("[Kuy] autoMergeStep: " .. tostring(errAllRun))
 		end
 
 		if totalMergedOverall > 0 then
-			logAction("Merge", string.format("รวมแพ็คซ้ำทั้งหมดสำเร็จ %d คู่ (สแกน %d รอบ)", totalMergedOverall, passCount), true)
+			logAction("Merge", string.format("รวมแพ็คซ้ำทั้งหมดสำเร็จ %d ครั้ง", totalMergedOverall), true)
 		end
+		return totalMergedOverall
 	end
 
-	local function autoFuseStep()
-		if Core.Busy or Helpers.IsCarrying() then return end
-		local now = os.clock()
-		local mc = getMutateConfig()
-		local rl = math.max((mc and mc.RateLimit) or 0.38, 0.38)
-		if now - lastFuse < 1.0 then return end
+	local function autoFuseStep(ignoreBusy)
+		if not Core._alive then return 0 end
+		if Helpers.MutateState.fuseRunning then return 0 end
+		if (not ignoreBusy and Core.Busy) or Helpers.IsCarrying() then return 0 end
 
-		local candidates = getBackpackCandidates("fuse")
-		local groups = {}
-		for _, c in ipairs(candidates) do
-			local key = c.Name .. "|" .. c.Mutation
-			groups[key] = groups[key] or { name = c.Name, mut = c.Mutation, list = {} }
-			table.insert(groups[key].list, c)
+		local char = LocalPlayer.Character
+		if not Helpers.IsAlive() or (char and char:GetAttribute("Ragdolled") == true) then
+			return 0
 		end
 
-		local triosToFuse = {}
-		for _, g in pairs(groups) do
-			local list = g.list
-			local i = 1
-			while i + 2 <= #list do
-				table.insert(triosToFuse, {
-					itemA = list[i],
-					itemB = list[i + 1],
-					itemC = list[i + 2],
-					charName = g.name,
-					mut = g.mut,
-				})
-				i = i + 3
+		local preGroups = Helpers.GetMutateGroups("fuse")
+		if #preGroups == 0 then return 0 end
+
+		Helpers.MutateState.fuseRunning = true
+		local totalFusedOverall = 0
+
+		local okAllRun, errAllRun = pcall(function()
+			local fuseRemote = Helpers.ResolveMutateRemote("Fuse", Net.Paths.MutateFuse)
+			if not fuseRemote then return end
+			local rateRetries = 0
+
+			local function runFusePasses(onPad)
+				local fusedHere = 0
+				local passCount = 0
+
+				-- ลูป Multi-Pass สแกนสดทุกครั้ง: รองรับการต่อยอด Mutation หลายขั้น (Normal->Gold->Emerald...) และอัปเดต Coach ID แบบเรียลไทม์
+				while Core._alive and (Core.Flags.AutoFuse or ignoreBusy) and passCount < 25 do
+					if Helpers.IsCarrying() or not Helpers.IsAlive() then break end
+					passCount = passCount + 1
+
+					local eligibleGroups, minCount = Helpers.GetMutateGroups("fuse")
+					if #eligibleGroups == 0 then
+						return fusedHere, "DONE"
+					end
+
+					lastFuse = os.clock()
+					local passFused = 0
+					local retryPass = false
+
+					for _, g in ipairs(eligibleGroups) do
+						if not (Core._alive and (Core.Flags.AutoFuse or ignoreBusy)) then break end
+						if #g.list >= minCount then
+							local payloadIds = {}
+							for idx = 1, minCount do
+								table.insert(payloadIds, g.list[idx].Id)
+							end
+							local cName = g.displayName or g.name
+							local isCoachGroup = (g.kind == "Coach")
+
+							local rl = Helpers.WaitMutateRateLimit()
+							local okFuse, resFuse = Net.Invoke(fuseRemote, payloadIds)
+							local sFuse, rFuse = isRemoteOk(resFuse)
+
+							if okFuse and sFuse then
+								fusedHere = fusedHere + 1
+								passFused = passFused + 1
+								for _, id in ipairs(payloadIds) do
+									itemSkipUntil["fuse:" .. id] = nil
+								end
+								local mutResult = (type(resFuse) == "table" and ((resFuse.Coach and resFuse.Coach.Mutation) or (resFuse.Character and resFuse.Character.Mutation))) or "สำเร็จ"
+								logAction("Fuse", string.format("กลายพันธุ์ %s สำเร็จ! (%s)", tostring(cName), tostring(mutResult)), true)
+								break -- สแกน PlayerData ใหม่ทันทีเพื่อให้ผลกลายพันธุ์ต่อยอดขั้นถัดไปและ Coach ID สดเสมอ
+							else
+								local failFuse = (not okFuse and resFuse) or rFuse
+								local nr = Helpers.MutateState.NormReason(failFuse)
+								if Helpers.MutateState.IsRateLimit(nr) then
+									rateRetries = rateRetries + 1
+									if rateRetries <= 3 then
+										task.wait(rl)
+										retryPass = true
+									end
+									break
+								elseif nr == "TIMEOUT" then
+									for _, id in ipairs(payloadIds) do
+										itemSkipUntil["fuse:" .. id] = os.clock() + 5
+									end
+									logAction("Fuse", "กลายพันธุ์ " .. tostring(cName) .. " หมดเวลา (TIMEOUT)", false)
+								elseif not onPad and (Helpers.MutateState.IsMachineProximity(nr) or Helpers.MutateState.IsGenericReject(nr)) then
+									return fusedHere, "NEED_MACHINE"
+								elseif nr:find("MAXMUTATION") or nr:find("ALREADYMAX") or nr:find("ALREADYMUTATED") then
+									for _, id in ipairs(payloadIds) do
+										if isCoachGroup then
+											itemSkipUntil["fuse:" .. id] = os.clock() + 15
+										else
+											permSkipItems["fuse:" .. id] = true
+										end
+									end
+									logAction("Fuse", tostring(cName) .. " ถึงระดับกลายพันธุ์สูงสุดแล้ว", false)
+								else
+									for _, id in ipairs(payloadIds) do
+										itemSkipUntil["fuse:" .. id] = os.clock() + 6
+									end
+									logAction("Fuse", "กลายพันธุ์ " .. tostring(cName) .. " พลาด: " .. tostring(failFuse or "REJECTED"), false)
+								end
+							end
+						end
+					end
+
+					if passFused == 0 and not retryPass then
+						break
+					end
+					task.wait(0.25)
+				end
+
+				return fusedHere, "DONE"
 			end
-		end
 
-		if #triosToFuse == 0 then return end
-		lastFuse = now
-
-		local okVisit, fusedTotal = Helpers.VisitMutateMachine(function()
-			local count = 0
-			for _, trio in ipairs(triosToFuse) do
-				if not (Core._alive and Core.Flags.AutoFuse) then break end
-				local idA = trio.itemA.Id
-				local idB = trio.itemB.Id
-				local idC = trio.itemC.Id
-				local cName = trio.charName
-
-				local okFuse, resFuse = Net.Invoke(Net.Paths.MutateFuse, { idA, idB, idC })
-				local sFuse, rFuse = isRemoteOk(resFuse)
-				if okFuse and sFuse then
-					count = count + 1
-					local mutResult = (type(resFuse) == "table" and ((resFuse.Coach and resFuse.Coach.Mutation) or (resFuse.Character and resFuse.Character.Mutation))) or "สำเร็จ"
-					logAction("Fuse", string.format("กลายพันธุ์ %s สำเร็จ! (%s)", tostring(cName), tostring(mutResult)), true)
-					task.wait(rl)
-				else
-					local failReason = rFuse or "REJECTED"
-					if failReason == "MAX_MUTATION" then
-						permSkipItems["fuse:" .. idA] = true
-						permSkipItems["fuse:" .. idB] = true
-						permSkipItems["fuse:" .. idC] = true
-						logAction("Fuse", cName .. " ถึงระดับกลายพันธุ์สูงสุดแล้ว", false)
-					else
-						itemSkipUntil["fuse:" .. idA] = os.clock() + 6
-						itemSkipUntil["fuse:" .. idB] = os.clock() + 6
-						itemSkipUntil["fuse:" .. idC] = os.clock() + 6
-						logAction("Fuse", "กลายพันธุ์ " .. tostring(cName) .. " พลาด: " .. tostring(failReason), false)
+			local atMachine = Helpers.IsAtMutateMachine and Helpers.IsAtMutateMachine() or false
+			if Helpers.MutateState.requiresPad == true and not atMachine and Helpers.VisitMutateMachine then
+				local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+					local c = runFusePasses(true)
+					return c or 0
+				end, ignoreBusy == true)
+				if okVisit and type(visitCount) == "number" then
+					totalFusedOverall = totalFusedOverall + visitCount
+				end
+			else
+				local directCount, directStatus = runFusePasses(atMachine)
+				totalFusedOverall = totalFusedOverall + (directCount or 0)
+				if directStatus == "NEED_MACHINE" and not atMachine and Helpers.VisitMutateMachine then
+					local okVisit, visitCount = Helpers.VisitMutateMachine(function()
+						local c = runFusePasses(true)
+						return c or 0
+					end, ignoreBusy == true)
+					if okVisit and type(visitCount) == "number" then
+						totalFusedOverall = totalFusedOverall + visitCount
+						if visitCount > 0 then
+							Helpers.MutateState.requiresPad = true
+						end
 					end
 				end
 			end
-			return count
 		end)
 
-		if okVisit and type(fusedTotal) == "number" and fusedTotal > 0 then
-			logAction("Fuse", string.format("กลายพันธุ์สำเร็จทั้งหมด %d ชุด (หมดตัว)", fusedTotal), true)
+		Helpers.MutateState.fuseRunning = false
+		if not okAllRun then
+			warn("[Kuy] autoFuseStep: " .. tostring(errAllRun))
+		end
+
+		if totalFusedOverall > 0 then
+			logAction("Fuse", string.format("กลายพันธุ์สำเร็จทั้งหมด %d ชุด", totalFusedOverall), true)
 			if autoEquipBestStep then
 				task.spawn(function()
 					task.wait(0.5)
@@ -4910,7 +5960,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				end)
 			end
 		end
+		return totalFusedOverall
 	end
+	Helpers.AutoFuseStep = autoFuseStep
 
 	openReadyPlacedPacks = function()
 		local now = os.clock()
@@ -5017,6 +6069,8 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		if isBaseFull() then return false, "BASE_FULL" end
 		if isPlacingPacks then return false end
 		isPlacingPacks = true
+		local prevBusy = Core.Busy
+		Core.Busy = true
 
 		local okRun, ret = pcall(function()
 			-- รอให้แพ็กที่เพิ่งได้รับซิงก์เข้ากระเป๋าสักครู่
@@ -5055,10 +6109,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			local char = LocalPlayer.Character
 			local hrp = Helpers.GetRoot()
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			local origCF = hrp and hrp.CFrame
 			local wasTraining = LocalPlayer:GetAttribute(TRAINING_ATTR) ~= nil
 
-			-- วาร์ปตัวละครเข้าสู่ใจกลาง AnimeArea ชั่วคราว เพื่อให้ผ่านการตรวจ IsPlayerInOwnedPlot ของเซิร์ฟเวอร์
+			-- เดินเข้าสู่พื้นที่ AnimeArea ด้วย MoveTo (ไม่เทเลพอร์ต กัน MovementGrace และไม่ชนกับลูปขโมย)
 			if area and area:IsA("BasePart") and hrp then
 				local areaCenter = area.Position + Vector3.new(0, 3.5, 0)
 				if (hrp.Position - area.Position).Magnitude > (area.Size.X * 0.45) then
@@ -5066,8 +6119,10 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 						pcall(Helpers.LeaveTreadmill)
 						task.wait(0.1)
 					end
-					Helpers.Teleport(CFrame.new(areaCenter))
-					task.wait(0.2)
+					Helpers.MoveTo(areaCenter, function()
+						return not Core._alive or not Core.Flags.AutoPlacePacks or Helpers.IsCarrying()
+					end, { precise = true, arriveDist = 6, evadeEnemies = false })
+					task.wait(0.15)
 				end
 			end
 
@@ -5232,22 +6287,18 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				task.wait(0.15)
 			end
 
-			-- ปลดการถือ Tool เมื่อวางเสร็จสิ้นทั้งหมด
+			-- ปลดการถือ Tool เมื่อวางเสร็จสิ้นทั้งหมด (ไม่วาปกลับ origCF)
 			char = LocalPlayer.Character
 			hum = char and char:FindFirstChildOfClass("Humanoid")
-			hrp = Helpers.GetRoot()
 			if hum then pcall(function() hum:UnequipTools() end) end
 
-			-- วาร์ปตัวละครกลับตำแหน่งเดิม และขึ้นลู่วิ่งหากเดิมกำลังฝึกซ้อมอยู่
-			if origCF and hrp and Helpers.IsAlive() and not Helpers.IsCarrying() then
-				Helpers.Teleport(origCF)
-				task.wait(0.15)
-				if wasTraining and Core.Flags.AutoEnter and enterTreadmill then
-					task.spawn(function()
-						task.wait(0.3)
+			if wasTraining and Core.Flags.AutoEnter and not Core.Flags.AutoSteal and enterTreadmill and Helpers.IsAlive() and not Helpers.IsCarrying() then
+				task.spawn(function()
+					task.wait(0.3)
+					if not Core.Busy and not Core.Flags.AutoSteal then
 						pcall(enterTreadmill)
-					end)
-				end
+					end
+				end)
 			end
 
 			if noSpace then
@@ -5259,6 +6310,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			return true
 		end)
 
+		if not prevBusy then
+			Core.Busy = false
+		end
 		isPlacingPacks = false
 		return okRun and ret
 	end
@@ -5280,13 +6334,10 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	end
 
 	function Loops.PlacePacks()
+		isPlacingPacks = false
 		Core:Loop("placePacks", "AutoPlacePacks", 1.5, function()
-			if Helpers.IsCarrying() then return end
-			local hrp = Helpers.GetRoot()
-			local bPos = Helpers.GetPlotSpawnPos()
-			local atBase = hrp and bPos and (hrp.Position - bPos).Magnitude <= 50
-			-- หากเปิด AutoSteal อนุญาตให้ทำงานเฉพาะตอนตัวละครพัก/ฝึกซ้อมอยู่ที่ฐานเท่านั้น เพื่อไม่ให้ขัดจังหวะการวิ่งขโมย
-			if Core.Flags.AutoSteal and not atBase then return end
+			-- ห้ามรันซ้อนขณะ AutoSteal เปิดอยู่หรือ Core.Busy ถูกล็อก (เมื่อเปิด AutoSteal ระบบ runBaseMaintenance จะสั่งวางให้ตามคิว)
+			if Core.Busy or Helpers.IsCarrying() or Core.Flags.AutoSteal then return end
 			if not isBaseFull() and getPacksToPlace and #getPacksToPlace() > 0 then
 				if placePacksInBase then placePacksInBase() end
 			end
@@ -5308,23 +6359,113 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		Core:Loop("sellUnits", "AutoSellUnits", 0.8, autoSellUnitsStep)
 	end
 
+	function Helpers.ScheduleRealtimeMutate(wantMerge, wantFuse)
+		if not Core._alive then return end
+		if wantMerge and Core.Flags.AutoMerge and not Helpers.MutateState.mergeScheduled then
+			Helpers.MutateState.mergeScheduled = true
+			task.delay(0.25, function()
+				Helpers.MutateState.mergeScheduled = false
+				if not (Core._alive and Core.Flags.AutoMerge) then return end
+				if Helpers.IsCarrying() or Core.Busy then return end
+				if autoMergeStep then
+					pcall(autoMergeStep, false)
+				end
+			end)
+		end
+		if wantFuse and Core.Flags.AutoFuse and not Helpers.MutateState.fuseScheduled then
+			Helpers.MutateState.fuseScheduled = true
+			task.delay(0.3, function()
+				Helpers.MutateState.fuseScheduled = false
+				if not (Core._alive and Core.Flags.AutoFuse) then return end
+				if Helpers.IsCarrying() or Core.Busy then return end
+				if autoFuseStep then
+					pcall(autoFuseStep, false)
+				end
+			end)
+		end
+	end
+
+	function Helpers.EnsureMutateRealtime()
+		if Helpers.MutateState.realtimeBound then return end
+		Helpers.MutateState.realtimeBound = true
+
+		-- 1. ดักการเปลี่ยนแปลง Inventory และ Coaches แบบเรียลไทม์ผ่าน PlayerData.Subscribe (ตรงกับ MutateMachine)
+		local pd = getPlayerData()
+		if pd and pd.Subscribe then
+			local cc = getCoachConfig()
+			local coachKey = (cc and cc.DataKey) or "Coaches"
+
+			local okInv, subInv = pcall(pd.Subscribe, "Inventory", function()
+				Helpers.ScheduleRealtimeMutate(true, true)
+			end)
+			if okInv and type(subInv) == "table" and type(subInv.Disconnect) == "function" then
+				table.insert(Core._cleanups, function() pcall(subInv.Disconnect) end)
+			end
+
+			local okCoach, subCoach = pcall(pd.Subscribe, coachKey, function()
+				Helpers.ScheduleRealtimeMutate(false, true)
+			end)
+			if okCoach and type(subCoach) == "table" and type(subCoach.Disconnect) == "function" then
+				table.insert(Core._cleanups, function() pcall(subCoach.Disconnect) end)
+			end
+		end
+
+		-- 2. ดัก Tool ใหม่ใน Backpack แบบเรียลไทม์ (รองรับการรีสปอนของ Backpack)
+		local function bindBackpack(bp)
+			if not bp then return end
+			Core:Connect(bp.ChildAdded, function(ch)
+				if ch:IsA("Tool") and ch:GetAttribute("PackId") ~= nil then
+					Helpers.ScheduleRealtimeMutate(true, true)
+				end
+			end)
+		end
+		bindBackpack(LocalPlayer:FindFirstChild("Backpack"))
+		Core:Connect(LocalPlayer.ChildAdded, function(ch)
+			if ch:IsA("Backpack") then
+				bindBackpack(ch)
+			end
+		end)
+
+		-- 3. ล้างแคชแท่น MutateMachine อัตโนมัติหากแมพมีการโหลด/ย้ายเครื่องใหม่
+		local function checkPadRefresh(ch)
+			local mc = getMutateConfig()
+			local rootName = (mc and mc.Machine and type(mc.Machine.Pad) == "table" and mc.Machine.Pad[1]) or "Machine2"
+			if ch.Name == rootName or ch.Name == "MutationMachine" or ch.Name == "MergeMachine" then
+				Helpers.mutatePadCache = nil
+			end
+		end
+		Core:Connect(Workspace.ChildAdded, checkPadRefresh)
+		Core:Connect(Workspace.ChildRemoved, checkPadRefresh)
+	end
+
 	function Loops.Merge()
-		task.spawn(function() autoMergeStep(true) end)
-		Core:Loop("mergePacks", "AutoMerge", 3.0, function()
+		Helpers.EnsureMutateRealtime()
+		task.spawn(function()
+			if Core._alive and Core.Flags.AutoMerge and not Helpers.IsCarrying() and not Core.Busy and autoMergeStep then
+				pcall(autoMergeStep, false)
+			end
+		end)
+		Core:Loop("mergePacks", "AutoMerge", 2.0, function()
 			if Helpers.IsCarrying() then return end
-			local hrp = Helpers.GetRoot()
-			local bPos = Helpers.GetPlotSpawnPos()
-			local atBase = hrp and bPos and (hrp.Position - bPos).Magnitude <= 50
-			-- อนุญาตให้รวมแพ็คได้ทั้งตอนไม่ติด Busy หรือตอนที่ตัวละครกำลังพัก/ฝึกซ้อมอยู่ที่ฐาน
-			if (not Core.Busy or atBase) and autoMergeStep then
-				autoMergeStep(true)
+			if not Core.Busy and autoMergeStep then
+				autoMergeStep(false)
 			end
 		end)
 	end
 
 	function Loops.Fuse()
-		task.spawn(autoFuseStep)
-		Core:Loop("fuseUnits", "AutoFuse", 1.8, autoFuseStep)
+		Helpers.EnsureMutateRealtime()
+		task.spawn(function()
+			if Core._alive and Core.Flags.AutoFuse and not Helpers.IsCarrying() and not Core.Busy and autoFuseStep then
+				pcall(autoFuseStep, false)
+			end
+		end)
+		Core:Loop("fuseUnits", "AutoFuse", 1.8, function()
+			if Helpers.IsCarrying() then return end
+			if not Core.Busy and autoFuseStep then
+				autoFuseStep(false)
+			end
+		end)
 	end
 
 	-----------------------------------------------------------------
@@ -5662,6 +6803,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 	-- 6. UI CREATION (KUYKUY HUB UI FRAMEWORK - DARK PURPLE BLUEPRINT)
 	-----------------------------------------------------------------
 	local function buildUI()
+		Core.Flags.UI = true
 		local UIColors = {
 			Background    = Color3.fromRGB(18, 15, 26),
 			Sidebar       = Color3.fromRGB(13, 11, 20),
@@ -6021,7 +7163,7 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			knobCorner.CornerRadius = UDim.new(1, 0)
 			knobCorner.Parent = knob
 
-			local state = initialValue
+			local state = (initialValue == true)
 			local lastClick = 0
 			local function onToggle()
 				local now = tick()
@@ -6032,9 +7174,14 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 				local targetColor = state and UIColors.Accent or UIColors.Sidebar
 				TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
 				TweenService:Create(toggleTrack, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
-				logAction("สวิตช์", (state and "เปิด: " or "ปิด: ") .. title, state)
-				if callback then callback(state) end
-				if Config and Config.Save then Config.Save() end
+				pcall(logAction, "สวิตช์", (state and "เปิด: " or "ปิด: ") .. title, state)
+				if callback then
+					local cbOk, cbErr = pcall(callback, state)
+					if not cbOk then
+						warn("[Kuy] toggle '" .. tostring(title) .. "': " .. tostring(cbErr))
+					end
+				end
+				if Config and Config.Save then pcall(Config.Save) end
 			end
 
 			toggleTrack.MouseButton1Click:Connect(onToggle)
@@ -6457,23 +7604,16 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 
 		CreateToggle(pFarm, "ขโมยแพ็คอัตโนมัติ (Auto Steal Packs)", Core.Flags.AutoSteal, function(v)
 			Core.Flags.AutoSteal = v
-			if v then Loops.Steal() end
-		end)
-
-		CreateToggle(pFarm, "ขโมยเฉพาะด่านบอสเร็วสุดที่วิ่งทัน (Target Fastest Boss Only)", Core.Flags.TargetFastestOnly, function(v)
-			Core.Flags.TargetFastestOnly = v
-			StealState.lastOrderSig = ""
-		end)
-
-		CreateToggle(pFarm, "จำกัดรอบละ 4 ใบที่ดีที่สุด (Quota 4 Best Packs/Round)", Core.Flags.MaxStageStealPacks == 4, function(v)
-			Core.Flags.MaxStageStealPacks = v and 4 or 999
-			StealState.stageStealCount = 0
-			table.clear(StealState.stageStealCounts)
-		end)
-
-		CreateToggle(pFarm, "ขโมยเฉพาะด่านที่วิ่งหนีบอสทัน (Outrun Boss Only)", Core.Flags.OutrunOnly, function(v)
-			Core.Flags.OutrunOnly = v
-			StealState.lastOrderSig = ""
+			if v then
+				Loops.Steal()
+			else
+				Core:StopLoop("steal")
+				Helpers.StopMove()
+				if StealState.holdBusy then
+					StealState.holdBusy = false
+					Core:ReleaseBusy("steal")
+				end
+			end
 		end)
 
 		CreateToggle(pFarm, "ลบอนิเมชชั่นโดนตี/ไม่ล้ม (Anti-Ragdoll)", Core.Flags.AntiRagdollMode, function(v)
@@ -6584,7 +7724,10 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end
 		local stageOptions = buildStageOptions()
 		local _, syncStageDropdown = CreateMultiSelectDropdown(pFarm, "ด่านที่ต้องการขโมย (Stages)", stageOptions, Core.Flags, function()
-			-- Core.Flags updated in-place by selectedMap
+			StealState.lastOrderSig = ""
+			StealState.lastLockedStage = nil
+			StealState.lastNoPackLogTime = 0
+			if Core.Flags.AutoSteal and not Core:IsLoopRunning("steal") then Loops.Steal() end
 		end)
 
 		-- Pack Rarities Multi-Select Dropdown
@@ -6607,7 +7750,9 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			{ value = "Rarity_Secret",     label = "Secret (ระดับพิเศษ)",    short = "Sec" },
 		}
 		local _, syncRarityDropdown = CreateMultiSelectDropdown(pFarm, "เกรดของแพ็คที่ต้องการขโมย (All Grades)", rarityOptions, Core.Flags, function()
-			-- Core.Flags updated in-place by selectedMap
+			StealState.lastOrderSig = ""
+			StealState.lastNoPackLogTime = 0
+			if Core.Flags.AutoSteal and not Core:IsLoopRunning("steal") then Loops.Steal() end
 		end)
 
 		Core:Loop("dynamicUISync", "UI", 5.0, function()
@@ -6629,12 +7774,17 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 
 		CreateToggle(pPack, "เปิดแพ็กในกระเป๋าอัตโนมัติ (Auto Open)", Core.Flags.AutoOpenPacks, function(v)
 			Core.Flags.AutoOpenPacks = v
-			if v then Loops.OpenPacks() end
+			if v then Loops.OpenPacks() else Core:StopLoop("openPacks") end
 		end)
 
 		CreateToggle(pPack, "วางแพ็คในฐานอัตโนมัติ (Auto Place Packs)", Core.Flags.AutoPlacePacks, function(v)
 			Core.Flags.AutoPlacePacks = v
-			if v then Loops.PlacePacks() end
+			if v then
+				Loops.PlacePacks()
+			else
+				Core:StopLoop("placePacks")
+				isPlacingPacks = false
+			end
 		end)
 
 		CreateToggle(pPack, "วางตัวดีสุดลงฐานอัตโนมัติ (EquipBest)", Core.Flags.AutoEquipBest, function(v)
@@ -6877,6 +8027,16 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 		end)
 
 		Core:Loop("status", "UI", 0.5, function()
+			-- Loop Watchdog: หากสวิตช์เปิดค้างไว้ใน UI แต่เธรดลูปหยุดไป ให้ปลุกทำงานอัตโนมัติ
+			if Core.Flags.AutoSteal and not Core:IsLoopRunning("steal") then
+				Loops.Steal()
+			end
+			if Core.Flags.AutoPlacePacks and not Core:IsLoopRunning("placePacks") then
+				Loops.PlacePacks()
+			end
+			if Core.Flags.AutoOpenPacks and not Core:IsLoopRunning("openPacks") then
+				Loops.OpenPacks()
+			end
 			if Helpers.IsDungeonPlace() then
 				local stText = "[⚔️ DUNGEON ACTIVE] กำลังต่อสู้อัตโนมัติในดันเจี้ยน"
 				StatusText.Text = "STATUS: " .. stText
