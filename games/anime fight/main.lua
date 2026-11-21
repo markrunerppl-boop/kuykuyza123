@@ -72,6 +72,7 @@ local function main()
 		File = string.format("kuykuy_hub/animefight_%s.json", tostring(PlaceId)),
 		Defaults = {
 			AutoBuyChest = false,
+			AutoBuyFreeChest = true,
 			MinPrice = 0,
 			Tiers = { Normal = true },
 			TeleportToBelt = true,
@@ -484,15 +485,16 @@ local function main()
 	end
 
 	function Helpers.ChestPrice(chest): number
-		local attr = tonumber(chest:GetAttribute("Price")) or 0
+		local attr = tonumber(chest:GetAttribute("Price"))
+		if attr ~= nil then return attr end
 		local cfg = Helpers.GetConfig()
 		local tier = tonumber(chest:GetAttribute("Tier"))
 		if cfg and tier and type(cfg.ChestPrice) == "function" then
 			local mut = chest:GetAttribute("Mutation")
 			local ok, p = pcall(cfg.ChestPrice, tier, (type(mut) == "string" and mut ~= "") and mut or nil)
-			if ok and tonumber(p) then return math.max(attr, tonumber(p)) end
+			if ok and tonumber(p) then return tonumber(p) end
 		end
-		return attr
+		return 0
 	end
 
 	-- BeltAnchor (Part + BUY prompt) pairs with chest model by XZ position
@@ -647,17 +649,22 @@ local function main()
 		local minPrice = tonumber(Core.Flags.MinPrice) or 0
 		local tiers = Core.Flags.Tiers or {}
 		local cash = Helpers.GetCash()
+		local buyFree = Core.Flags.AutoBuyFreeChest == true
 		local list = {}
 		for _, chest in ipairs(folder:GetChildren()) do
 			if chest:IsA("Model") and (Loops.attempts[chest] or 0) < 3 then
 				local price = Helpers.ChestPrice(chest)
 				local tier = Helpers.ChestTier(chest)
-				if tiers[tier] == true and price >= minPrice and price <= cash then
+				local isFree = price == 0 and buyFree
+				if isFree or (tiers[tier] == true and price >= minPrice and price <= cash) then
 					table.insert(list, { chest = chest, price = price, tier = tier })
 				end
 			end
 		end
-		table.sort(list, function(a, b) return a.price > b.price end)
+		table.sort(list, function(a, b)
+			if (a.price == 0) ~= (b.price == 0) then return a.price == 0 end
+			return a.price > b.price
+		end)
 		return list, folder
 	end
 
@@ -692,7 +699,8 @@ local function main()
 		local tierNum = tonumber(chest:GetAttribute("Tier"))
 		local mutAttr = chest:GetAttribute("Mutation")
 		local mutArg = (type(mutAttr) == "string" and mutAttr ~= "") and mutAttr or nil
-		local label = string.format("%s %s (¥%s)", entry.tier ~= "Normal" and entry.tier or "", tostring(chest:GetAttribute("ChestName") or chest.Name), Helpers.Format(entry.price))
+		local priceLabel = entry.price == 0 and "FREE" or ("¥" .. Helpers.Format(entry.price))
+		local label = string.format("%s %s (%s)", entry.tier ~= "Normal" and entry.tier or "", tostring(chest:GetAttribute("ChestName") or chest.Name), priceLabel)
 
 		local t0, ok, fired = os.clock(), false, false
 		local lastFire = 0
@@ -1318,6 +1326,30 @@ local function main()
 		end
 	end
 
+	function Loops.AutoBuyFreeTick()
+		if Core.Flags.AutoBuyChest then return end
+		if Core.Busy or os.clock() < Loops.backoffUntil then return end
+		if not Helpers.IsAlive() then return end
+		local plot = Helpers.GetPlot()
+		local folder = plot and plot:FindFirstChild("ActiveChests")
+		if not folder then return end
+		for _, chest in ipairs(folder:GetChildren()) do
+			if chest:IsA("Model") and (Loops.attempts[chest] or 0) < 3 and Helpers.ChestPrice(chest) == 0 then
+				Core.Busy = true
+				local ok, err = pcall(Loops.BuyChest, { chest = chest, price = 0, tier = Helpers.ChestTier(chest) }, folder)
+				Core.Busy = false
+				if not ok then logAction("ERR", err, false) end
+				break
+			end
+		end
+	end
+
+	function Loops.StartAutoBuyFree()
+		if Core.Flags.AutoBuyFreeChest then
+			Core:Loop("AutoBuyFreeChest", "AutoBuyFreeChest", 0.35, Loops.AutoBuyFreeTick)
+		end
+	end
+
 	-- Notify & InventoryChanged listeners
 	task.spawn(function()
 		local ev = ReplicatedStorage:WaitForChild("Events", 10)
@@ -1745,6 +1777,10 @@ local function main()
 		logAction("CFG", "Auto Buy Chest: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoBuy() end
 	end)
+	UI.Toggle("รับกล่องฟรีช่วงอีเว้นอัตโนมัติ (Free Chest)", "AutoBuyFreeChest", function(on)
+		logAction("CFG", "Auto Buy Free Chest: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoBuyFree() end
+	end)
 	UI.AmountInput("ราคาขั้นต่ำ (¥)", "MinPrice")
 	UI.Section("ระดับกล่อง (เลือกได้หลายอัน)")
 	UI.TierMultiSelect()
@@ -1938,6 +1974,7 @@ local function main()
 	end)
 
 	Loops.StartAutoBuy()
+	Loops.StartAutoBuyFree()
 	Loops.StartAutoOpen()
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
