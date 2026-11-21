@@ -2742,8 +2742,14 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			end
 			local locked = char:GetAttribute("TrapImmobilized") == true or (not Core.Flags.AntiRagdollMode and char:GetAttribute("Ragdolled") == true)
 			if not locked then
-				-- ให้ SpeedController ของเกมคุม WalkSpeed ตามจริง (ไม่บังคับเขียนทับทุกเฟรม ป้องกันขัดกับ CarrySpeed/SlowMode)
-				if hum.WalkSpeed <= 0 then
+				local carryEntry = Helpers.GetCarryingEntry and Helpers.GetCarryingEntry() or nil
+				local isHeavyCarry = type(carryEntry) == "table" and carryEntry.Heavy == true
+				if not isHeavyCarry then
+					local safeWs = Helpers.GetMoveSpeed()
+					if hum.WalkSpeed < (safeWs - 1) or hum.WalkSpeed <= 0 then
+						hum.WalkSpeed = safeWs
+					end
+				elseif hum.WalkSpeed <= 0 then
 					hum.WalkSpeed = 16
 				end
 				if hum.Sit then hum.Sit = false end
