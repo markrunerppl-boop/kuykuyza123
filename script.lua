@@ -144,6 +144,16 @@ local SupportedGames = {
         Category = "Anime / Idle",
         Path = "anime fight/main.lua"
     },
+    [91808906335958] = {
+        Name = "การต่อสู้อัตโนมัติของอนิเมะ (Anime Fight - Boss Battles)",
+        Category = "Anime / Idle",
+        Path = "anime fight/main.lua"
+    },
+    [72834116419513] = {
+        Name = "การต่อสู้อัตโนมัติของอนิเมะ (Anime Fight - Raids)",
+        Category = "Anime / Idle",
+        Path = "anime fight/main.lua"
+    },
 }
 
 -- ฐานข้อมูลสำรองตาม GameId (Universe ID) เผื่อกรณีแมพมีห้องย่อย/ดันเจี้ยน/วาป
