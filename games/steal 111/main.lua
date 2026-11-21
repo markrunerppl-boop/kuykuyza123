@@ -2567,12 +2567,32 @@ Core.Flags.DungeonFloorLoop = true    -- โหมดรีสตาร์ทด
 			task.spawn(bindAntiRagdollChar, LocalPlayer.Character)
 		end
 		Core:Connect(LocalPlayer.CharacterAdded, bindAntiRagdollChar)
+		local cachedSafeWs, nextWsSample = 16, 0
 		Core:Connect(RunService.Heartbeat, function()
-			if not Core.Flags.AntiRagdollMode then return end
 			local char = LocalPlayer.Character
 			if not char then return end
 			local hum = char:FindFirstChildOfClass("Humanoid")
 			if not hum or hum.Health <= 0 then return end
+
+			-- ป้องกัน SpeedController ของเกมรีเซ็ต WalkSpeed ลงเป็น 16 ระหว่างหยุด/ออกตัว
+			if LocalPlayer:GetAttribute(TRAINING_ATTR) == nil
+				and char:GetAttribute("TrapImmobilized") ~= true
+				and char:GetAttribute("Ragdolled") ~= true then
+				local carryEntry = Helpers.GetCarryingEntry and Helpers.GetCarryingEntry() or nil
+				local isHeavyCarry = type(carryEntry) == "table" and carryEntry.Heavy == true
+				if not isHeavyCarry and (Core.Flags.AutoSteal or Core.Busy or hum.MoveDirection.Magnitude > 0.05) then
+					local now = os.clock()
+					if now >= nextWsSample then
+						nextWsSample = now + 0.25
+						cachedSafeWs = Helpers.GetMoveSpeed and Helpers.GetMoveSpeed() or 16
+					end
+					if hum.WalkSpeed < (cachedSafeWs - 1) or hum.WalkSpeed <= 0 then
+						hum.WalkSpeed = cachedSafeWs
+					end
+				end
+			end
+
+			if not Core.Flags.AntiRagdollMode then return end
 			if char:GetAttribute("Ragdolled") == true or hum.PlatformStand or hum.Sit then
 				Helpers.RecoverFromHit(char)
 			else
