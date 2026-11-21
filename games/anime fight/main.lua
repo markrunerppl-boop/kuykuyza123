@@ -85,6 +85,21 @@ local function main()
 			DungeonId = "ShrineGrounds",
 			DungeonStartFloor = 1,
 			DungeonEndFloor = 10,
+			AutoTravelRaid = false,
+			AutoRaid = false,
+			RaidDifficulty = "Easy",
+			RaidPartySize = 4,
+			RaidFriendsOnly = false,
+			RaidStartNow = true,
+			AutoRaidReplay = true,
+			AutoRaidReturn = false,
+			RaidEndWave = 0,
+			AutoBuyRaidShop = false,
+			RaidShopTarget = "All",
+			AutoTravelPvp = false,
+			AutoPvp = false,
+			AutoPvpReplay = true,
+			AutoBuyPvpShop = false,
 		},
 	}
 
@@ -179,6 +194,11 @@ local function main()
 		_chestTemplates = {},
 		DungeonList = {},
 		TierList = { "Normal" },
+		RaidDifficulties = {},
+		RaidShopItems = {},
+		RaidQueueState = nil,
+		PvpShopItems = {},
+		PvpMeta = { hasQueue = false, hasShop = false, hasConfig = false },
 		SkillTree = {},
 		_skillSynced = false,
 	}
@@ -264,6 +284,134 @@ local function main()
 
 	function Helpers.GetUpgradeDefs()
 		return Helpers.RequireModule("UpgradeDefinitions", "Modules", "UI", "UpgradeTreeController", "UpgradeDefinitions")
+	end
+
+	function Helpers.GetRaidConfig()
+		return Helpers.RequireModule("RaidConfig", "Modules", "Gameplay", "RaidConfig")
+	end
+
+	function Helpers.GetProfileConfig()
+		return Helpers.RequireModule("ProfileConfig", "Modules", "Gameplay", "ProfileConfig")
+	end
+
+	function Helpers.GetItemConfig()
+		return Helpers.RequireModule("ItemConfig", "Modules", "Gameplay", "ItemConfig")
+	end
+
+	function Helpers.GetPvpConfig()
+		local mods = ReplicatedStorage:FindFirstChild("Modules")
+		local gp = mods and mods:FindFirstChild("Gameplay")
+		if gp then
+			for _, m in ipairs(gp:GetChildren()) do
+				if m:IsA("ModuleScript") then
+					local lower = m.Name:lower()
+					if lower:find("pvp", 1, true) then
+						return Helpers.RequireModule(m.Name, "Modules", "Gameplay", m.Name)
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function listEqual(a, b)
+		if #a ~= #b then return false end
+		for i, v in ipairs(a) do
+			if not b[i] or b[i].id ~= v.id or b[i].name ~= v.name then return false end
+		end
+		return true
+	end
+
+	function Helpers.RefreshRaids(): boolean
+		local cfg = Helpers.GetRaidConfig()
+		local diffs, seenD = {}, {}
+		if cfg and type(cfg.Difficulties) == "table" then
+			for _, d in ipairs(cfg.Difficulties) do
+				if type(d) == "table" and d.Id and not seenD[d.Id] then
+					seenD[d.Id] = true
+					table.insert(diffs, { id = tostring(d.Id), name = tostring(d.Name or d.Id), minWorld = tonumber(d.MinWorld) or 1 })
+				end
+			end
+		end
+		if #diffs == 0 then
+			diffs = {
+				{ id = "Easy", name = "EASY", minWorld = 2 },
+				{ id = "Hard", name = "HARD", minWorld = 4 },
+				{ id = "Impossible", name = "IMPOSSIBLE", minWorld = 6 },
+			}
+		end
+
+		local shopOpts, seenS = { { id = "All", name = "ทั้งหมด (All)" } }, { All = true }
+		if cfg and type(cfg.Merchant) == "table" then
+			for _, item in ipairs(cfg.Merchant) do
+				if type(item) == "table" and item.id and not seenS[item.id] then
+					seenS[item.id] = true
+					table.insert(shopOpts, {
+						id = tostring(item.id),
+						name = string.format("%s (%s)", tostring(item.ref or item.id), Helpers.Format(tonumber(item.price) or 0)),
+						price = tonumber(item.price) or 0,
+					})
+				end
+			end
+		end
+
+		local changed = not listEqual(diffs, Helpers.RaidDifficulties) or not listEqual(shopOpts, Helpers.RaidShopItems)
+		Helpers.RaidDifficulties = diffs
+		Helpers.RaidShopItems = shopOpts
+		return changed
+	end
+
+	function Helpers.GetRaidDifficulties()
+		if #Helpers.RaidDifficulties == 0 then Helpers.RefreshRaids() end
+		return Helpers.RaidDifficulties
+	end
+
+	function Helpers.GetRaidShopOptions()
+		if #Helpers.RaidShopItems == 0 then Helpers.RefreshRaids() end
+		return Helpers.RaidShopItems
+	end
+
+	function Helpers.RefreshPvp(): boolean
+		local items, seen = {}, {}
+		local itemCfg = Helpers.GetItemConfig()
+		if itemCfg and type(itemCfg.Items) == "table" then
+			for _, it in ipairs(itemCfg.Items) do
+				if type(it) == "table" and it.Source == "PvpShop" and it.Id and not seen[it.Id] then
+					seen[it.Id] = true
+					table.insert(items, { id = tostring(it.Id), name = tostring(it.Name or it.Id) })
+				end
+			end
+		end
+		local pvpCfg = Helpers.GetPvpConfig()
+		local hasQueue = Net.Remote("PvpQueue") ~= nil or Net.Remote("PvpMatch") ~= nil or Net.Remote("PvpRequest") ~= nil
+		local hasShop = Net.Remote("PvpShop") ~= nil or Net.Remote("PvpMerchant") ~= nil
+		local hasConfig = pvpCfg ~= nil
+		local metaChanged = (Helpers.PvpMeta.hasQueue ~= hasQueue) or (Helpers.PvpMeta.hasShop ~= hasShop) or (Helpers.PvpMeta.hasConfig ~= hasConfig)
+		local changed = metaChanged or not listEqual(items, Helpers.PvpShopItems)
+		Helpers.PvpShopItems = items
+		Helpers.PvpMeta = { hasQueue = hasQueue, hasShop = hasShop, hasConfig = hasConfig }
+		return changed
+	end
+
+	function Helpers.TriggerAreaPrompt(areaName: string, promptName: string?): boolean
+		if not Helpers.IsAlive() then return false end
+		local root = Helpers.GetRoot()
+		local lobby = Workspace:FindFirstChild("Lobby")
+		local areas = lobby and lobby:FindFirstChild("Areas")
+		local area = areas and areas:FindFirstChild(areaName)
+		if not (root and area) then return false end
+		local prompt = promptName and area:FindFirstChild(promptName, true) or area:FindFirstChildWhichIsA("ProximityPrompt", true)
+		if not (prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled) then return false end
+		local targetPos = (prompt.Parent and prompt.Parent:IsA("BasePart")) and prompt.Parent.Position or area:GetPivot().Position
+		if (root.Position - targetPos).Magnitude > (prompt.MaxActivationDistance or 12) - 2 then
+			root.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+			task.wait(0.15)
+		end
+		if fireproximityprompt then
+			local ok = pcall(fireproximityprompt, prompt)
+			return ok
+		end
+		return false
 	end
 
 	function Helpers.GetRoot()
@@ -486,7 +634,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -702,7 +850,8 @@ local function main()
 	end
 
 	function Loops.AutoReplayTick()
-		if Core.Flags.AutoDungeon and LocalPlayer:GetAttribute("BattleKind") == "Dungeon" then return end
+		local bk = LocalPlayer:GetAttribute("BattleKind")
+		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and bk == "Raid") or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastReplayAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -735,7 +884,8 @@ local function main()
 	end
 
 	function Loops.AutoNextStageTick()
-		if Core.Flags.AutoDungeon and LocalPlayer:GetAttribute("BattleKind") == "Dungeon" then return end
+		local bk = LocalPlayer:GetAttribute("BattleKind")
+		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and bk == "Raid") or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastNextAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -817,6 +967,280 @@ local function main()
 	function Loops.StartAutoDungeon()
 		if Core.Flags.AutoDungeon then
 			Core:Loop("AutoDungeon", "AutoDungeon", 0.8, Loops.AutoDungeonTick)
+		end
+	end
+
+	function Loops.AutoTravelRaidTick()
+		if os.clock() - Loops.lastTravelAt < 5 then return end
+		local cfg = Helpers.GetRaidConfig()
+		local raidPlaceId = (cfg and tonumber(cfg.RaidPlaceId)) or 72834116419513
+		if PlaceId == raidPlaceId then return end
+		if LocalPlayer:GetAttribute("RaidLocked") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		Loops.lastTravelAt = os.clock()
+		if Helpers.TriggerAreaPrompt("Raids", "RaidTravelPrompt") then
+			logAction("RAID", "วาร์ปเข้าโซน Raid อัตโนมัติ", true)
+		end
+	end
+
+	function Loops.StartAutoTravelRaid()
+		if Core.Flags.AutoTravelRaid then
+			Core:Loop("AutoTravelRaid", "AutoTravelRaid", 1.5, Loops.AutoTravelRaidTick)
+		end
+	end
+
+	function Loops.ApplyRaidSetup(state)
+		local raidQueue = Net.Remote("RaidQueue")
+		if not (raidQueue and raidQueue:IsA("RemoteEvent") and type(state) == "table" and state.leader) then return end
+		local diff = tostring(Core.Flags.RaidDifficulty or "Easy")
+		local size = math.clamp(math.floor(tonumber(Core.Flags.RaidPartySize) or 4), 1, 4)
+		local friends = Core.Flags.RaidFriendsOnly == true
+		if state.difficulty ~= diff then
+			pcall(function() raidQueue:FireServer("Difficulty", diff) end)
+			task.wait(0.1)
+		end
+		if tonumber(state.size) ~= size then
+			pcall(function() raidQueue:FireServer("Size", size) end)
+			task.wait(0.1)
+		end
+		if (state.friendsOnly == true) ~= friends then
+			pcall(function() raidQueue:FireServer("Friends") end)
+			task.wait(0.1)
+		end
+		pcall(function() raidQueue:FireServer("Play") end)
+		logAction("RAID", string.format("ตั้งค่าคิว Raid (%s | %d คน) และกด Play", diff, size), true)
+	end
+
+	function Loops.AutoRaidTick()
+		if os.clock() - Loops.lastRaidAt < 2 then return end
+		local raidQueue = Net.Remote("RaidQueue")
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible and LocalPlayer:GetAttribute("BattleKind") == "Raid" then
+			Loops.lastRaidAt = os.clock()
+			if Core.Flags.AutoRaidReplay and raidQueue and raidQueue:IsA("RemoteEvent") then
+				pcall(function() raidQueue:FireServer("Again") end)
+				logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำ (Again)", true)
+			elseif Core.Flags.AutoRaidReturn and raidQueue and raidQueue:IsA("RemoteEvent") then
+				pcall(function() raidQueue:FireServer("Return") end)
+				logAction("RAID", "ออกจาก Raid กลับล็อบบี้ (Return)", true)
+			end
+			return
+		end
+
+		local endWave = math.floor(tonumber(Core.Flags.RaidEndWave) or 0)
+		if LocalPlayer:GetAttribute("InBattle") == true and LocalPlayer:GetAttribute("BattleKind") == "Raid" then
+			local floor = tonumber(LocalPlayer:GetAttribute("BattleFloor")) or 0
+			if endWave > 0 and floor > endWave then
+				Loops.lastRaidAt = os.clock()
+				if raidQueue and raidQueue:IsA("RemoteEvent") then
+					pcall(function() raidQueue:FireServer("Return") end)
+				else
+					local battleReq = Net.Remote("BattleRequest")
+					if battleReq then Net.Invoke(battleReq, "Quit") end
+				end
+				logAction("RAID", string.format("จบเวฟ %d -> ออกจาก Raid", endWave), true)
+			end
+			return
+		end
+
+		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		local qState = Helpers.RaidQueueState
+		if type(qState) == "table" and qState.leader then
+			if qState.state == "building" then
+				Loops.lastRaidAt = os.clock()
+				Loops.ApplyRaidSetup(qState)
+				return
+			elseif qState.state == "queued" then
+				if Core.Flags.RaidStartNow and raidQueue and raidQueue:IsA("RemoteEvent") then
+					Loops.lastRaidAt = os.clock()
+					pcall(function() raidQueue:FireServer("StartNow") end)
+					logAction("RAID", "กดเริ่ม Raid ทันที (StartNow)", true)
+				end
+				return
+			end
+		end
+
+		local lobby = Workspace:FindFirstChild("Lobby")
+		local queues = lobby and lobby:FindFirstChild("Queues")
+		if not (queues and Helpers.IsAlive()) then return end
+		local root = Helpers.GetRoot()
+		if not root then return end
+		for _, pad in ipairs(queues:GetChildren()) do
+			local blocked = pad:GetAttribute("Blocked") == true
+			local leaderId = pad:GetAttribute("LeaderId")
+			if not blocked or leaderId == LocalPlayer.UserId then
+				local hitbox = pad:FindFirstChild("Hitbox") or pad:FindFirstChildWhichIsA("BasePart")
+				if hitbox and hitbox:IsA("BasePart") then
+					Loops.lastRaidAt = os.clock()
+					root.CFrame = hitbox.CFrame + Vector3.new(0, 3, 0)
+					logAction("RAID", "เข้าแท่นคิว Raid: " .. pad.Name, true)
+					return
+				end
+			end
+		end
+	end
+
+	function Loops.StartAutoRaid()
+		if Core.Flags.AutoRaid then
+			Core:Loop("AutoRaid", "AutoRaid", 0.8, Loops.AutoRaidTick)
+		end
+	end
+
+	function Loops.AutoBuyRaidShopTick()
+		if os.clock() - Loops.lastRaidShopAt < 3 then return end
+		local raidShop = Net.Remote("RaidShop")
+		if not (raidShop and raidShop:IsA("RemoteFunction")) then return end
+		local coins = tonumber(LocalPlayer:GetAttribute("RaidCoins")) or 0
+		if coins <= 0 then return end
+		Loops.lastRaidShopAt = os.clock()
+		local okC, okRes, catalog = Net.Invoke(raidShop, "Catalog")
+		local items = (okC and okRes and type(catalog) == "table") and catalog or nil
+		if not items then
+			local cfg = Helpers.GetRaidConfig()
+			items = cfg and cfg.Merchant
+		end
+		if type(items) ~= "table" then return end
+		local target = tostring(Core.Flags.RaidShopTarget or "All")
+		for _, item in ipairs(items) do
+			if type(item) == "table" and item.id then
+				local matchTarget = (target == "All") or (tostring(item.id) == target)
+				local price = tonumber(item.price) or math.huge
+				local stock = item.stock or item.remaining
+				local inStock = (stock == nil) or (tonumber(stock) or 0) > 0
+				if matchTarget and inStock and coins >= price then
+					local okB, resB, errB = Net.Invoke(raidShop, "Buy", item.id, 1)
+					if okB and resB ~= false then
+						coins -= price
+						logAction("RAIDSHOP", string.format("ซื้อ %s (-%s Tokens)", tostring(item.ref or item.id), Helpers.Format(price)), true)
+					elseif errB then
+						logAction("RAIDSHOP", "ซื้อไม่สำเร็จ: " .. tostring(errB), false)
+					end
+				end
+			end
+		end
+	end
+
+	function Loops.StartAutoBuyRaidShop()
+		if Core.Flags.AutoBuyRaidShop then
+			Core:Loop("AutoBuyRaidShop", "AutoBuyRaidShop", 1.5, Loops.AutoBuyRaidShopTick)
+		end
+	end
+
+	function Loops.AutoTravelPvpTick()
+		if os.clock() - Loops.lastTravelAt < 5 then return end
+		if LocalPlayer:GetAttribute("PvpLocked") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		local lobby = Workspace:FindFirstChild("Lobby")
+		local areas = lobby and lobby:FindFirstChild("Areas")
+		if not (areas and areas:FindFirstChild("PVP")) then return end
+		Loops.lastTravelAt = os.clock()
+		if Helpers.TriggerAreaPrompt("PVP", "PvpTravelPrompt") then
+			logAction("PVP", "วาร์ปเข้าโซน PvP อัตโนมัติ", true)
+		end
+	end
+
+	function Loops.StartAutoTravelPvp()
+		if Core.Flags.AutoTravelPvp then
+			Core:Loop("AutoTravelPvp", "AutoTravelPvp", 1.5, Loops.AutoTravelPvpTick)
+		end
+	end
+
+	function Loops.AutoPvpTick()
+		if os.clock() - Loops.lastPvpAt < 2 then return end
+		local isPvp = LocalPlayer:GetAttribute("BattleKind") == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible and isPvp then
+			Loops.lastPvpAt = os.clock()
+			local pvpQueue = Net.Remote("PvpQueue") or Net.Remote("PvpMatch")
+			if Core.Flags.AutoPvpReplay then
+				if pvpQueue and pvpQueue:IsA("RemoteEvent") then
+					pcall(function() pvpQueue:FireServer("Again") end)
+					logAction("PVP", "ส่งคำสั่งเล่น PvP ซ้ำ (Again)", true)
+				else
+					local battleReq = Net.Remote("BattleRequest")
+					if battleReq then Net.Invoke(battleReq, "Replay") end
+					logAction("PVP", "ส่งคำสั่งเล่น PvP ซ้ำ (Replay)", true)
+				end
+			else
+				if pvpQueue and pvpQueue:IsA("RemoteEvent") then
+					pcall(function() pvpQueue:FireServer("Return") end)
+				else
+					local battleReq = Net.Remote("BattleRequest")
+					if battleReq then Net.Invoke(battleReq, "Quit") end
+				end
+				logAction("PVP", "ออกจากแมตช์ PvP", true)
+			end
+			return
+		end
+
+		if LocalPlayer:GetAttribute("PvpLocked") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		local pvpRemote = Net.Remote("PvpQueue") or Net.Remote("PvpMatch") or Net.Remote("PvpRequest")
+		if pvpRemote then
+			Loops.lastPvpAt = os.clock()
+			if pvpRemote:IsA("RemoteEvent") then
+				pcall(function() pvpRemote:FireServer("Queue") end)
+				pcall(function() pvpRemote:FireServer("Play") end)
+				logAction("PVP", "ส่งคำสั่งเข้าคิว PvP อัตโนมัติ", true)
+			elseif pvpRemote:IsA("RemoteFunction") then
+				local ok, res = Net.Invoke(pvpRemote, "Queue")
+				if ok and res ~= false then logAction("PVP", "เข้าคิว PvP สำเร็จ", true) end
+			end
+			return
+		end
+
+		local lobby = Workspace:FindFirstChild("Lobby")
+		local pvpQueues = lobby and (lobby:FindFirstChild("PvpQueues") or lobby:FindFirstChild("PVPQueues"))
+		if pvpQueues and Helpers.IsAlive() then
+			local root = Helpers.GetRoot()
+			if not root then return end
+			for _, pad in ipairs(pvpQueues:GetChildren()) do
+				if pad:GetAttribute("Blocked") ~= true or pad:GetAttribute("LeaderId") == LocalPlayer.UserId then
+					local hitbox = pad:FindFirstChild("Hitbox") or pad:FindFirstChildWhichIsA("BasePart")
+					if hitbox and hitbox:IsA("BasePart") then
+						Loops.lastPvpAt = os.clock()
+						root.CFrame = hitbox.CFrame + Vector3.new(0, 3, 0)
+						logAction("PVP", "เข้าแท่นคิว PvP: " .. pad.Name, true)
+						return
+					end
+				end
+			end
+		end
+	end
+
+	function Loops.StartAutoPvp()
+		if Core.Flags.AutoPvp then
+			Core:Loop("AutoPvp", "AutoPvp", 1.0, Loops.AutoPvpTick)
+		end
+	end
+
+	function Loops.AutoBuyPvpShopTick()
+		if os.clock() - Loops.lastPvpShopAt < 3 then return end
+		local pvpShop = Net.Remote("PvpShop") or Net.Remote("PvpMerchant")
+		if not (pvpShop and pvpShop:IsA("RemoteFunction")) then return end
+		Loops.lastPvpShopAt = os.clock()
+		local okC, okRes, catalog = Net.Invoke(pvpShop, "Catalog")
+		if not (okC and okRes and type(catalog) == "table") then return end
+		local coins = tonumber(LocalPlayer:GetAttribute("PvpCoins") or LocalPlayer:GetAttribute("PvpTokens")) or 0
+		for _, item in ipairs(catalog) do
+			if type(item) == "table" and item.id then
+				local price = tonumber(item.price) or math.huge
+				local stock = item.stock or item.remaining
+				if (stock == nil or (tonumber(stock) or 0) > 0) and coins >= price then
+					local okB, resB = Net.Invoke(pvpShop, "Buy", item.id, 1)
+					if okB and resB ~= false then
+						coins -= price
+						logAction("PVPSHOP", string.format("ซื้อ %s (-%s)", tostring(item.ref or item.id), Helpers.Format(price)), true)
+					end
+				end
+			end
+		end
+	end
+
+	function Loops.StartAutoBuyPvpShop()
+		if Core.Flags.AutoBuyPvpShop then
+			Core:Loop("AutoBuyPvpShop", "AutoBuyPvpShop", 1.5, Loops.AutoBuyPvpShopTick)
 		end
 	end
 
@@ -904,6 +1328,37 @@ local function main()
 				end
 			end)
 		end
+		local function bindRaidQueue(rq)
+			if not (rq and rq:IsA("RemoteEvent")) then return end
+			Core:Connect(rq.OnClientEvent, function(payload)
+				if type(payload) ~= "table" then return end
+				if payload.state == "building" or payload.state == "queued" then
+					Helpers.RaidQueueState = payload
+					if Core.Flags.AutoRaid and payload.leader then
+						if payload.state == "building" then
+							task.defer(Loops.ApplyRaidSetup, payload)
+						elseif payload.state == "queued" and Core.Flags.RaidStartNow then
+							task.defer(function() pcall(function() rq:FireServer("StartNow") end) end)
+						end
+					end
+				elseif payload.state == "replay" then
+					if Core.Flags.AutoRaid and Core.Flags.AutoRaidReplay and not payload.mine then
+						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
+					end
+				elseif payload.state == "replayGo" or payload.state == "idle" or payload.state == "left" then
+					Helpers.RaidQueueState = nil
+				end
+			end)
+		end
+		bindRaidQueue(ev:FindFirstChild("RaidQueue"))
+		Core:Connect(ev.ChildAdded, function(ch)
+			table.clear(Net._cache)
+			if ch.Name == "RaidQueue" then bindRaidQueue(ch) end
+			if ch.Name:lower():find("pvp", 1, true) or ch.Name:lower():find("raid", 1, true) then
+				Helpers.RefreshRaids()
+				Helpers.RefreshPvp()
+			end
+		end)
 		local notify = ev:WaitForChild("Notify", 10)
 		if not (notify and notify:IsA("RemoteEvent") and Core._alive) then return end
 		Core:Connect(notify.OnClientEvent, function(msg, kind)
@@ -1085,6 +1540,39 @@ local function main()
 			rebuild()
 		end
 
+		function UI.OptionSelect(key, defaultVal, getOptionsFn, logPrefix, setterName)
+			local holder = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, body)
+			corner(holder, 6)
+			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, holder)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
+			local btns = {}
+			local function renderAll()
+				local cur = tostring(Core.Flags[key] or defaultVal)
+				for _, entry in ipairs(btns) do
+					local on = (entry.id == cur)
+					entry.btn.Text = (on and "● " or "○ ") .. entry.name
+					entry.btn.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
+				end
+			end
+			local function rebuild()
+				table.clear(btns)
+				for _, ch in ipairs(holder:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
+				for i, opt in ipairs(getOptionsFn()) do
+					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = opt.name, AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, holder)
+					corner(b, 4)
+					table.insert(btns, { id = opt.id, name = opt.name, btn = b })
+					b.MouseButton1Click:Connect(function()
+						Config.Set(key, opt.id)
+						logAction("CFG", logPrefix .. opt.name, true)
+						renderAll()
+					end)
+				end
+				renderAll()
+			end
+			UI[setterName] = rebuild
+			rebuild()
+		end
+
 		-- dynamic multi-select (rebuilt when map/config tiers change)
 		function UI.TierMultiSelect()
 			local holder = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, body)
@@ -1146,6 +1634,8 @@ local function main()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
 	Helpers.RefreshTiers()
 	Helpers.RefreshDungeons()
+	Helpers.RefreshRaids()
+	Helpers.RefreshPvp()
 
 	UI.Section("📦 Auto Buy Chest (สายพานฐานตัวเอง)")
 	UI.Toggle("เปิด Auto ซื้อกล่อง", "AutoBuyChest", function(on)
@@ -1179,6 +1669,41 @@ local function main()
 	UI.NumberInput("ชั้นเริ่มต้น (Start Floor)", "DungeonStartFloor", 1)
 	UI.NumberInput("จบชั้นที่ (ออกเมื่อพ้นชั้นนี้)", "DungeonEndFloor", 1)
 	UI.DungeonSelect()
+	UI.Section("🔥 Auto Raid (ลงเรดอัตโนมัติ)")
+	UI.Toggle("วาร์ปเข้าโซน Raid อัตโนมัติ (เมื่อปลดล็อก)", "AutoTravelRaid", function(on)
+		logAction("CFG", "Auto Travel Raid: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoTravelRaid() end
+	end)
+	UI.Toggle("เปิด Auto ลง Raid (เข้าคิว + กด Play)", "AutoRaid", function(on)
+		logAction("CFG", "Auto Raid: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoRaid() end
+	end)
+	UI.OptionSelect("RaidDifficulty", "Easy", Helpers.GetRaidDifficulties, "ระดับ Raid: ", "RebuildRaidDiffs")
+	UI.NumberInput("จำนวนคนในปาร์ตี้ (1-4)", "RaidPartySize", 1)
+	UI.Toggle("เฉพาะเพื่อน (Friends Only)", "RaidFriendsOnly")
+	UI.Toggle("กดเริ่มทันทีเมื่ออยู่หน้าคิว (StartNow)", "RaidStartNow")
+	UI.Toggle("เล่น Raid ซ้ำอัตโนมัติ (Play Again)", "AutoRaidReplay")
+	UI.Toggle("กลับล็อบบี้หลังจบ (ถ้าไม่ Replay)", "AutoRaidReturn")
+	UI.NumberInput("จบเวฟที่ (0 = ไม่จำกัด)", "RaidEndWave", 0)
+	UI.Toggle("ซื้อของร้าน Raid Merchant อัตโนมัติ", "AutoBuyRaidShop", function(on)
+		logAction("CFG", "Auto Buy Raid Shop: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoBuyRaidShop() end
+	end)
+	UI.OptionSelect("RaidShopTarget", "All", Helpers.GetRaidShopOptions, "ไอเทม Raid Shop: ", "RebuildRaidShop")
+	UI.Section("⚔️ Auto PvP (ลง PvP อัตโนมัติ - Real-Time)")
+	UI.Toggle("วาร์ปเข้าโซน PvP อัตโนมัติ (เมื่อปลดล็อก)", "AutoTravelPvp", function(on)
+		logAction("CFG", "Auto Travel PvP: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoTravelPvp() end
+	end)
+	UI.Toggle("เปิด Auto ลง PvP (คิว + ต่อสู้)", "AutoPvp", function(on)
+		logAction("CFG", "Auto PvP: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoPvp() end
+	end)
+	UI.Toggle("เล่น PvP ซ้ำอัตโนมัติ (Replay)", "AutoPvpReplay")
+	UI.Toggle("ซื้อของร้าน PvP Shop อัตโนมัติ", "AutoBuyPvpShop", function(on)
+		logAction("CFG", "Auto Buy PvP Shop: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoBuyPvpShop() end
+	end)
 	UI.Section("🌟 Skill Tree")
 	UI.Toggle("อัปเกรดทักษะอัตโนมัติ (เมื่อตังค์พร้อม)", "AutoUpgradeSkill", function(on)
 		logAction("CFG", "Auto Upgrade Skill: " .. (on and "ON" or "OFF"), on)
@@ -1198,6 +1723,14 @@ local function main()
 		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
 			UI.RebuildDungeons()
 			logAction("MAP", reason or "อัปเดตรายชื่อดันเจียนตามแมพ", true)
+		end
+		if Helpers.RefreshRaids() then
+			if UI.RebuildRaidDiffs then UI.RebuildRaidDiffs() end
+			if UI.RebuildRaidShop then UI.RebuildRaidShop() end
+			logAction("MAP", reason or "อัปเดตข้อมูล Raid (ความยาก/ร้านค้า) ตามแมพ", true)
+		end
+		if Helpers.RefreshPvp() then
+			logAction("MAP", reason or "อัปเดตข้อมูล PvP ตามแมพ", true)
 		end
 	end
 
@@ -1257,15 +1790,31 @@ local function main()
 	end)
 
 	Core:Connect(LocalPlayer:GetAttributeChangedSignal("PlotId"), function() Helpers._plot = nil end)
+	Core:Connect(LocalPlayer:GetAttributeChangedSignal("RaidLocked"), function()
+		if LocalPlayer:GetAttribute("RaidLocked") ~= true then
+			logAction("RAID", "ปลดล็อกโซน Raid แล้ว", true)
+			if Core.Flags.AutoTravelRaid then Loops.StartAutoTravelRaid() end
+		end
+	end)
+	Core:Connect(LocalPlayer:GetAttributeChangedSignal("PvpLocked"), function()
+		if LocalPlayer:GetAttribute("PvpLocked") ~= true then
+			logAction("PVP", "ปลดล็อกโซน PvP แล้ว", true)
+			if Core.Flags.AutoTravelPvp then Loops.StartAutoTravelPvp() end
+		end
+	end)
 
 	task.spawn(function()
 		while Core._alive do
 			syncMapData()
 			local plot = Helpers.GetPlot()
 			pcall(function()
-				status.Text = string.format("  Plot: %s | เงิน: ¥%s | ขั้นต่ำ: ¥%s\n  ซื้อแล้ว: %d กล่อง | ใช้ไป: ¥%s",
+				local raidTokens = tonumber(LocalPlayer:GetAttribute("RaidCoins")) or 0
+				local raidState = (LocalPlayer:GetAttribute("BattleKind") == "Raid" and ("Wave " .. tostring(LocalPlayer:GetAttribute("BattleFloor") or 0))) or (LocalPlayer:GetAttribute("RaidLocked") == true and "Locked" or "Ready")
+				local pvpState = (LocalPlayer:GetAttribute("PvpSide") and ("Side " .. tostring(LocalPlayer:GetAttribute("PvpSide")))) or (LocalPlayer:GetAttribute("PvpLocked") == true and "Locked" or "Ready")
+				status.Size = UDim2.new(1, 0, 0, 48)
+				status.Text = string.format("  Plot: %s | เงิน: ¥%s | ขั้นต่ำ: ¥%s\n  ซื้อ: %d กล่อง | ใช้: ¥%s\n  Raid: %s (%s Tokens) | PvP: %s",
 					plot and plot.Name or "-", Helpers.Format(Helpers.GetCash()), Helpers.Format(tonumber(Core.Flags.MinPrice) or 0),
-					Stats.bought, Helpers.Format(Stats.spent))
+					Stats.bought, Helpers.Format(Stats.spent), raidState, Helpers.Format(raidTokens), pvpState)
 			end)
 			task.wait(1)
 		end
@@ -1276,6 +1825,12 @@ local function main()
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
 	Loops.StartAutoDungeon()
+	Loops.StartAutoTravelRaid()
+	Loops.StartAutoRaid()
+	Loops.StartAutoBuyRaidShop()
+	Loops.StartAutoTravelPvp()
+	Loops.StartAutoPvp()
+	Loops.StartAutoBuyPvpShop()
 	Loops.StartAutoUpgradeSkill()
 	logAction("SYS", "โหลดสคริปต์สำเร็จ | Config: " .. Config.File, true)
 end
