@@ -340,8 +340,10 @@ local function main()
 
 	function Helpers.IsBossPlace(): boolean
 		local cfg = Helpers.GetBossConfig()
-		local bossPlaceId = (cfg and tonumber(cfg.PlaceId)) or 91808906335958
-		return PlaceId == bossPlaceId
+		local bossPlaceId = (cfg and (tonumber(cfg.PlaceId) or tonumber(cfg.BossPlaceId))) or 91808906335958
+		if PlaceId == bossPlaceId then return true end
+		if LocalPlayer:GetAttribute("BattleKind") == "Boss" then return true end
+		return Net.Remote("BossEvent") ~= nil
 	end
 
 	function Helpers.GetProfileConfig()
@@ -1051,7 +1053,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1669,37 +1671,160 @@ local function main()
 		Loops.bossSetupBusy = false
 	end
 
+	function Loops.ResetBossReplayState()
+		Loops.bossEndScreenAt = 0
+		Loops.bossRevealAt = 0
+		Loops.bossReplayMine = false
+		Loops.bossReplayState = nil
+		Loops.bossReplaySentAt = 0
+	end
+
+	function Loops.TryBossReplay(fromEvent: boolean?): boolean
+		if not (Core.Flags.AutoBossReplay and Helpers.IsBossPlace()) then return false end
+		local now = os.clock()
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local reveal = results and results:FindFirstChild("Reveal")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		local endVisible = endScreen and endScreen:IsA("GuiObject") and endScreen.Visible
+
+		if reveal and reveal:IsA("GuiObject") and reveal.Visible and not endVisible then
+			if Loops.bossRevealAt == 0 then
+				Loops.bossRevealAt = now
+				return true
+			end
+			if now - Loops.bossRevealAt >= 0.4 then
+				if firesignal and reveal:IsA("GuiButton") then
+					pcall(firesignal, reveal.Activated)
+				end
+				if now - Loops.bossRevealAt >= 0.8 and reveal.Visible then
+					pcall(function() reveal.Visible = false end)
+				end
+			end
+			return true
+		else
+			Loops.bossRevealAt = 0
+		end
+
+		if not endVisible and not fromEvent then
+			Loops.ResetBossReplayState()
+			return false
+		end
+
+		local replayBtn = nil
+		if endVisible then
+			local left = endScreen:FindFirstChild("Left")
+			local buttons = left and left:FindFirstChild("Buttons")
+			local btn = buttons and buttons:FindFirstChild("Replay")
+			if btn and btn:IsA("GuiButton") and btn.Visible then
+				replayBtn = btn
+				local title = btn:FindFirstChild("Title")
+				if title and title:IsA("TextLabel") then
+					local txt = tostring(title.Text or ""):upper()
+					if txt:find("READY", 1, true) then
+						Loops.bossReplayMine = true
+						return true
+					end
+				end
+			end
+		end
+
+		if Loops.bossReplayMine then return true end
+
+		if endVisible then
+			if Loops.bossEndScreenAt == 0 then
+				Loops.bossEndScreenAt = now
+				if not fromEvent then return true end
+			end
+			if not fromEvent and (now - Loops.bossEndScreenAt < 1.0) then return true end
+		end
+
+		if Loops.bossReplaySentAt > 0 and (now - Loops.bossReplaySentAt < 3.5) then return true end
+
+		local raidQueue = Net.Remote("RaidQueue") or Net.Remote("BossQueue")
+		if Loops.bossReplaySentAt > 0 then
+			if replayBtn and firesignal then
+				Loops.bossReplaySentAt = now
+				Loops.lastBossAt = now
+				pcall(firesignal, replayBtn.Activated)
+				logAction("BOSS", "กดปุ่มสู้บอสซ้ำอีกครั้ง (Replay UI)", true)
+				return true
+			elseif raidQueue and raidQueue:IsA("RemoteEvent") then
+				Loops.bossReplaySentAt = now
+				Loops.lastBossAt = now
+				if Loops.bossReplayState == nil then
+					pcall(function() raidQueue:FireServer("ResultsOpen") end)
+				end
+				pcall(function() raidQueue:FireServer("Again") end)
+				logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำอีกครั้ง (Again)", true)
+				return true
+			end
+			return true
+		end
+
+		if raidQueue and raidQueue:IsA("RemoteEvent") then
+			Loops.bossReplaySentAt = now
+			Loops.lastBossAt = now
+			pcall(function() raidQueue:FireServer("Again") end)
+			logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
+			return true
+		elseif replayBtn and firesignal then
+			Loops.bossReplaySentAt = now
+			Loops.lastBossAt = now
+			pcall(firesignal, replayBtn.Activated)
+			logAction("BOSS", "กดปุ่มสู้บอสซ้ำ (Replay UI)", true)
+			return true
+		else
+			local battleReq = Net.Remote("BattleRequest")
+			if battleReq then
+				Loops.bossReplaySentAt = now
+				Loops.lastBossAt = now
+				local ok, res = Net.Invoke(battleReq, "Replay")
+				logAction("BOSS", ok and res ~= false and "ส่งคำสั่งสู้บอสซ้ำ (BattleRequest)" or "ส่งคำสั่งสู้บอสซ้ำไม่สำเร็จ", ok and res ~= false)
+				return true
+			end
+		end
+		return false
+	end
+
 	function Loops.AutoBossTick()
 		if not Helpers.IsBossPlace() then return end
 		if Loops.bossSetupBusy then return end
 		local now = os.clock()
-		local raidQueue = Net.Remote("RaidQueue")
+		local raidQueue = Net.Remote("RaidQueue") or Net.Remote("BossQueue")
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
+		local reveal = results and results:FindFirstChild("Reveal")
 		local endScreen = results and results:FindFirstChild("EndScreen")
-		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
-			if Loops.bossEndScreenAt == 0 then
-				Loops.bossEndScreenAt = now
+		local endVisible = endScreen and endScreen:IsA("GuiObject") and endScreen.Visible
+		local revealVisible = reveal and reveal:IsA("GuiObject") and reveal.Visible
+		if endVisible or revealVisible then
+			if Core.Flags.AutoBossReplay then
+				Loops.TryBossReplay(false)
 				return
 			end
-			if now - Loops.bossEndScreenAt < 1.8 or now - Loops.lastBossAt < 3.5 then return end
-			Loops.lastBossAt = now
-			if Core.Flags.AutoBossReplay and raidQueue and raidQueue:IsA("RemoteEvent") then
-				pcall(function() raidQueue:FireServer("Again") end)
-				logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
-			elseif Core.Flags.AutoBossReturn and raidQueue and raidQueue:IsA("RemoteEvent") then
-				pcall(function() raidQueue:FireServer("Return") end)
-				logAction("BOSS", "ออกจากบอสกลับล็อบบี้ (Return)", true)
+			if endVisible then
+				if Loops.bossEndScreenAt == 0 then
+					Loops.bossEndScreenAt = now
+					return
+				end
+				if now - Loops.bossEndScreenAt < 1.8 or now - Loops.lastBossAt < 3.5 then return end
+				if Core.Flags.AutoBossReturn and raidQueue and raidQueue:IsA("RemoteEvent") then
+					Loops.lastBossAt = now
+					pcall(function() raidQueue:FireServer("Return") end)
+					logAction("BOSS", "ออกจากบอสกลับล็อบบี้ (Return)", true)
+				end
 			end
 			return
 		else
-			Loops.bossEndScreenAt = 0
+			Loops.ResetBossReplayState()
 		end
 
 		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then
 			Helpers.RaidQueueState = nil
 			Loops.bossQueueState = nil
 			Loops.bossStartSentAt = 0
+			Loops.ResetBossReplayState()
 			return
 		end
 		if now - Loops.lastBossAt < 3.5 then return end
@@ -1755,26 +1880,7 @@ local function main()
 	end
 
 	function Loops.AutoBossReplayTick()
-		if not Helpers.IsBossPlace() then return end
-		local now = os.clock()
-		local pg = LocalPlayer:FindFirstChild("PlayerGui")
-		local results = pg and pg:FindFirstChild("Results")
-		local endScreen = results and results:FindFirstChild("EndScreen")
-		if not (endScreen and endScreen:IsA("GuiObject") and endScreen.Visible) then
-			Loops.bossEndScreenAt = 0
-			return
-		end
-		if Loops.bossEndScreenAt == 0 then
-			Loops.bossEndScreenAt = now
-			return
-		end
-		if now - Loops.bossEndScreenAt < 1.8 or now - Loops.lastBossAt < 3.5 then return end
-		local raidQueue = Net.Remote("RaidQueue")
-		if raidQueue and raidQueue:IsA("RemoteEvent") then
-			Loops.lastBossAt = now
-			pcall(function() raidQueue:FireServer("Again") end)
-			logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
-		end
+		Loops.TryBossReplay(false)
 	end
 
 	function Loops.StartAutoBossReplay()
@@ -2285,13 +2391,15 @@ local function main()
 						end
 					end
 				elseif payload.state == "replay" then
-					if isBoss and Core.Flags.AutoBossReplay and not payload.mine then
-						task.delay(1.8, function()
-							if not (Core._alive and Core.Flags.AutoBossReplay and Helpers.IsBossPlace()) then return end
-							if os.clock() - Loops.lastBossAt < 3.5 then return end
-							Loops.lastBossAt = os.clock()
-							pcall(function() rq:FireServer("Again") end)
-						end)
+					if isBoss then
+						Loops.bossReplayState = payload
+						Loops.bossReplayMine = payload.mine == true
+						if Core.Flags.AutoBossReplay and not Loops.bossReplayMine then
+							task.delay(0.8, function()
+								if not (Core._alive and Core.Flags.AutoBossReplay and Helpers.IsBossPlace()) then return end
+								Loops.TryBossReplay(true)
+							end)
+						end
 					elseif (not isBoss) and Core.Flags.AutoRaid and Core.Flags.AutoRaidReplay and not payload.mine then
 						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
 					end
@@ -2300,6 +2408,7 @@ local function main()
 					if isBoss then
 						Loops.bossQueueState = nil
 						Loops.bossStartSentAt = 0
+						Loops.ResetBossReplayState()
 					end
 				end
 			end)
@@ -2311,6 +2420,7 @@ local function main()
 					Helpers.RaidQueueState = nil
 					Loops.bossQueueState = nil
 					Loops.bossStartSentAt = 0
+					Loops.ResetBossReplayState()
 					if payload.phase then
 						logAction("BOSS", "Boss Phase " .. tostring(payload.phase), true)
 					end
