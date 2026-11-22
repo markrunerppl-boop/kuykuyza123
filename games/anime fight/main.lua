@@ -944,7 +944,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1470,36 +1470,65 @@ local function main()
 	end
 
 	function Loops.ApplyBossSetup(state)
+		if Loops.bossSetupBusy then return end
 		local raidQueue = Net.Remote("RaidQueue")
 		if not (raidQueue and raidQueue:IsA("RemoteEvent") and type(state) == "table" and state.leader) then return end
-		local diff = tostring(Core.Flags.BossDifficulty or "Easy")
-		local size = math.clamp(math.floor(tonumber(Core.Flags.BossPartySize) or 4), 1, 4)
-		local friends = Core.Flags.BossFriendsOnly == true
-		if state.difficulty ~= diff then
-			pcall(function() raidQueue:FireServer("Difficulty", diff) end)
-			task.wait(0.1)
+		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		Loops.bossSetupBusy = true
+		local function stillBuilding()
+			if not (Core._alive and Core.Flags.AutoBoss and Helpers.IsBossPlace()) then return false end
+			if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then return false end
+			local cur = Helpers.RaidQueueState
+			return type(cur) == "table" and cur.leader and cur.state == "building"
 		end
-		if tonumber(state.size) ~= size then
-			pcall(function() raidQueue:FireServer("Size", size) end)
-			task.wait(0.1)
-		end
-		if (state.friendsOnly == true) ~= friends then
-			pcall(function() raidQueue:FireServer("Friends") end)
-			task.wait(0.1)
-		end
-		pcall(function() raidQueue:FireServer("Play") end)
-		logAction("BOSS", string.format("ตั้งค่าคิว Boss (%s | %d คน) และกด Play", diff, size), true)
+		pcall(function()
+			local diff = tostring(Core.Flags.BossDifficulty or "Easy")
+			local size = math.clamp(math.floor(tonumber(Core.Flags.BossPartySize) or 4), 1, 4)
+			local friends = Core.Flags.BossFriendsOnly == true
+			task.wait(0.6)
+			if not stillBuilding() then return end
+			local cur = Helpers.RaidQueueState or state
+			if cur.difficulty ~= diff then
+				pcall(function() raidQueue:FireServer("Difficulty", diff) end)
+				task.wait(0.35)
+				if not stillBuilding() then return end
+			end
+			cur = Helpers.RaidQueueState or cur
+			if tonumber(cur.size) ~= size then
+				pcall(function() raidQueue:FireServer("Size", size) end)
+				task.wait(0.35)
+				if not stillBuilding() then return end
+			end
+			cur = Helpers.RaidQueueState or cur
+			if (cur.friendsOnly == true) ~= friends then
+				pcall(function() raidQueue:FireServer("Friends") end)
+				task.wait(0.35)
+				if not stillBuilding() then return end
+			end
+			task.wait(0.5)
+			if not stillBuilding() then return end
+			Loops.lastBossAt = os.clock()
+			pcall(function() raidQueue:FireServer("Play") end)
+			logAction("BOSS", string.format("ตั้งค่าคิว Boss (%s | %d คน) และกด Play", diff, size), true)
+		end)
+		Loops.bossSetupBusy = false
 	end
 
 	function Loops.AutoBossTick()
 		if not Helpers.IsBossPlace() then return end
-		if os.clock() - Loops.lastBossAt < 2 then return end
+		if Loops.bossSetupBusy then return end
+		local now = os.clock()
 		local raidQueue = Net.Remote("RaidQueue")
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
 		local endScreen = results and results:FindFirstChild("EndScreen")
 		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
-			Loops.lastBossAt = os.clock()
+			if Loops.bossEndScreenAt == 0 then
+				Loops.bossEndScreenAt = now
+				return
+			end
+			if now - Loops.bossEndScreenAt < 1.8 or now - Loops.lastBossAt < 3.5 then return end
+			Loops.lastBossAt = now
 			if Core.Flags.AutoBossReplay and raidQueue and raidQueue:IsA("RemoteEvent") then
 				pcall(function() raidQueue:FireServer("Again") end)
 				logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
@@ -1508,23 +1537,40 @@ local function main()
 				logAction("BOSS", "ออกจากบอสกลับล็อบบี้ (Return)", true)
 			end
 			return
+		else
+			Loops.bossEndScreenAt = 0
 		end
 
-		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then
+			Helpers.RaidQueueState = nil
+			Loops.bossQueueState = nil
+			Loops.bossStartSentAt = 0
+			return
+		end
+		if now - Loops.lastBossAt < 3.5 then return end
+
 		local qState = Helpers.RaidQueueState
-		if type(qState) == "table" and qState.leader then
-			if qState.state == "building" then
-				Loops.lastBossAt = os.clock()
-				Loops.ApplyBossSetup(qState)
-				return
-			elseif qState.state == "queued" then
-				if Core.Flags.BossStartNow and raidQueue and raidQueue:IsA("RemoteEvent") then
-					Loops.lastBossAt = os.clock()
-					pcall(function() raidQueue:FireServer("StartNow") end)
-					logAction("BOSS", "กดเริ่มสู้บอสทันที (StartNow)", true)
+		if type(qState) == "table" then
+			if qState.leader then
+				if qState.state == "building" then
+					if now - Loops.bossQueueStateAt < 1.0 then return end
+					Loops.lastBossAt = now
+					Loops.ApplyBossSetup(qState)
+					return
+				elseif qState.state == "queued" then
+					if Core.Flags.BossStartNow and raidQueue and raidQueue:IsA("RemoteEvent") then
+						if now - Loops.bossQueueStateAt < 1.8 then return end
+						if Loops.bossStartSentAt < Loops.bossQueueStateAt or (now - Loops.bossStartSentAt >= 5) then
+							Loops.lastBossAt = now
+							Loops.bossStartSentAt = now
+							pcall(function() raidQueue:FireServer("StartNow") end)
+							logAction("BOSS", "กดเริ่มสู้บอสทันที (StartNow)", true)
+						end
+					end
+					return
 				end
-				return
 			end
+			return
 		end
 
 		local lobby = Workspace:FindFirstChild("Lobby")
@@ -1538,7 +1584,7 @@ local function main()
 			if not blocked or leaderId == LocalPlayer.UserId then
 				local hitbox = pad:FindFirstChild("Hitbox") or pad:FindFirstChildWhichIsA("BasePart")
 				if hitbox and hitbox:IsA("BasePart") then
-					Loops.lastBossAt = os.clock()
+					Loops.lastBossAt = now
 					root.CFrame = hitbox.CFrame + Vector3.new(0, 3, 0)
 					logAction("BOSS", "เข้าแท่นคิว Boss: " .. pad.Name, true)
 					return
@@ -1549,20 +1595,28 @@ local function main()
 
 	function Loops.StartAutoBoss()
 		if Core.Flags.AutoBoss then
-			Core:Loop("AutoBoss", "AutoBoss", 0.8, Loops.AutoBossTick)
+			Core:Loop("AutoBoss", "AutoBoss", 1.0, Loops.AutoBossTick)
 		end
 	end
 
 	function Loops.AutoBossReplayTick()
 		if not Helpers.IsBossPlace() then return end
-		if os.clock() - Loops.lastBossAt < 2 then return end
+		local now = os.clock()
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
 		local endScreen = results and results:FindFirstChild("EndScreen")
-		if not (endScreen and endScreen:IsA("GuiObject") and endScreen.Visible) then return end
+		if not (endScreen and endScreen:IsA("GuiObject") and endScreen.Visible) then
+			Loops.bossEndScreenAt = 0
+			return
+		end
+		if Loops.bossEndScreenAt == 0 then
+			Loops.bossEndScreenAt = now
+			return
+		end
+		if now - Loops.bossEndScreenAt < 1.8 or now - Loops.lastBossAt < 3.5 then return end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
-			Loops.lastBossAt = os.clock()
+			Loops.lastBossAt = now
 			pcall(function() raidQueue:FireServer("Again") end)
 			logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
 		end
@@ -1570,7 +1624,7 @@ local function main()
 
 	function Loops.StartAutoBossReplay()
 		if Core.Flags.AutoBossReplay then
-			Core:Loop("AutoBossReplay", "AutoBossReplay", 0.8, Loops.AutoBossReplayTick)
+			Core:Loop("AutoBossReplay", "AutoBossReplay", 1.0, Loops.AutoBossReplayTick)
 		end
 	end
 
@@ -2055,15 +2109,19 @@ local function main()
 				if type(payload) ~= "table" then return end
 				local isBoss = Helpers.IsBossPlace()
 				if payload.state == "building" or payload.state == "queued" then
-					Helpers.RaidQueueState = payload
-					if payload.leader then
-						if isBoss and Core.Flags.AutoBoss then
+					if isBoss then
+						if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then return end
+						if Loops.bossQueueState ~= payload.state then
+							Loops.bossQueueState = payload.state
+							Loops.bossQueueStateAt = os.clock()
 							if payload.state == "building" then
-								task.defer(Loops.ApplyBossSetup, payload)
-							elseif payload.state == "queued" and Core.Flags.BossStartNow then
-								task.defer(function() pcall(function() rq:FireServer("StartNow") end) end)
+								Loops.bossStartSentAt = 0
 							end
-						elseif (not isBoss) and Core.Flags.AutoRaid then
+						end
+						Helpers.RaidQueueState = payload
+					else
+						Helpers.RaidQueueState = payload
+						if payload.leader and Core.Flags.AutoRaid then
 							if payload.state == "building" then
 								task.defer(Loops.ApplyRaidSetup, payload)
 							elseif payload.state == "queued" and Core.Flags.RaidStartNow then
@@ -2073,20 +2131,34 @@ local function main()
 					end
 				elseif payload.state == "replay" then
 					if isBoss and Core.Flags.AutoBossReplay and not payload.mine then
-						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
+						task.delay(1.8, function()
+							if not (Core._alive and Core.Flags.AutoBossReplay and Helpers.IsBossPlace()) then return end
+							if os.clock() - Loops.lastBossAt < 3.5 then return end
+							Loops.lastBossAt = os.clock()
+							pcall(function() rq:FireServer("Again") end)
+						end)
 					elseif (not isBoss) and Core.Flags.AutoRaid and Core.Flags.AutoRaidReplay and not payload.mine then
 						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
 					end
-				elseif payload.state == "replayGo" or payload.state == "idle" or payload.state == "left" then
+				elseif payload.state == "replayGo" or payload.state == "idle" or payload.state == "left" or payload.state == "started" or payload.state == "fighting" or payload.state == "closed" or payload.state == "cancelled" then
 					Helpers.RaidQueueState = nil
+					if isBoss then
+						Loops.bossQueueState = nil
+						Loops.bossStartSentAt = 0
+					end
 				end
 			end)
 		end
 		local function bindBossEvent(be)
 			if not (be and be:IsA("RemoteEvent")) then return end
 			Core:Connect(be.OnClientEvent, function(payload)
-				if type(payload) == "table" and payload.t == "boss" and payload.phase then
-					logAction("BOSS", "Boss Phase " .. tostring(payload.phase), true)
+				if type(payload) == "table" and payload.t == "boss" then
+					Helpers.RaidQueueState = nil
+					Loops.bossQueueState = nil
+					Loops.bossStartSentAt = 0
+					if payload.phase then
+						logAction("BOSS", "Boss Phase " .. tostring(payload.phase), true)
+					end
 				end
 			end)
 		end
