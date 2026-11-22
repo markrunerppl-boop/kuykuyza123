@@ -974,6 +974,16 @@ local function main()
 
 	function Loops.BuyChest(entry, folder): boolean
 		local chest = entry.chest
+		local price = tonumber(entry.price) or 0
+		if price > 0 and Helpers.GetCash() < price then return false end
+
+		local tierNum = tonumber(chest:GetAttribute("Tier"))
+		local plot = Helpers.GetPlot()
+		if plot and tierNum then
+			local lx, lz = Helpers.FindFreeSpot(plot, tierNum)
+			if not (lx and lz) then return false end
+		end
+
 		local prompt = Helpers.FindAnchor(folder, chest)
 		if not prompt then return false end
 		local anchor = prompt.Parent
@@ -1000,7 +1010,6 @@ local function main()
 		end
 
 		local cashBefore = Helpers.GetCash()
-		local tierNum = tonumber(chest:GetAttribute("Tier"))
 		local mutAttr = chest:GetAttribute("Mutation")
 		local mutArg = (type(mutAttr) == "string" and mutAttr ~= "") and mutAttr or nil
 		local priceLabel = entry.price == 0 and "FREE" or ("¥" .. Helpers.Format(entry.price))
