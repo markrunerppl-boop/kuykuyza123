@@ -75,6 +75,7 @@ local function main()
 			AutoBuyFreeChest = true,
 			MinPrice = 0,
 			Tiers = { Normal = true },
+			ChestRarities = {},
 			TeleportToBelt = true,
 			ReturnAfterBuy = true,
 			AutoPlaceChest = true,
@@ -217,6 +218,7 @@ local function main()
 		_chestTemplates = {},
 		DungeonList = {},
 		TierList = { "Normal" },
+		ChestRarityList = {},
 		RaidDifficulties = {},
 		RaidShopItems = {},
 		RaidQueueState = nil,
@@ -865,6 +867,111 @@ local function main()
 		return changed
 	end
 
+	-- chest rarity key (Common/Uncommon/Rare/.../Bloodmoon/future rarities)
+	function Helpers.ChestRarity(chest): string?
+		if not chest then return nil end
+		local r = chest:GetAttribute("Rarity") or chest:GetAttribute("ChestRarity")
+		if type(r) == "string" and r ~= "" then return r end
+		local tierNum = tonumber(chest:GetAttribute("Tier"))
+		if tierNum then
+			local cfg = Helpers.GetConfig()
+			if cfg then
+				if type(cfg.Chests) == "table" then
+					local entry = cfg.Chests[tierNum]
+					if type(entry) == "table" then
+						local cr = entry.Rarity or entry.rarity or entry.Name
+						if type(cr) == "string" and cr ~= "" then
+							return (cr:gsub("%s*[Cc]hest$", ""))
+						end
+					end
+				end
+				if type(cfg.RarityOrder) == "table" and type(cfg.RarityOrder[tierNum]) == "string" and cfg.RarityOrder[tierNum] ~= "" then
+					return cfg.RarityOrder[tierNum]
+				end
+			end
+		end
+		local cname = chest:GetAttribute("ChestName")
+		if type(cname) == "string" and cname ~= "" then
+			local stripped = cname:gsub("%s*[Cc]hest$", "")
+			if stripped ~= "" then return stripped end
+		end
+		return nil
+	end
+
+	-- dynamic chest rarity list (AnimeIdleConfig + Assets.Chests + live map ActiveChests/PlacedChests/Prompts)
+	function Helpers.RefreshChestRarities(): boolean
+		local list, seen = {}, {}
+		local function addRarity(val)
+			if type(val) ~= "string" then return end
+			local clean = val:match("^%s*(.-)%s*$")
+			if clean == "" then return end
+			clean = clean:gsub("%s*[Cc]hest$", "")
+			if clean ~= "" and not seen[clean] then
+				seen[clean] = true
+				table.insert(list, clean)
+			end
+		end
+
+		local cfg = Helpers.GetConfig()
+		if cfg then
+			if type(cfg.RarityOrder) == "table" then
+				for _, r in ipairs(cfg.RarityOrder) do addRarity(r) end
+			end
+			if type(cfg.Chests) == "table" then
+				for _, c in ipairs(cfg.Chests) do
+					if type(c) == "table" then addRarity(c.Rarity or c.rarity or c.Name) end
+				end
+				for _, c in pairs(cfg.Chests) do
+					if type(c) == "table" then addRarity(c.Rarity or c.rarity or c.Name) end
+				end
+			end
+		end
+
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local chests = assets and assets:FindFirstChild("Chests")
+		if chests then
+			local templates = {}
+			for _, c in ipairs(chests:GetChildren()) do
+				table.insert(templates, { inst = c, tier = tonumber(c:GetAttribute("Tier")) or math.huge })
+			end
+			table.sort(templates, function(a, b) return a.tier < b.tier end)
+			for _, item in ipairs(templates) do
+				addRarity(Helpers.ChestRarity(item.inst))
+			end
+		end
+
+		local lobby = Workspace:FindFirstChild("Lobby")
+		local plots = lobby and lobby:FindFirstChild("Plots")
+		if plots then
+			for _, p in ipairs(plots:GetChildren()) do
+				for _, folderName in ipairs({ "ActiveChests", "PlacedChests" }) do
+					local ac = p:FindFirstChild(folderName)
+					if ac then
+						for _, c in ipairs(ac:GetChildren()) do
+							if c:IsA("Model") then
+								addRarity(Helpers.ChestRarity(c))
+							elseif c:IsA("BasePart") then
+								local pr = c:FindFirstChildOfClass("ProximityPrompt")
+								if pr then
+									addRarity(pr:GetAttribute("Rarity") or pr.ObjectText)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+
+		local changed = #list ~= #Helpers.ChestRarityList
+		if not changed then
+			for i, v in ipairs(list) do
+				if Helpers.ChestRarityList[i] ~= v then changed = true; break end
+			end
+		end
+		Helpers.ChestRarityList = list
+		return changed
+	end
+
 	function Helpers.TriggerPrompt(prompt): boolean
 		if fireproximityprompt then
 			local ok = pcall(fireproximityprompt, prompt)
@@ -952,6 +1059,11 @@ local function main()
 		if not folder then return nil, nil end
 		local minPrice = tonumber(Core.Flags.MinPrice) or 0
 		local tiers = Core.Flags.Tiers or {}
+		local rarities = type(Core.Flags.ChestRarities) == "table" and Core.Flags.ChestRarities or {}
+		local hasRarityFilter = false
+		for _, v in pairs(rarities) do
+			if v == true then hasRarityFilter = true; break end
+		end
 		local cash = Helpers.GetCash()
 		local buyFree = Core.Flags.AutoBuyFreeChest == true
 		local list = {}
@@ -959,9 +1071,11 @@ local function main()
 			if chest:IsA("Model") and (Loops.attempts[chest] or 0) < 3 then
 				local price = Helpers.ChestPrice(chest)
 				local tier = Helpers.ChestTier(chest)
+				local rarity = Helpers.ChestRarity(chest)
 				local isFree = price == 0 and buyFree
-				if isFree or (tiers[tier] == true and price >= minPrice and price <= cash) then
-					table.insert(list, { chest = chest, price = price, tier = tier })
+				local rarityOk = (not hasRarityFilter) or (rarity ~= nil and rarities[rarity] == true)
+				if isFree or (tiers[tier] == true and rarityOk and price >= minPrice and price <= cash) then
+					table.insert(list, { chest = chest, price = price, tier = tier, rarity = rarity })
 				end
 			end
 		end
@@ -2562,6 +2676,125 @@ local function main()
 			rebuild()
 		end
 
+		-- collapsible multi-select dropdown for chest rarities (auto-updated in real time)
+		function UI.ChestRarityDropdown()
+			local wrap = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0 }, body)
+			mk("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, wrap)
+
+			local headerBtn = mk("TextButton", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C_PANEL, Text = "", AutoButtonColor = false }, wrap)
+			corner(headerBtn, 6)
+			local headerLbl = mk("TextLabel", { Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, headerBtn)
+			local arrowLbl = mk("TextLabel", { Size = UDim2.fromOffset(22, 30), Position = UDim2.new(1, -24, 0, 0), BackgroundTransparency = 1, Text = "▼", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11 }, headerBtn)
+
+			local dropPanel = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0, Visible = false }, wrap)
+			corner(dropPanel, 6)
+			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, dropPanel)
+			mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, dropPanel)
+
+			local actionsRow = mk("Frame", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 }, dropPanel)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 1, 0), CellPadding = UDim2.fromOffset(6, 0), SortOrder = Enum.SortOrder.LayoutOrder }, actionsRow)
+			local btnClear = mk("TextButton", { LayoutOrder = 1, BackgroundColor3 = C_BG, Text = "ทั้งหมด (ไม่กรอง)", TextColor3 = C_SUB, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, actionsRow)
+			corner(btnClear, 4)
+			local btnSelectAll = mk("TextButton", { LayoutOrder = 2, BackgroundColor3 = C_BG, Text = "เลือกทุกระดับ", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, actionsRow)
+			corner(btnSelectAll, 4)
+
+			local gridHolder = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, dropPanel)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, gridHolder)
+
+			local isOpen = false
+			local renderMap = {}
+
+			local function updateHeader()
+				if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
+				local selected = {}
+				local seenSel = {}
+				for _, r in ipairs(Helpers.ChestRarityList) do
+					if Core.Flags.ChestRarities[r] == true then
+						seenSel[r] = true
+						table.insert(selected, r)
+					end
+				end
+				for r, on in pairs(Core.Flags.ChestRarities) do
+					if on == true and not seenSel[r] then
+						table.insert(selected, tostring(r))
+					end
+				end
+				if #selected == 0 then
+					headerLbl.Text = "ระดับกล่อง (Rarity): ทั้งหมด (All)"
+				else
+					headerLbl.Text = string.format("ระดับกล่อง (%d): %s", #selected, table.concat(selected, ", "))
+				end
+				arrowLbl.Text = isOpen and "▲" or "▼"
+				dropPanel.Visible = isOpen
+			end
+
+			Core:Connect(headerBtn.MouseButton1Click, function()
+				isOpen = not isOpen
+				updateHeader()
+			end)
+
+			Core:Connect(btnClear.MouseButton1Click, function()
+				Core.Flags.ChestRarities = {}
+				Config.Save()
+				for _, fn in pairs(renderMap) do fn() end
+				updateHeader()
+				logAction("CFG", "ระดับกล่อง (Rarity): ทั้งหมด (All)", true)
+			end)
+
+			Core:Connect(btnSelectAll.MouseButton1Click, function()
+				if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
+				for _, r in ipairs(Helpers.ChestRarityList) do
+					Core.Flags.ChestRarities[r] = true
+				end
+				Config.Save()
+				for _, fn in pairs(renderMap) do fn() end
+				updateHeader()
+				logAction("CFG", string.format("เลือกกล่องทุกระดับ (%d ระดับ)", #Helpers.ChestRarityList), true)
+			end)
+
+			local function rebuild()
+				table.clear(renderMap)
+				for _, ch in ipairs(gridHolder:GetChildren()) do
+					if ch:IsA("TextButton") then ch:Destroy() end
+				end
+				if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
+				local seen = {}
+				local idx = 0
+				local function addBtn(rarityName, extraTag)
+					idx += 1
+					seen[rarityName] = true
+					local b = mk("TextButton", { LayoutOrder = idx, BackgroundColor3 = C_BG, Text = "", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, gridHolder)
+					corner(b, 4)
+					local function render()
+						local on = Core.Flags.ChestRarities[rarityName] == true
+						b.Text = (on and "☑ " or "☐ ") .. rarityName .. (extraTag or "")
+						b.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
+					end
+					renderMap[rarityName] = render
+					render()
+					b.MouseButton1Click:Connect(function()
+						local nextVal = not (Core.Flags.ChestRarities[rarityName] == true)
+						Core.Flags.ChestRarities[rarityName] = nextVal and true or nil
+						Config.Save()
+						render()
+						updateHeader()
+					end)
+				end
+				for _, r in ipairs(Helpers.ChestRarityList) do
+					addBtn(r, nil)
+				end
+				for r, on in pairs(Core.Flags.ChestRarities) do
+					if on == true and not seen[r] then
+						addBtn(tostring(r), " (บันทึกไว้)")
+					end
+				end
+				updateHeader()
+			end
+
+			UI.RebuildChestRarities = rebuild
+			rebuild()
+		end
+
 		function UI.ShopMultiSelect()
 			local header = mk("TextLabel", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "สินค้าในร้านปัจจุบัน (อัปเดตเรียลไทม์)", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, body)
 			local holder = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, body)
@@ -2657,8 +2890,10 @@ local function main()
 	Config.Load()
 	UI.ApplySavedSize()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
+	if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
 	if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
 	Helpers.RefreshTiers()
+	Helpers.RefreshChestRarities()
 	Helpers.RefreshDungeons()
 	Helpers.RefreshRaids()
 	Helpers.RefreshBoss()
@@ -2677,7 +2912,9 @@ local function main()
 		if on then Loops.StartAutoBuyFree() end
 	end)
 	UI.AmountInput("ราคาขั้นต่ำ (¥)", "MinPrice")
-	UI.Section("ระดับกล่อง (เลือกได้หลายอัน)")
+	UI.Section("ระดับกล่องที่จะซื้อ (ดรอปดาวเลือกได้หลายระดับ)")
+	UI.ChestRarityDropdown()
+	UI.Section("ประเภทกล่อง / Mutation (เลือกได้หลายอัน)")
 	UI.TierMultiSelect()
 	UI.Toggle("วาร์ปไปสายพานเมื่ออยู่ไกล", "TeleportToBelt")
 	UI.Toggle("วาร์ปกลับจุดเดิมหลังซื้อ", "ReturnAfterBuy")
@@ -2822,6 +3059,10 @@ local function main()
 			UI.RebuildTiers()
 			logAction("MAP", reason or "อัปเดตรายการระดับกล่องตามแมพ", true)
 		end
+		if Helpers.RefreshChestRarities() and UI.RebuildChestRarities then
+			UI.RebuildChestRarities()
+			logAction("MAP", reason or "อัปเดตรายการระดับกล่อง (Rarity) ตามแมพ", true)
+		end
 		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
 			UI.RebuildDungeons()
 			logAction("MAP", reason or "อัปเดตรายชื่อดันเจียนตามแมพ", true)
@@ -2858,11 +3099,23 @@ local function main()
 			local ac = p:WaitForChild("ActiveChests", 10)
 			if not (ac and Core._alive) then return end
 			Core:Connect(ac.ChildAdded, function(c)
-				if not c:IsA("Model") then return end
 				task.defer(function()
-					local t = Helpers.ChestTier(c)
-					if not table.find(Helpers.TierList, t) then
-						syncMapData("พบระดับกล่องใหม่: " .. t)
+					if not Core._alive then return end
+					if c:IsA("Model") then
+						local t = Helpers.ChestTier(c)
+						if not table.find(Helpers.TierList, t) then
+							syncMapData("พบระดับ Mutation กล่องใหม่: " .. t)
+						end
+						local r = Helpers.ChestRarity(c)
+						if r and not table.find(Helpers.ChestRarityList, r) then
+							syncMapData("พบระดับกล่อง (Rarity) ใหม่: " .. r)
+						end
+					elseif c:IsA("BasePart") then
+						local pr = c:FindFirstChildOfClass("ProximityPrompt")
+						local prRarity = pr and (pr:GetAttribute("Rarity") or pr.ObjectText)
+						if type(prRarity) == "string" and prRarity ~= "" and not table.find(Helpers.ChestRarityList, prRarity) then
+							syncMapData("พบระดับกล่อง (Rarity) ใหม่: " .. prRarity)
+						end
 					end
 				end)
 			end)
