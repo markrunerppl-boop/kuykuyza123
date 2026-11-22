@@ -1605,21 +1605,30 @@ end
 
 -- Helper สำหรับอัปเกรดผังสกิลทั้งหมดที่มีในโซนที่ปลดล็อกทันที
 local function TriggerUpgradeAllSkillTrees()
-    local d = SafeGetData()
     local d2 = SafeGetData2()
     local mg = d2 and d2.MineGame
     if not (mg and MineConfig and MineConfig.GetSkillNodes) then return end
 
-    local myMoney = tonumber(d.Money) or 0
     local totalBought = 0
 
     local zonesToCheck = {}
-    local curZone = mg.CurrentZone or 1
-    table.insert(zonesToCheck, "Z" .. curZone)
-    for z = 14, 1, -1 do
-        local zk = "Z" .. z
-        if zk ~= ("Z" .. curZone) and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
-            table.insert(zonesToCheck, zk)
+    local curZoneKey = "Z" .. tostring(mg.CurrentZone or 1)
+    if mg.UnlockedZones and mg.UnlockedZones[curZoneKey] then
+        table.insert(zonesToCheck, curZoneKey)
+    end
+    if type(MineConfig.ZoneKeys) == "table" then
+        for i = #MineConfig.ZoneKeys, 1, -1 do
+            local zk = MineConfig.ZoneKeys[i]
+            if zk ~= curZoneKey and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+                table.insert(zonesToCheck, zk)
+            end
+        end
+    else
+        for z = 14, 1, -1 do
+            local zk = "Z" .. z
+            if zk ~= curZoneKey and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+                table.insert(zonesToCheck, zk)
+            end
         end
     end
 
@@ -1628,30 +1637,58 @@ local function TriggerUpgradeAllSkillTrees()
     local cheapestZone = nil
 
     for _, zKey in ipairs(zonesToCheck) do
-        local zSkills = (mg.Skills and mg.Skills[zKey]) or {}
         local nodes = MineConfig.GetSkillNodes(zKey)
+        local sectionSent = false
         if nodes then
             for _, node in ipairs(nodes) do
+                local freshD2 = SafeGetData2()
+                local freshMg = freshD2 and freshD2.MineGame
+                if not (freshMg and freshMg.UnlockedZones and freshMg.UnlockedZones[zKey]) then break end
+
+                local zSkills = (freshMg.Skills and freshMg.Skills[zKey]) or {}
                 local isOpen = MineConfig.IsSkillNodeOpen and MineConfig.IsSkillNodeOpen(zSkills, node)
                 local isMaxed = MineConfig.IsSkillNodeMaxed and MineConfig.IsSkillNodeMaxed(zSkills, node)
                 local curLvl = zSkills[node.Family] or 0
+                local maxLvl = MineConfig.GetSkillMax and MineConfig.GetSkillMax(zKey, node.Family)
+                local atFamilyMax = (type(maxLvl) == "number" and curLvl >= maxLvl)
+
+                local reqPower = (type(MineConfig.GetSkillPowerReq) == "function")
+                    and MineConfig.GetSkillPowerReq(zKey, node.Family, curLvl + 1) or nil
+                local curPower = tonumber(LocalPlayer:GetAttribute("MinePower")) or 0
+                local powerLocked = (reqPower ~= nil and curPower < reqPower)
+
                 local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zKey, curLvl, node.Family)
 
-                if isOpen and not isMaxed then
+                if isOpen and not isMaxed and not atFamilyMax and not powerLocked then
                     unmaxedCount = unmaxedCount + 1
-                    if cost and cost < cheapestCost then
+                    if type(cost) == "number" and cost < cheapestCost then
                         cheapestCost = cost
                         cheapestZone = zKey
                     end
 
-                    myMoney = tonumber(SafeGetData().Money) or 0
-                    if cost and myMoney >= cost then
-                        SafeSendEvent(Config.Events.SkillTreeSection, zKey)
+                    local myMoney = tonumber(freshD2.Money) or tonumber(SafeGetData().Money) or 0
+                    if type(cost) == "number" and myMoney >= cost then
+                        if not sectionSent then
+                            SafeSendEvent(Config.Events.SkillTreeSection, zKey)
+                            sectionSent = true
+                        end
                         UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
                         SafeSendEvent(Config.Events.BuySkill, zKey, node.Family, node.Id)
-                        zSkills[node.Family] = curLvl + 1
-                        totalBought = totalBought + 1
-                        HumanWait(0.08, 0.12)
+
+                        local deadline = os.clock() + 0.6
+                        local confirmed = false
+                        while os.clock() < deadline do
+                            task.wait(0.08)
+                            local checkD2 = SafeGetData2()
+                            local checkSkills = checkD2 and checkD2.MineGame and checkD2.MineGame.Skills and checkD2.MineGame.Skills[zKey]
+                            if checkSkills and (checkSkills[node.Family] or 0) > curLvl then
+                                confirmed = true
+                                break
+                            end
+                        end
+                        if confirmed then
+                            totalBought = totalBought + 1
+                        end
                     end
                 end
             end
@@ -1663,10 +1700,11 @@ local function TriggerUpgradeAllSkillTrees()
     elseif unmaxedCount == 0 then
         UpdateStatus("🌳 ผังสกิลทุกโซนตันหมดแล้ว 100%!")
     else
-        local myCurMoney = tonumber(SafeGetData().Money) or 0
+        local latestD2 = SafeGetData2()
+        local myCurMoney = tonumber(latestD2 and latestD2.Money) or tonumber(SafeGetData().Money) or 0
         local needMore = math.max(0, cheapestCost - myCurMoney)
-        UpdateStatus(string.format("🌳 ผังสกิลรอเงิน (%s ต้องการ %s | ขาดอีก %s)", 
-            tostring(cheapestZone or "Z14"), FormatNumber(cheapestCost), FormatNumber(needMore)))
+        UpdateStatus(string.format("🌳 ผังสกิลรอเงิน (%s ต้องการ %s | ขาดอีก %s)",
+            tostring(cheapestZone or curZoneKey), FormatNumber(cheapestCost), FormatNumber(needMore)))
     end
 end
 
@@ -4440,39 +4478,78 @@ task.spawn(function()
             d = SafeGetData()
             d2 = SafeGetData2()
             mg = d2 and d2.MineGame
-            myMoney = d and tonumber(d.Money) or 0
+            myMoney = tonumber(d2 and d2.Money) or (d and tonumber(d.Money)) or 0
 
             -- 3.1 สกิลต้นไม้ประจำโซน (วนตรวจเช็คทุกโซนที่ปลดล็อกแล้ว)
             if Config.AutoUpgradeTree and mg and MineConfig then
                 local zonesToCheck = {}
-                local curZone = mg.CurrentZone or 1
-                table.insert(zonesToCheck, "Z" .. curZone)
-                for z = 14, 1, -1 do
-                    local zk = "Z" .. z
-                    if zk ~= ("Z" .. curZone) and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
-                        table.insert(zonesToCheck, zk)
+                local curZoneKey = "Z" .. tostring(mg.CurrentZone or 1)
+                if mg.UnlockedZones and mg.UnlockedZones[curZoneKey] then
+                    table.insert(zonesToCheck, curZoneKey)
+                end
+                if type(MineConfig.ZoneKeys) == "table" then
+                    for i = #MineConfig.ZoneKeys, 1, -1 do
+                        local zk = MineConfig.ZoneKeys[i]
+                        if zk ~= curZoneKey and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+                            table.insert(zonesToCheck, zk)
+                        end
+                    end
+                else
+                    for z = 14, 1, -1 do
+                        local zk = "Z" .. z
+                        if zk ~= curZoneKey and (mg.UnlockedZones and mg.UnlockedZones[zk]) then
+                            table.insert(zonesToCheck, zk)
+                        end
                     end
                 end
 
                 local upgradedCount = 0
                 for _, zoneKey in ipairs(zonesToCheck) do
-                    local zSkills = (mg.Skills and mg.Skills[zoneKey]) or {}
                     local nodes = MineConfig.GetSkillNodes and MineConfig.GetSkillNodes(zoneKey)
+                    local sectionSent = false
                     if nodes then
                         for _, node in ipairs(nodes) do
+                            local freshD2 = SafeGetData2()
+                            local freshMg = freshD2 and freshD2.MineGame
+                            if not (freshMg and freshMg.UnlockedZones and freshMg.UnlockedZones[zoneKey]) then break end
+
+                            local zSkills = (freshMg.Skills and freshMg.Skills[zoneKey]) or {}
                             local isOpen = MineConfig.IsSkillNodeOpen and MineConfig.IsSkillNodeOpen(zSkills, node)
                             local isMaxed = MineConfig.IsSkillNodeMaxed and MineConfig.IsSkillNodeMaxed(zSkills, node)
                             local curLvl = zSkills[node.Family] or 0
-                            local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
+                            local maxLvl = MineConfig.GetSkillMax and MineConfig.GetSkillMax(zoneKey, node.Family)
+                            local atFamilyMax = (type(maxLvl) == "number" and curLvl >= maxLvl)
 
-                            local curMoney = tonumber(SafeGetData().Money) or 0
-                            if isOpen and not isMaxed and cost and curMoney >= cost then
-                                SafeSendEvent(Config.Events.SkillTreeSection, zoneKey)
+                            local reqPower = (type(MineConfig.GetSkillPowerReq) == "function")
+                                and MineConfig.GetSkillPowerReq(zoneKey, node.Family, curLvl + 1) or nil
+                            local curPower = tonumber(LocalPlayer:GetAttribute("MinePower")) or 0
+                            local powerLocked = (reqPower ~= nil and curPower < reqPower)
+
+                            local cost = MineConfig.GetSkillCost and MineConfig.GetSkillCost(zoneKey, curLvl, node.Family)
+                            local curMoney = tonumber(freshD2.Money) or tonumber(SafeGetData().Money) or 0
+
+                            if isOpen and not isMaxed and not atFamilyMax and not powerLocked and type(cost) == "number" and curMoney >= cost then
+                                if not sectionSent then
+                                    SafeSendEvent(Config.Events.SkillTreeSection, zoneKey)
+                                    sectionSent = true
+                                end
                                 UpdateStatus("🌳 อัปต้นไม้: " .. (node.Name or node.Id or "Node"))
                                 SafeSendEvent(Config.Events.BuySkill, zoneKey, node.Family, node.Id)
-                                zSkills[node.Family] = curLvl + 1
-                                upgradedCount = upgradedCount + 1
-                                HumanWait(0.08, 0.12)
+
+                                local deadline = os.clock() + 0.6
+                                local confirmed = false
+                                while os.clock() < deadline do
+                                    task.wait(0.08)
+                                    local checkD2 = SafeGetData2()
+                                    local checkSkills = checkD2 and checkD2.MineGame and checkD2.MineGame.Skills and checkD2.MineGame.Skills[zoneKey]
+                                    if checkSkills and (checkSkills[node.Family] or 0) > curLvl then
+                                        confirmed = true
+                                        break
+                                    end
+                                end
+                                if confirmed then
+                                    upgradedCount = upgradedCount + 1
+                                end
                                 if upgradedCount >= 10 then break end
                             end
                         end
@@ -4482,20 +4559,46 @@ task.spawn(function()
             end
 
             -- 3.2 สกิลแกนหลัก
-            if Config.AutoUpgradeCore and mg and MineConfig then
-                for _, cNode in ipairs(MineConfig.CoreNodes or {}) do
-                    local isOpen = MineConfig.IsCoreNodeOpen and MineConfig.IsCoreNodeOpen(mg, cNode)
-                    local isMaxed = MineConfig.IsCoreNodeMaxed and MineConfig.IsCoreNodeMaxed(mg, cNode)
-                    if isOpen and not isMaxed then
-                        local upDef = MineConfig.CoreUpgradeById and MineConfig.CoreUpgradeById[cNode.Family]
-                        if upDef and upDef.Cost and upDef.Event then
-                            local cost = upDef.Cost(mg[upDef.Field])
-                            local curMoney = tonumber(SafeGetData().Money) or 0
-                            if cost and curMoney >= cost then
-                                UpdateStatus("⚙️ อัปแกนหลัก: " .. (cNode.Name or cNode.Id or "Core"))
-                                SafeSendEvent(upDef.Event)
-                                HumanWait(0.2, 0.35)
-                                break
+            if Config.AutoUpgradeCore and MineConfig then
+                local freshD2 = SafeGetData2()
+                local freshMg = freshD2 and freshD2.MineGame
+                if freshMg then
+                    for _, cNode in ipairs(MineConfig.CoreNodes or {}) do
+                        local isOpen = MineConfig.IsCoreNodeOpen and MineConfig.IsCoreNodeOpen(freshMg, cNode)
+                        local isMaxed = MineConfig.IsCoreNodeMaxed and MineConfig.IsCoreNodeMaxed(freshMg, cNode)
+                        if isOpen and not isMaxed then
+                            local upDef = MineConfig.CoreUpgradeById and MineConfig.CoreUpgradeById[cNode.Family]
+                            if upDef and upDef.Cost and upDef.Event then
+                                local coreLevel = (MineConfig.GetCoreLevel and MineConfig.GetCoreLevel(freshMg, cNode.Family))
+                                    or tonumber(freshMg[upDef.Field])
+                                    or upDef.Base
+                                    or 1
+                                if not upDef.Max or coreLevel < upDef.Max then
+                                    local okCost, cost = pcall(upDef.Cost, coreLevel)
+                                    local curMoney = tonumber(freshD2.Money) or tonumber(SafeGetData().Money) or 0
+                                    if okCost and type(cost) == "number" and curMoney >= cost then
+                                        SafeSendEvent(Config.Events.SkillTreeSection, "Core")
+                                        UpdateStatus("⚙️ อัปแกนหลัก: " .. (cNode.Name or cNode.Id or "Core"))
+                                        SafeSendEvent(upDef.Event)
+
+                                        local deadline = os.clock() + 0.75
+                                        while os.clock() < deadline do
+                                            task.wait(0.1)
+                                            local checkD2 = SafeGetData2()
+                                            local checkMg = checkD2 and checkD2.MineGame
+                                            if checkMg then
+                                                local newLevel = (MineConfig.GetCoreLevel and MineConfig.GetCoreLevel(checkMg, cNode.Family))
+                                                    or tonumber(checkMg[upDef.Field])
+                                                    or upDef.Base
+                                                    or 1
+                                                if newLevel > coreLevel then
+                                                    break
+                                                end
+                                            end
+                                        end
+                                        break
+                                    end
+                                end
                             end
                         end
                     end
