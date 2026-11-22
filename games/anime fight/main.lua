@@ -450,7 +450,17 @@ local function main()
 		end
 
 		local sig = table.concat(sigParts, "|")
-		local changed = (sig ~= Helpers._shopSig) or (rot ~= Helpers.ShopRotation) or (not listEqual(kinds, Helpers.ShopKinds))
+		local kindsChanged = (#kinds ~= #Helpers.ShopKinds)
+		if not kindsChanged then
+			for i, v in ipairs(kinds) do
+				local cur = Helpers.ShopKinds[i]
+				if not cur or cur.id ~= v.id or cur.name ~= v.name then
+					kindsChanged = true
+					break
+				end
+			end
+		end
+		local changed = (sig ~= Helpers._shopSig) or (rot ~= Helpers.ShopRotation) or kindsChanged
 		Helpers.ShopOffers = offers
 		Helpers.ShopRotation = rot
 		Helpers.ShopOptions = opts
