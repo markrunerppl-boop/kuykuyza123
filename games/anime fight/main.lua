@@ -977,11 +977,40 @@ local function main()
 		local price = tonumber(entry.price) or 0
 		if price > 0 and Helpers.GetCash() < price then return false end
 
+		local inv = Helpers.Inventory
+		if type(inv) ~= "table" then
+			local now = os.clock()
+			if now - (Loops._lastInvReq or 0) >= 2 then
+				Loops._lastInvReq = now
+				local req = Net.Remote("RequestInventory")
+				if req and req:IsA("RemoteEvent") then pcall(function() req:FireServer() end) end
+			end
+			return false
+		end
+
+		local chestLimit = tonumber(inv.chestLimit)
+		local chestCount = tonumber(inv.chestCount)
+		if chestLimit and chestCount and chestCount >= chestLimit then return false end
+
 		local tierNum = tonumber(chest:GetAttribute("Tier"))
 		local plot = Helpers.GetPlot()
-		if plot and tierNum then
-			local lx, lz = Helpers.FindFreeSpot(plot, tierNum)
-			if not (lx and lz) then return false end
+		if plot then
+			if chestLimit then
+				local placedFolder = plot:FindFirstChild("PlacedChests")
+				if placedFolder then
+					local placedCount = 0
+					for _, ch in ipairs(placedFolder:GetChildren()) do
+						if ch:IsA("Model") and not ch:GetAttribute("Opening") then
+							placedCount += 1
+						end
+					end
+					if placedCount >= chestLimit then return false end
+				end
+			end
+			if tierNum then
+				local lx, lz = Helpers.FindFreeSpot(plot, tierNum)
+				if not (lx and lz) then return false end
+			end
 		end
 
 		local prompt = Helpers.FindAnchor(folder, chest)
@@ -1061,6 +1090,9 @@ local function main()
 		if ok then
 			Stats.bought += 1
 			Stats.spent += math.max(0, cashBefore - Helpers.GetCash())
+			if type(Helpers.Inventory) == "table" and tonumber(Helpers.Inventory.chestCount) then
+				Helpers.Inventory.chestCount = tonumber(Helpers.Inventory.chestCount) + 1
+			end
 			logAction("BUY", "ซื้อสำเร็จ: " .. label, true)
 			if Core.Flags.AutoPlaceChest and tierNum then
 				task.wait(0.15)
