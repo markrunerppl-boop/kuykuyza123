@@ -1501,67 +1501,40 @@ local function FindPickColossus()
     return cachedPickColossus
 end
 
--- Helper สำหรับตั้งค่าระดับบอสโกโลซัส (Colossus / BigNode Tier) แบบ 4 เลเยอร์
+-- Helper สำหรับตั้งค่าระดับบอสโกโลซัส (Colossus / BigNode Tier) อย่างปลอดภัย (ไม่ยิงซ้ำเมื่อยังไม่ปลดล็อก)
 local function SetColossusTier(targetLevel)
     if not targetLevel or targetLevel <= 0 then return false end
 
-    -- [Layer 1] เรียก pickColossus โดยตรงจาก Client GC (เสถียรสูงสุด 100% เปลี่ยนชิปและสั่ง Server ทันที)
+    local d2 = SafeGetData2()
+    local mg = d2 and d2.MineGame
+    if not (mg and MineConfig) then return false end
+
+    local rawZone = mg.CurrentZone or LocalPlayer:GetAttribute("Zone") or 1
+    local zNum = tostring(rawZone):gsub("%D", "")
+    local curZoneKey = "Z" .. (zNum ~= "" and zNum or "1")
+
+    if not (MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey) == true) then
+        return false
+    end
+
+    local maxLvl = (MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey)) or 0
+    if maxLvl < 1 or targetLevel > maxLvl then
+        return false
+    end
+
+    -- ใช้ช่องทางเดียวที่เสถียรที่สุด (ไม่ยิงซ้ำ 3-4 เลเยอร์จนเซิร์ฟเวอร์แจ้งเตือนรัว)
+    local calledViaClient = false
     pcall(function()
         local fn = FindPickColossus()
         if fn then
             fn(targetLevel)
+            calledViaClient = true
         end
     end)
 
-    -- [Layer 2] ค้นหาปุ่ม 3D บน ZoneBoardGui และจำลองการกดแบบรอบด้าน
-    pcall(function()
-        local myPlot = GetMyPlot()
-        local zb = myPlot and myPlot:FindFirstChild("ZoneBoard", true)
-        local zbGui = zb and zb:FindFirstChild("ZoneBoardGui", true)
-        local tiers = zbGui and zbGui:FindFirstChild("Tiers", true)
-        local tierObj = tiers and tiers:FindFirstChild("Tier" .. tostring(targetLevel))
-        local btn = tierObj and tierObj:FindFirstChildWhichIsA("GuiButton", true)
-
-        if btn then
-            -- 2.1 ดึง clickHandler จาก Upvalues ของ Button connection
-            if getconnections then
-                local conns = getconnections(btn.MouseButton1Click)
-                if #conns == 0 then conns = getconnections(btn.Activated) end
-                for _, c in ipairs(conns) do
-                    if c.Function and debug.getupvalue then
-                        pcall(function()
-                            local clickHandler = debug.getupvalue(c.Function, 7)
-                            if type(clickHandler) == "function" then
-                                clickHandler(targetLevel)
-                            end
-                            local pickCol = debug.getupvalue(clickHandler, 3)
-                            if type(pickCol) == "function" then
-                                pickCol(targetLevel)
-                            end
-                        end)
-                    end
-                    pcall(function() c:Fire() end)
-                end
-                for _, c in ipairs(getconnections(btn.MouseButton1Down)) do pcall(function() c:Fire() end) end
-                for _, c in ipairs(getconnections(btn.MouseButton1Up)) do pcall(function() c:Fire() end) end
-            end
-
-            -- 2.2 ส่ง firesignal สำหรับ Mobile Executor (Delta Android / UGPhone)
-            if firesignal then
-                pcall(function() firesignal(btn.MouseButton1Down) end)
-                pcall(function() firesignal(btn.MouseButton1Up) end)
-                pcall(function() firesignal(btn.MouseButton1Click) end)
-                pcall(function() firesignal(btn.Activated) end)
-            end
-        end
-    end)
-
-    -- [Layer 3] ส่ง Event ตรงผ่าน GameState.SendEvent (พร้อมดีเลย์ส่งซ้ำยืนยันเซิร์ฟเวอร์)
-    SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
-    task.spawn(function()
-        task.wait(0.55)
+    if not calledViaClient then
         SafeSendEvent(Config.Events.BigNodeToggle, targetLevel)
-    end)
+    end
 
     return true
 end
@@ -4383,6 +4356,9 @@ end)
 -- 🚀 4. MASTER WORKER PIPELINE (ISOLATED TASKS WITH PCALL)
 -- ═══════════════════════════════════════════════
 local lastEquipTime = 0
+local nextTrialAttemptAt = 0
+local nextColossusAttemptAt = 0
+local lastColossusZoneKey = nil
 
 task.spawn(function()
     while true do
@@ -4986,11 +4962,15 @@ task.spawn(function()
 
         -- -------------------------------------------------------------
         -- [TASK 10] ทดสอบอินฟินิตี้ (Infinity Trial: ตรวจสอบความพร้อม, รับรางวัล, เริ่มลงทดสอบ)
-        -- ทำงานเฉพาะเมื่อรางวัลรีเซ็ตและมีรางวัลให้รับเท่านั้น (ไม่ลงซ้ำหากเคลมครบแล้วหรือติด Cooldown)
+        -- ทำงานเฉพาะเมื่อปลดล็อกจริงและมีรางวัลให้รับเท่านั้น (มีระบบ Backoff กันยิงซ้ำหากเซิร์ฟเวอร์ปฏิเสธ)
         -- -------------------------------------------------------------
         local ok10, err10 = pcall(function()
             if Config.AutoInfinityTrial and mg and MineTrialConfig then
-                local isUnlocked = MineTrialConfig.Unlocked and MineTrialConfig.Unlocked(mg)
+                local isUnlocked = MineTrialConfig.Unlocked and MineTrialConfig.Unlocked(mg) == true
+                local unlockZone = MineTrialConfig.UnlockZoneKey and MineTrialConfig.UnlockZoneKey()
+                if isUnlocked and unlockZone and MineConfig and MineConfig.IsBigNodeUnlocked then
+                    isUnlocked = MineConfig.IsBigNodeUnlocked(mg, unlockZone) == true
+                end
                 if isUnlocked then
                     local trialData = (mg.Trial and type(mg.Trial) == "table" and mg.Trial) or {}
 
@@ -5011,20 +4991,35 @@ task.spawn(function()
                     -- 10.2 ตรวจสอบว่ารางวัลสำหรับวันนี้เคลมครบทุกเทียร์แล้วหรือไม่
                     local status = GetTrialRewardStatus(trialData)
                     if status.allClaimed then
-                        -- รางวัลสำหรับวันนี้เคลมครบหมดแล้ว (อยู่ในช่วง Cooldown รอรีเซ็ตวันถัดไป)
-                        -- ไม่ส่งคำสั่งลงทดสอบเด็ดขาดตามเงื่อนไขของผู้ใช้
                         return
                     end
 
-                    -- 10.3 ตรวจสอบสถานะการทดสอบปัจจุบัน
+                    -- 10.3 ตรวจสอบสถานะการทดสอบปัจจุบัน + Cooldown กันยิงซ้ำหากยังไม่พร้อมใช้งานจริง
                     local attempt = trialData.Attempt
                     local now = os.time()
                     local isRunning = type(attempt) == "table" and (tonumber(attempt.EndsAt) or 0) > now
 
-                    if not isRunning then
+                    if not isRunning and os.clock() >= nextTrialAttemptAt then
                         UpdateStatus(string.format("⚔️ ลงทดสอบอินฟินิตี้ (รางวัลค้าง %d/%d)...", status.totalTiers - status.claimedCount, status.totalTiers))
                         SafeSendEvent(Config.Events.TrialStart)
-                        HumanWait(0.4, 0.6)
+
+                        local deadline = os.clock() + 1.0
+                        local started = false
+                        while os.clock() < deadline do
+                            task.wait(0.1)
+                            local checkD2 = SafeGetData2()
+                            local checkTrial = checkD2 and checkD2.MineGame and checkD2.MineGame.Trial
+                            local checkAttempt = type(checkTrial) == "table" and checkTrial.Attempt
+                            if type(checkAttempt) == "table" and (tonumber(checkAttempt.EndsAt) or 0) > os.time() then
+                                started = true
+                                break
+                            end
+                        end
+
+                        if not started then
+                            -- เซิร์ฟเวอร์ปฏิเสธ (เช่น ยังไม่วิจัยโกโลซัส Toadmire จริง) พัก 30 วิ ไม่ยิงซ้ำ
+                            nextTrialAttemptAt = os.clock() + 30
+                        end
                     end
                 end
             end
@@ -5052,25 +5047,48 @@ task.spawn(function()
         -- -------------------------------------------------------------
         local okColossus, errColossus = pcall(function()
             if Config.AutoNextColossusTier and mg and MineConfig then
-                local rawZone = (mg and mg.CurrentZone) or LocalPlayer:GetAttribute("Zone") or 14
+                local rawZone = (mg and mg.CurrentZone) or LocalPlayer:GetAttribute("Zone") or 1
                 local zNum = tostring(rawZone):gsub("%D", "")
-                local curZoneKey = "Z" .. (zNum ~= "" and zNum or "14")
+                local curZoneKey = "Z" .. (zNum ~= "" and zNum or "1")
 
-                local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey)
-                if isBigNodeUnlocked then
-                    local maxUnlockedLvl = MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey) or 1
+                if curZoneKey ~= lastColossusZoneKey then
+                    lastColossusZoneKey = curZoneKey
+                    nextColossusAttemptAt = 0
+                end
+
+                local isBigNodeUnlocked = MineConfig.IsBigNodeUnlocked and MineConfig.IsBigNodeUnlocked(mg, curZoneKey) == true
+                if isBigNodeUnlocked and os.clock() >= nextColossusAttemptAt then
+                    local maxUnlockedLvl = (MineConfig.GetBigNodeLevel and MineConfig.GetBigNodeLevel(mg, curZoneKey)) or 0
                     local curRunningLvl = (MineConfig.GetBigNodeRunLevel and MineConfig.GetBigNodeRunLevel(mg, curZoneKey))
                         or (mg.BigNodes and mg.BigNodes[curZoneKey] and mg.BigNodes[curZoneKey].Level)
                         or (mg.BigNodes and mg.BigNodes[curZoneKey] and mg.BigNodes[curZoneKey].Drop)
                         or 1
 
-                    local isMaxSelected = IsColossusTierSelected(maxUnlockedLvl)
-
-                    if (maxUnlockedLvl > curRunningLvl) or (not isMaxSelected) then
-                        UpdateStatus(string.format("🗿 ปลดล็อกด่านใหม่! เลื่อนโกโลซัสเป็นระดับ %d (Tier %s)...", 
+                    local needSwitch = (maxUnlockedLvl >= 1) and ((mg.BigNodeMode ~= true) or (maxUnlockedLvl > curRunningLvl))
+                    if needSwitch then
+                        UpdateStatus(string.format("🗿 ปลดล็อกด่านใหม่! เลื่อนโกโลซัสเป็นระดับ %d (Tier %s)...",
                             maxUnlockedLvl, ToRoman(maxUnlockedLvl)))
-                        SetColossusTier(maxUnlockedLvl)
-                        HumanWait(0.5, 0.8)
+                        if SetColossusTier(maxUnlockedLvl) then
+                            local deadline = os.clock() + 0.8
+                            local confirmed = false
+                            while os.clock() < deadline do
+                                task.wait(0.1)
+                                local checkD2 = SafeGetData2()
+                                local checkMg = checkD2 and checkD2.MineGame
+                                if checkMg and checkMg.BigNodeMode == true then
+                                    local newRunLvl = (MineConfig.GetBigNodeRunLevel and MineConfig.GetBigNodeRunLevel(checkMg, curZoneKey)) or 1
+                                    if newRunLvl >= maxUnlockedLvl then
+                                        confirmed = true
+                                        break
+                                    end
+                                end
+                            end
+
+                            if not confirmed then
+                                -- เซิร์ฟเวอร์ปฏิเสธ (เช่น ยังไม่วิจัยโกโลซัสโซนนี้จริง) พัก 30 วิ ไม่ยิงซ้ำ
+                                nextColossusAttemptAt = os.clock() + 30
+                            end
+                        end
                     end
                 end
             end
