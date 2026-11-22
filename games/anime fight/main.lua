@@ -111,6 +111,11 @@ local function main()
 			AutoBossReturn = false,
 			AutoBuyBossShop = false,
 			BossShopTarget = "All",
+			AutoBuyShop = false,
+			ShopBuyAll = false,
+			ShopFilterKind = "All",
+			ShopMinRarity = "All",
+			ShopTargets = {},
 			AutoAscendUnit = false,
 			AutoClaimBattlePass = false,
 			AutoClaimWeekly = false,
@@ -223,6 +228,11 @@ local function main()
 		Inventory = nil,
 		PvpShopItems = {},
 		PvpMeta = { hasQueue = false, hasShop = false, hasConfig = false },
+		ShopOffers = {},
+		ShopRotation = -1,
+		ShopOptions = {},
+		ShopKinds = { { id = "All", name = "ทั้งหมด (All)" } },
+		_shopSig = "",
 		SkillTree = {},
 		_skillSynced = false,
 	}
@@ -338,6 +348,139 @@ local function main()
 
 	function Helpers.GetItemConfig()
 		return Helpers.RequireModule("ItemConfig", "Modules", "Gameplay", "ItemConfig")
+	end
+
+	function Helpers.GetShopConfig()
+		return Helpers.RequireModule("ShopConfig", "Modules", "Gameplay", "ShopConfig")
+	end
+
+	function Helpers.GetShopOfferName(offer): string
+		if type(offer) ~= "table" then return "?" end
+		local ref = tostring(offer.ref or offer.id or "?")
+		if offer.kind == "Unit" then return ref end
+		local itemCfg = Helpers.GetItemConfig()
+		if itemCfg and type(itemCfg.Get) == "function" then
+			local ok, def = pcall(itemCfg.Get, ref)
+			if ok and type(def) == "table" and def.Name then
+				return tostring(def.Name)
+			end
+		end
+		return ref
+	end
+
+	function Helpers.GetShopRemaining(offer, rot: number?): number
+		if type(offer) ~= "table" then return 0 end
+		local stock = tonumber(offer.stock) or 0
+		if stock <= 0 then return 0 end
+		local inv = Helpers.Inventory
+		local shopData = type(inv) == "table" and inv.shop or nil
+		local curRot = rot or Helpers.ShopRotation
+		local used = 0
+		if type(shopData) == "table" and shopData.Rotation == curRot and type(shopData.Used) == "table" then
+			used = tonumber(shopData.Used[offer.id]) or 0
+		end
+		return math.max(0, stock - used)
+	end
+
+	function Helpers.RefreshShop(): boolean
+		local shopCfg = Helpers.GetShopConfig()
+		local rot = -1
+		local offers = {}
+		if shopCfg and type(shopCfg.Rotation) == "function" and type(shopCfg.Offers) == "function" then
+			local okT, now = pcall(function() return Workspace:GetServerTimeNow() end)
+			local t = (okT and type(now) == "number") and now or os.time()
+			local okR, r = pcall(shopCfg.Rotation, t)
+			if okR and type(r) == "number" then
+				rot = r
+				local okO, list = pcall(shopCfg.Offers, rot)
+				if okO and type(list) == "table" then
+					offers = list
+				end
+			end
+		end
+		if #offers == 0 then
+			local qRemote = Net.Remote("ShopQuery")
+			if qRemote and qRemote:IsA("RemoteFunction") then
+				local okQ, resQ = Net.Invoke(qRemote)
+				if okQ and type(resQ) == "table" then
+					if type(resQ.offers) == "table" then offers = resQ.offers
+					elseif type(resQ.Offers) == "table" then offers = resQ.Offers
+					elseif #resQ > 0 then offers = resQ end
+					if type(resQ.rotation) == "number" then rot = resQ.rotation
+					elseif type(resQ.Rotation) == "number" then rot = resQ.Rotation end
+				end
+			end
+		end
+
+		local kindLabels = { Unit = "ยูนิต (Unit)", Equip = "อุปกรณ์ (Equip)", Material = "ไอเทม (Material)" }
+		local kinds, seenK = { { id = "All", name = "ทุกหมวด (All)" } }, { All = true }
+		for _, baseK in ipairs({ "Unit", "Equip", "Material" }) do
+			seenK[baseK] = true
+			table.insert(kinds, { id = baseK, name = kindLabels[baseK] or baseK })
+		end
+
+		local opts, sigParts = {}, { tostring(rot) }
+		for _, offer in ipairs(offers) do
+			if type(offer) == "table" and offer.id then
+				local kind = tostring(offer.kind or "Item")
+				if not seenK[kind] then
+					seenK[kind] = true
+					table.insert(kinds, { id = kind, name = kindLabels[kind] or kind })
+				end
+				local ref = tostring(offer.ref or offer.id)
+				local name = Helpers.GetShopOfferName(offer)
+				local rem = Helpers.GetShopRemaining(offer, rot)
+				local stock = tonumber(offer.stock) or 0
+				local price = tonumber(offer.price) or 0
+				local rarity = tostring(offer.rarity or "Common")
+				table.insert(opts, {
+					id = tostring(offer.id),
+					ref = ref,
+					name = name,
+					kind = kind,
+					rarity = rarity,
+					price = price,
+					stock = stock,
+					remaining = rem,
+					amount = tonumber(offer.amount) or 1,
+					inRotation = true,
+				})
+				table.insert(sigParts, string.format("%s:%s:%s:%d:%d", tostring(offer.id), ref, rarity, price, rem))
+			end
+		end
+
+		local sig = table.concat(sigParts, "|")
+		local changed = (sig ~= Helpers._shopSig) or (rot ~= Helpers.ShopRotation) or (not listEqual(kinds, Helpers.ShopKinds))
+		Helpers.ShopOffers = offers
+		Helpers.ShopRotation = rot
+		Helpers.ShopOptions = opts
+		Helpers.ShopKinds = kinds
+		Helpers._shopSig = sig
+		return changed
+	end
+
+	function Helpers.GetShopKindOptions()
+		if #Helpers.ShopKinds <= 1 then Helpers.RefreshShop() end
+		return Helpers.ShopKinds
+	end
+
+	function Helpers.GetShopRarityOptions()
+		if #Helpers.RarityOrder == 0 then Helpers.RefreshRaritiesAndAscension() end
+		local list, seen = { { id = "All", name = "ทุกระดับ (All)" } }, { All = true }
+		for _, r in ipairs(Helpers.RarityOrder) do
+			if not seen[r] then
+				seen[r] = true
+				table.insert(list, { id = r, name = r .. "+" })
+			end
+		end
+		for _, offer in ipairs(Helpers.ShopOffers) do
+			local r = type(offer) == "table" and offer.rarity
+			if type(r) == "string" and r ~= "" and not seen[r] then
+				seen[r] = true
+				table.insert(list, { id = r, name = r .. "+" })
+			end
+		end
+		return list
 	end
 
 	function Helpers.GetPvpConfig()
@@ -791,7 +934,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, lastBossAt = 0, lastBossShopAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1400,6 +1543,27 @@ local function main()
 		end
 	end
 
+	function Loops.AutoBossReplayTick()
+		if not Helpers.IsBossPlace() then return end
+		if os.clock() - Loops.lastBossAt < 2 then return end
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		if not (endScreen and endScreen:IsA("GuiObject") and endScreen.Visible) then return end
+		local raidQueue = Net.Remote("RaidQueue")
+		if raidQueue and raidQueue:IsA("RemoteEvent") then
+			Loops.lastBossAt = os.clock()
+			pcall(function() raidQueue:FireServer("Again") end)
+			logAction("BOSS", "ส่งคำสั่งสู้บอสซ้ำ (Again)", true)
+		end
+	end
+
+	function Loops.StartAutoBossReplay()
+		if Core.Flags.AutoBossReplay then
+			Core:Loop("AutoBossReplay", "AutoBossReplay", 0.8, Loops.AutoBossReplayTick)
+		end
+	end
+
 	function Loops.AutoBuyBossShopTick()
 		if not Helpers.IsBossPlace() then return end
 		if os.clock() - Loops.lastBossShopAt < 3 then return end
@@ -1668,6 +1832,82 @@ local function main()
 		end
 	end
 
+	function Loops.AutoBuyShopTick()
+		if os.clock() - Loops.lastShopAt < 1.2 then return end
+		local shopBuy = Net.Remote("ShopBuy")
+		if not (shopBuy and shopBuy:IsA("RemoteFunction")) then return end
+		if Helpers.Inventory == nil then
+			local req = Net.Remote("RequestInventory")
+			if req and req:IsA("RemoteEvent") then pcall(function() req:FireServer() end) end
+		end
+		if Helpers.RefreshShop() and Core._rebuildShopUI then
+			pcall(Core._rebuildShopUI)
+		end
+		if #Helpers.ShopOffers == 0 then return end
+		local cash = Helpers.GetCash()
+		if cash <= 0 then return end
+		Loops.lastShopAt = os.clock()
+
+		local rarityRank = {}
+		for i, r in ipairs(Helpers.RarityOrder) do rarityRank[r] = i end
+		local minRarity = tostring(Core.Flags.ShopMinRarity or "All")
+		local minRank = (minRarity ~= "All") and (rarityRank[minRarity] or 0) or 0
+		local filterKind = tostring(Core.Flags.ShopFilterKind or "All")
+		local buyAll = Core.Flags.ShopBuyAll == true
+		local targets = type(Core.Flags.ShopTargets) == "table" and Core.Flags.ShopTargets or {}
+		local boughtAny = false
+
+		for _, offer in ipairs(Helpers.ShopOffers) do
+			if not Core._alive or not Core.Flags.AutoBuyShop then break end
+			if type(offer) == "table" and offer.id then
+				local rem = Helpers.GetShopRemaining(offer, Helpers.ShopRotation)
+				local price = tonumber(offer.price) or math.huge
+				local kind = tostring(offer.kind or "")
+				local ref = tostring(offer.ref or offer.id)
+				local rarity = tostring(offer.rarity or "Common")
+				local okKind = (filterKind == "All") or (kind == filterKind)
+				local okRarity = (minRank == 0) or ((rarityRank[rarity] or 0) >= minRank)
+				local okTarget = buyAll or (targets[ref] == true)
+				if rem > 0 and price > 0 and cash >= price and okKind and okRarity and okTarget then
+					local qty = math.min(rem, math.floor(cash / price))
+					if qty >= 1 then
+						local okB, resB, errB = Net.Invoke(shopBuy, offer.id, qty)
+						if okB and resB == true then
+							local spent = price * qty
+							cash -= spent
+							Stats.spent += spent
+							boughtAny = true
+							if type(Helpers.Inventory) == "table" then
+								if type(Helpers.Inventory.shop) ~= "table" or Helpers.Inventory.shop.Rotation ~= Helpers.ShopRotation then
+									Helpers.Inventory.shop = { Rotation = Helpers.ShopRotation, Used = {} }
+								end
+								Helpers.Inventory.shop.Used = Helpers.Inventory.shop.Used or {}
+								Helpers.Inventory.shop.Used[offer.id] = (tonumber(Helpers.Inventory.shop.Used[offer.id]) or 0) + qty
+							end
+							local totalAmt = qty * (tonumber(offer.amount) or 1)
+							logAction("SHOP", string.format("ซื้อ %dx %s (-¥%s)", totalAmt, Helpers.GetShopOfferName(offer), Helpers.Format(spent)), true)
+							task.wait(0.15)
+						elseif errB then
+							logAction("SHOP", "ซื้อไม่สำเร็จ (" .. Helpers.GetShopOfferName(offer) .. "): " .. tostring(errB), false)
+							Loops.lastShopAt = os.clock() + 1.5
+							break
+						end
+					end
+				end
+			end
+		end
+
+		if boughtAny and Helpers.RefreshShop() and Core._rebuildShopUI then
+			pcall(Core._rebuildShopUI)
+		end
+	end
+
+	function Loops.StartAutoBuyShop()
+		if Core.Flags.AutoBuyShop then
+			Core:Loop("AutoBuyShop", "AutoBuyShop", 1.5, Loops.AutoBuyShopTick)
+		end
+	end
+
 	function Loops.RequestSkillSync()
 		local now = os.clock()
 		if now - (Loops.lastSkillSyncAt or 0) < 4 then return end
@@ -1776,9 +2016,29 @@ local function main()
 						Helpers.SkillTree = data.skillTree
 						Helpers._skillSynced = true
 					end
+					task.defer(function()
+						if Core._alive and Helpers.RefreshShop() and Core._rebuildShopUI then
+							pcall(Core._rebuildShopUI)
+						end
+					end)
 				end
 			end)
 		end
+		local function bindShopChanged(sc)
+			if not (sc and sc:IsA("RemoteEvent")) then return end
+			Core:Connect(sc.OnClientEvent, function()
+				task.defer(function()
+					if not Core._alive then return end
+					if Helpers.RefreshShop() and Core._rebuildShopUI then
+						pcall(Core._rebuildShopUI)
+					end
+					if Core.Flags.AutoBuyShop then
+						Loops.AutoBuyShopTick()
+					end
+				end)
+			end)
+		end
+		bindShopChanged(ev:FindFirstChild("ShopChanged"))
 		local function bindRaidQueue(rq)
 			if not (rq and rq:IsA("RemoteEvent")) then return end
 			Core:Connect(rq.OnClientEvent, function(payload)
@@ -1802,7 +2062,7 @@ local function main()
 						end
 					end
 				elseif payload.state == "replay" then
-					if isBoss and Core.Flags.AutoBoss and Core.Flags.AutoBossReplay and not payload.mine then
+					if isBoss and Core.Flags.AutoBossReplay and not payload.mine then
 						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
 					elseif (not isBoss) and Core.Flags.AutoRaid and Core.Flags.AutoRaidReplay and not payload.mine then
 						task.defer(function() pcall(function() rq:FireServer("Again") end) end)
@@ -1826,11 +2086,13 @@ local function main()
 			table.clear(Net._cache)
 			if ch.Name == "RaidQueue" then bindRaidQueue(ch) end
 			if ch.Name == "BossEvent" then bindBossEvent(ch) end
+			if ch.Name == "ShopChanged" then bindShopChanged(ch) end
 			local lower = ch.Name:lower()
-			if lower:find("pvp", 1, true) or lower:find("raid", 1, true) or lower:find("boss", 1, true) then
+			if lower:find("pvp", 1, true) or lower:find("raid", 1, true) or lower:find("boss", 1, true) or lower:find("shop", 1, true) then
 				Helpers.RefreshRaids()
 				Helpers.RefreshBoss()
 				Helpers.RefreshPvp()
+				if Helpers.RefreshShop() and Core._rebuildShopUI then pcall(Core._rebuildShopUI) end
 			end
 		end)
 		local notify = ev:WaitForChild("Notify", 10)
@@ -2177,6 +2439,74 @@ local function main()
 			rebuild()
 		end
 
+		function UI.ShopMultiSelect()
+			local header = mk("TextLabel", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "สินค้าในร้านปัจจุบัน (อัปเดตเรียลไทม์)", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, body)
+			local holder = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, body)
+			corner(holder, 6)
+			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, holder)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 28), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
+			local function updateHeader()
+				local shopCfg = Helpers.GetShopConfig()
+				local secLeft = nil
+				if shopCfg and type(shopCfg.SecondsLeft) == "function" then
+					local okT, now = pcall(function() return Workspace:GetServerTimeNow() end)
+					local okS, s = pcall(shopCfg.SecondsLeft, (okT and type(now) == "number") and now or os.time())
+					if okS and type(s) == "number" then secLeft = math.max(0, math.floor(s)) end
+				end
+				if secLeft then
+					header.Text = string.format("สินค้าในร้าน (%d รายการ | Restock %d:%02d)", #Helpers.ShopOptions, secLeft // 60, secLeft % 60)
+				else
+					header.Text = string.format("สินค้าในร้าน (%d รายการ)", #Helpers.ShopOptions)
+				end
+			end
+			local function rebuild()
+				updateHeader()
+				for _, ch in ipairs(holder:GetChildren()) do if ch:IsA("TextButton") then ch:Destroy() end end
+				if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
+				local seenRef = {}
+				local idx = 0
+				for _, opt in ipairs(Helpers.ShopOptions) do
+					idx += 1
+					seenRef[opt.ref] = true
+					local refKey = opt.ref
+					local stockTxt = opt.remaining <= 0 and "หมด" or (tostring(opt.remaining) .. "/" .. tostring(opt.stock))
+					local label = string.format("%s ¥%s [%s]", opt.name, Helpers.Format(opt.price), stockTxt)
+					local b = mk("TextButton", { LayoutOrder = idx, BackgroundColor3 = C_BG, Text = "", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = opt.remaining <= 0 and C_SUB or C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, holder)
+					corner(b, 4)
+					local function render()
+						local on = Core.Flags.ShopTargets[refKey] == true
+						b.Text = (on and "☑ " or "☐ ") .. label
+						b.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
+					end
+					render()
+					b.MouseButton1Click:Connect(function()
+						Core.Flags.ShopTargets[refKey] = not (Core.Flags.ShopTargets[refKey] == true)
+						if not Core.Flags.ShopTargets[refKey] then Core.Flags.ShopTargets[refKey] = nil end
+						Config.Save()
+						render()
+					end)
+				end
+				for refKey, isOn in pairs(Core.Flags.ShopTargets) do
+					if isOn == true and not seenRef[refKey] then
+						idx += 1
+						local rk = tostring(refKey)
+						local disp = Helpers.GetShopOfferName({ kind = "Material", ref = rk })
+						local b = mk("TextButton", { LayoutOrder = idx, BackgroundColor3 = Color3.fromRGB(90, 55, 25), Text = "☑ " .. disp .. " (รอรอบ)", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_SUB, TextTruncate = Enum.TextTruncate.AtEnd }, holder)
+						corner(b, 4)
+						b.MouseButton1Click:Connect(function()
+							Core.Flags.ShopTargets[rk] = nil
+							Config.Save()
+							rebuild()
+						end)
+					end
+				end
+			end
+			UI.RebuildShopItems = rebuild
+			UI.UpdateShopHeader = updateHeader
+			Core._rebuildShopUI = rebuild
+			rebuild()
+		end
+
 		function UI.StatusLabel()
 			return mk("TextLabel", { Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0), BackgroundTransparency = 1, Text = "", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, statusBar)
 		end
@@ -2204,12 +2534,14 @@ local function main()
 	Config.Load()
 	UI.ApplySavedSize()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
+	if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
 	Helpers.RefreshTiers()
 	Helpers.RefreshDungeons()
 	Helpers.RefreshRaids()
 	Helpers.RefreshBoss()
 	Helpers.RefreshRaritiesAndAscension()
 	Helpers.RefreshPvp()
+	Helpers.RefreshShop()
 
 	UI.CreateTab("Chest", "📦 กล่อง")
 	UI.Section("📦 Auto Buy Chest (สายพานฐานตัวเอง)")
@@ -2230,6 +2562,23 @@ local function main()
 	UI.Toggle("เปิดกล่องอัตโนมัติเมื่อพร้อม", "AutoOpenChest", function(on)
 		logAction("CFG", "Auto Open Chest: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoOpen() end
+	end)
+	UI.Section("🛒 Auto Buy Shop (ร้านค้าหลัก - อัปเดตเรียลไทม์)")
+	UI.Toggle("เปิด Auto ซื้อของร้านค้า (Shop)", "AutoBuyShop", function(on)
+		logAction("CFG", "Auto Buy Shop: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoBuyShop() end
+	end)
+	UI.Toggle("ซื้อทั้งหมดที่เงินพอ (ไม่สนรายการที่ติ๊ก)", "ShopBuyAll")
+	UI.OptionSelect("ShopFilterKind", "All", Helpers.GetShopKindOptions, "หมวดร้านค้า: ", "RebuildShopKinds")
+	UI.OptionSelect("ShopMinRarity", "All", Helpers.GetShopRarityOptions, "ระดับขั้นต่ำร้านค้า: ", "RebuildShopRarities")
+	UI.ShopMultiSelect()
+	UI.Button("🔄 รีเฟรชรายการร้านค้า", function()
+		Helpers.InvalidateModules()
+		Helpers.RefreshShop()
+		if UI.RebuildShopKinds then UI.RebuildShopKinds() end
+		if UI.RebuildShopRarities then UI.RebuildShopRarities() end
+		if UI.RebuildShopItems then UI.RebuildShopItems() end
+		logAction("SHOP", string.format("รีเฟรชร้านค้าแล้ว (%d รายการ)", #Helpers.ShopOptions), true)
 	end)
 
 	UI.CreateTab("Battle", "⚔️ ดันเจียน")
@@ -2265,7 +2614,10 @@ local function main()
 	UI.NumberInput("จำนวนคนในปาร์ตี้บอส (1-4)", "BossPartySize", 1)
 	UI.Toggle("เฉพาะเพื่อน (Boss Friends Only)", "BossFriendsOnly")
 	UI.Toggle("กดเริ่มบอสทันทีเมื่ออยู่หน้าคิว (StartNow)", "BossStartNow")
-	UI.Toggle("สู้บอสซ้ำอัตโนมัติ (Play Again)", "AutoBossReplay")
+	UI.Toggle("สู้บอสซ้ำอัตโนมัติ (Play Again)", "AutoBossReplay", function(on)
+		logAction("CFG", "Auto Boss Replay: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoBossReplay() end
+	end)
 	UI.Toggle("กลับล็อบบี้หลังจบบอส (ถ้าไม่ Replay)", "AutoBossReturn")
 	UI.Toggle("ซื้อของร้าน Boss Merchant อัตโนมัติ (ใช้เงิน ¥)", "AutoBuyBossShop", function(on)
 		logAction("CFG", "Auto Buy Boss Shop: " .. (on and "ON" or "OFF"), on)
@@ -2362,10 +2714,19 @@ local function main()
 			logAction("MAP", reason or ("อัปเดตข้อมูล Boss: " .. tostring(Helpers.BossToday or "-")), true)
 		end
 		if Helpers.RefreshRaritiesAndAscension() then
+			if UI.RebuildShopRarities then UI.RebuildShopRarities() end
 			logAction("MAP", reason or string.format("อัปเดตระดับยูนิต (%d ระดับ) / Ascend (%d สาย)", #Helpers.RarityOrder, #Helpers.AscensionPaths), true)
 		end
 		if Helpers.RefreshPvp() then
 			logAction("MAP", reason or "อัปเดตข้อมูล PvP ตามแมพ", true)
+		end
+		if Helpers.RefreshShop() then
+			if UI.RebuildShopKinds then UI.RebuildShopKinds() end
+			if UI.RebuildShopRarities then UI.RebuildShopRarities() end
+			if UI.RebuildShopItems then UI.RebuildShopItems() end
+			logAction("SHOP", reason or string.format("อัปเดตรายการร้านค้าเรียลไทม์ (%d รายการ)", #Helpers.ShopOptions), true)
+		elseif UI.UpdateShopHeader then
+			pcall(UI.UpdateShopHeader)
 		end
 	end
 
@@ -2422,6 +2783,15 @@ local function main()
 				task.defer(syncMapData, "พบกล่องใหม่ใน Assets")
 			end)
 		end
+		local units = assets and (assets:FindFirstChild("Units") or assets:WaitForChild("Units", 5))
+		if units and Core._alive then
+			local function onUnitChange()
+				Helpers.InvalidateModules()
+				task.defer(syncMapData, "ตรวจพบอัปเดตยูนิตใน Assets")
+			end
+			Core:Connect(units.ChildAdded, onUnitChange)
+			Core:Connect(units.ChildRemoved, onUnitChange)
+		end
 	end)
 
 	Core:Connect(LocalPlayer:GetAttributeChangedSignal("PlotId"), function() Helpers._plot = nil end)
@@ -2469,6 +2839,7 @@ local function main()
 
 	Loops.StartAutoBuy()
 	Loops.StartAutoBuyFree()
+	Loops.StartAutoBuyShop()
 	Loops.StartAutoOpen()
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
@@ -2478,6 +2849,7 @@ local function main()
 	Loops.StartAutoBuyRaidShop()
 	Loops.StartAutoTravelBoss()
 	Loops.StartAutoBoss()
+	Loops.StartAutoBossReplay()
 	Loops.StartAutoBuyBossShop()
 	Loops.StartAutoAscend()
 	Loops.StartAutoClaimBattlePass()
