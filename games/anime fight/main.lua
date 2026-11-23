@@ -82,6 +82,10 @@ local function main()
 			AutoOpenChest = false,
 			AutoReplay = false,
 			AutoNextStage = false,
+			AutoStory = false,
+			StoryWorld = "World_1",
+			StoryAct = 1,
+			StoryDifficulty = "Easy",
 			AutoUpgradeSkill = false,
 			AutoDungeon = false,
 			DungeonId = "ShrineGrounds",
@@ -217,6 +221,10 @@ local function main()
 		_modInsts = {},
 		_chestTemplates = {},
 		DungeonList = {},
+		StoryWorlds = {},
+		StoryActsByWorld = {},
+		StoryDifficulties = {},
+		_storySig = "",
 		TierList = { "Normal" },
 		ChestRarityList = {},
 		RaidDifficulties = {},
@@ -312,6 +320,155 @@ local function main()
 	function Helpers.GetDungeons()
 		if #Helpers.DungeonList == 0 then Helpers.RefreshDungeons() end
 		return Helpers.DungeonList
+	end
+
+	function Helpers.GetStoryConfig()
+		return Helpers.RequireModule("StoryConfig", "Modules", "Gameplay", "StoryConfig")
+	end
+
+	function Helpers.RefreshStory(): boolean
+		local cfg = Helpers.GetStoryConfig()
+		local worlds, seenW, actsByWorld = {}, {}, {}
+		local sigParts = {}
+
+		if cfg and type(cfg.Worlds) == "table" then
+			for i, w in ipairs(cfg.Worlds) do
+				if type(w) == "table" and w.Id then
+					local id = tostring(w.Id)
+					if not seenW[id] then
+						seenW[id] = true
+						local order = tonumber(w.Order) or i
+						local wName = tostring(w.Name or id)
+						local acts = {}
+						if type(w.Levels) == "table" then
+							for li, lv in ipairs(w.Levels) do
+								local lvName = (type(lv) == "table" and lv.Name) and tostring(lv.Name) or ("Act " .. tostring(li))
+								table.insert(acts, {
+									id = tostring(li),
+									num = li,
+									name = string.format("Act %d: %s", li, lvName),
+								})
+								table.insert(sigParts, string.format("%s:%d:%s", id, li, lvName))
+							end
+						end
+						if #acts == 0 then
+							for li = 1, 8 do
+								table.insert(acts, { id = tostring(li), num = li, name = "Act " .. tostring(li) })
+							end
+						end
+						actsByWorld[id] = acts
+						table.insert(worlds, {
+							id = id,
+							order = order,
+							name = string.format("W%d: %s", order, wName),
+						})
+						table.insert(sigParts, string.format("W:%s:%d:%s", id, order, wName))
+					end
+				end
+			end
+		end
+
+		local storyFolder = Workspace:FindFirstChild("Story_Mode")
+		if storyFolder then
+			local extra = {}
+			for _, ch in ipairs(storyFolder:GetChildren()) do
+				local wid = ch:GetAttribute("World")
+				local id = (type(wid) == "string" and wid ~= "") and wid or (ch.Name:match("^World_%d+$") and ch.Name or nil)
+				if id and not seenW[id] then
+					seenW[id] = true
+					local num = tonumber(id:match("(%d+)$")) or (#worlds + 1)
+					table.insert(extra, { inst = ch, id = id, order = num })
+				end
+			end
+			table.sort(extra, function(a, b) return a.order < b.order end)
+			for _, item in ipairs(extra) do
+				local acts, seenA = {}, {}
+				for _, child in ipairs(item.inst:GetChildren()) do
+					local lv = tonumber(child:GetAttribute("Level")) or tonumber(child.Name:match("^Level_(%d+)$"))
+					if lv and not seenA[lv] then
+						seenA[lv] = true
+						local tag = (child:GetAttribute("Boss") == true or child.Name == "Boss_Pad") and " (Boss)" or ""
+						table.insert(acts, { id = tostring(lv), num = lv, name = string.format("Act %d%s", lv, tag) })
+					end
+				end
+				table.sort(acts, function(a, b) return a.num < b.num end)
+				if #acts == 0 then
+					for li = 1, 8 do
+						table.insert(acts, { id = tostring(li), num = li, name = "Act " .. tostring(li) })
+					end
+				end
+				actsByWorld[item.id] = acts
+				table.insert(worlds, {
+					id = item.id,
+					order = item.order,
+					name = string.format("W%d: %s", item.order, item.id),
+				})
+				table.insert(sigParts, string.format("WS:%s:%d:%d", item.id, item.order, #acts))
+			end
+		end
+
+		if #worlds == 0 then
+			for wi = 1, 7 do
+				local id = "World_" .. tostring(wi)
+				local acts = {}
+				for li = 1, 8 do
+					table.insert(acts, { id = tostring(li), num = li, name = "Act " .. tostring(li) })
+				end
+				actsByWorld[id] = acts
+				table.insert(worlds, { id = id, order = wi, name = "World " .. tostring(wi) })
+			end
+		end
+
+		local diffs, seenD = {}, {}
+		if cfg and type(cfg.Difficulties) == "table" then
+			for _, d in ipairs(cfg.Difficulties) do
+				if type(d) == "table" and d.Id then
+					local did = tostring(d.Id)
+					if not seenD[did] then
+						seenD[did] = true
+						local dName = tostring(d.Name or did)
+						table.insert(diffs, { id = did, name = dName })
+						table.insert(sigParts, "D:" .. did .. ":" .. dName)
+					end
+				end
+			end
+		end
+		if #diffs == 0 then
+			diffs = {
+				{ id = "Easy", name = "EASY" },
+				{ id = "Hard", name = "HARD" },
+				{ id = "Impossible", name = "IMPOSSIBLE" },
+			}
+		end
+
+		local sig = table.concat(sigParts, "|")
+		local changed = (sig ~= Helpers._storySig) or (#worlds ~= #Helpers.StoryWorlds) or (#diffs ~= #Helpers.StoryDifficulties)
+		Helpers.StoryWorlds = worlds
+		Helpers.StoryActsByWorld = actsByWorld
+		Helpers.StoryDifficulties = diffs
+		Helpers._storySig = sig
+		return changed
+	end
+
+	function Helpers.GetStoryWorlds()
+		if #Helpers.StoryWorlds == 0 then Helpers.RefreshStory() end
+		return Helpers.StoryWorlds
+	end
+
+	function Helpers.GetStoryActs(worldId: string?)
+		if #Helpers.StoryWorlds == 0 then Helpers.RefreshStory() end
+		local wid = tostring(worldId or Core.Flags.StoryWorld or "World_1")
+		local acts = Helpers.StoryActsByWorld[wid]
+		if not acts or #acts == 0 then
+			local first = Helpers.StoryWorlds[1]
+			acts = first and Helpers.StoryActsByWorld[first.id] or { { id = "1", num = 1, name = "Act 1" } }
+		end
+		return acts
+	end
+
+	function Helpers.GetStoryDifficulties()
+		if #Helpers.StoryDifficulties == 0 then Helpers.RefreshStory() end
+		return Helpers.StoryDifficulties
 	end
 
 	function Helpers.GetConfig()
@@ -1093,7 +1250,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1364,7 +1521,7 @@ local function main()
 
 	function Loops.AutoReplayTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
-		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if (Core.Flags.AutoStory and bk == "Story") or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastReplayAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -1425,6 +1582,88 @@ local function main()
 	function Loops.StartAutoNextStage()
 		if Core.Flags.AutoNextStage then
 			Core:Loop("AutoNextStage", "AutoNextStage", 0.8, Loops.AutoNextStageTick)
+		end
+	end
+
+	function Loops.AutoStoryTick()
+		if os.clock() - Loops.lastStoryAt < 2 then return end
+		if Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
+		local battleReq = Net.Remote("BattleRequest")
+		if not battleReq then return end
+
+		local worldId = tostring(Core.Flags.StoryWorld or "World_1")
+		local acts = Helpers.GetStoryActs(worldId)
+		local actNum = math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1))
+		if #acts > 0 and actNum > #acts then
+			actNum = #acts
+		end
+		local diffId = tostring(Core.Flags.StoryDifficulty or "Easy")
+
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
+			if Core.Flags.AutoNextStage then
+				local left = endScreen:FindFirstChild("Left")
+				local buttons = left and left:FindFirstChild("Buttons")
+				local nextBtn = buttons and buttons:FindFirstChild("Next")
+				if nextBtn and nextBtn:IsA("GuiObject") and nextBtn.Visible then return end
+			end
+			Loops.lastStoryAt = os.clock()
+			local sameStage = LocalPlayer:GetAttribute("BattleKind") == "Story"
+				and type(Loops._lastStory) == "table"
+				and Loops._lastStory.world == worldId
+				and Loops._lastStory.level == actNum
+				and Loops._lastStory.difficulty == diffId
+			if sameStage then
+				local ok, res, err = Net.Invoke(battleReq, "Replay")
+				if ok and res ~= false then
+					logAction("STORY", string.format("เล่นซ้ำ %s Act %d (%s)", worldId, actNum, diffId), true)
+					Loops.GoHome("STORY")
+				else
+					logAction("STORY", "เล่นซ้ำด่านเนื้อเรื่องไม่สำเร็จ: " .. tostring(err or res), false)
+				end
+			else
+				local ok, res, err = Net.Invoke(battleReq, "Quit")
+				if ok and res ~= false then
+					logAction("STORY", "ออกจากหน้าสรุปผลเพื่อเข้าด่านที่เลือกใหม่", true)
+				else
+					logAction("STORY", "ออกจากหน้าสรุปผลไม่สำเร็จ: " .. tostring(err or res), false)
+				end
+			end
+			return
+		end
+
+		if LocalPlayer:GetAttribute("InBattle") == true then return end
+
+		local storyCfg = Helpers.GetStoryConfig()
+		local inv = Helpers.Inventory
+		if storyCfg and type(storyCfg.CanPlay) == "function" and type(inv) == "table" and type(inv.story) == "table" and type(inv.story.cleared) == "table" then
+			local okC, canPlay, reason = pcall(storyCfg.CanPlay, inv.story.cleared, worldId, actNum, diffId)
+			if okC and canPlay == false then
+				if os.clock() - Loops.lastStoryWarnAt >= 10 then
+					Loops.lastStoryWarnAt = os.clock()
+					logAction("STORY", string.format("ยังไม่ปลดล็อก %s Act %d (%s): %s", worldId, actNum, diffId, tostring(reason or "Locked")), false)
+				end
+				return
+			end
+		end
+
+		Loops.lastStoryAt = os.clock()
+		local payload = { world = worldId, level = actNum, difficulty = diffId }
+		local ok, res, err = Net.Invoke(battleReq, "StartStory", payload)
+		if ok and res ~= false then
+			Loops._lastStory = payload
+			logAction("STORY", string.format("เริ่มด่าน %s Act %d (%s)", worldId, actNum, diffId), true)
+			Loops.GoHome("STORY")
+		else
+			logAction("STORY", string.format("เข้าด่าน %s Act %d (%s) ไม่สำเร็จ: %s", worldId, actNum, diffId, tostring(err or res)), false)
+		end
+	end
+
+	function Loops.StartAutoStory()
+		if Core.Flags.AutoStory then
+			Core:Loop("AutoStory", "AutoStory", 0.8, Loops.AutoStoryTick)
 		end
 	end
 
@@ -2813,10 +3052,10 @@ local function main()
 		corner(btnClose, 4)
 
 		local contentWrap = mk("Frame", { Size = UDim2.new(1, 0, 1, -30), Position = UDim2.fromOffset(0, 30), BackgroundTransparency = 1, BorderSizePixel = 0 }, main)
-		local tabBar = mk("Frame", { Size = UDim2.new(1, -12, 0, 28), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
-		mk("UIGridLayout", { CellSize = UDim2.new(0.2, -4, 1, 0), CellPadding = UDim2.fromOffset(4, 0), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
+		local tabBar = mk("Frame", { Size = UDim2.new(1, -12, 0, 54), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
+		mk("UIGridLayout", { CellSize = UDim2.new(1 / 3, -3, 0, 25), CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
 
-		local pageContainer = mk("Frame", { Size = UDim2.new(1, -12, 1, -94), Position = UDim2.fromOffset(6, 36), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
+		local pageContainer = mk("Frame", { Size = UDim2.new(1, -12, 1, -120), Position = UDim2.fromOffset(6, 62), BackgroundTransparency = 1, BorderSizePixel = 0 }, contentWrap)
 		local statusBar = mk("Frame", { Size = UDim2.new(1, -18, 0, 48), Position = UDim2.new(0, 6, 1, -54), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, contentWrap)
 		corner(statusBar, 6)
 		local resizeGrip = mk("TextButton", { Size = UDim2.fromOffset(14, 14), Position = UDim2.new(1, -14, 1, -14), BackgroundTransparency = 1, Text = "◢", TextColor3 = C_SUB, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, contentWrap)
@@ -3061,6 +3300,77 @@ local function main()
 				end
 				renderAll()
 			end
+			UI[setterName] = rebuild
+			rebuild()
+		end
+
+		function UI.SingleDropdown(titlePrefix, key, defaultVal, getOptionsFn, logPrefix, setterName, onSelect, isNumber)
+			local wrap = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0 }, body)
+			mk("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, wrap)
+
+			local headerBtn = mk("TextButton", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C_PANEL, Text = "", AutoButtonColor = false }, wrap)
+			corner(headerBtn, 6)
+			local headerLbl = mk("TextLabel", { Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, headerBtn)
+			local arrowLbl = mk("TextLabel", { Size = UDim2.fromOffset(22, 30), Position = UDim2.new(1, -24, 0, 0), BackgroundTransparency = 1, Text = "▼", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11 }, headerBtn)
+
+			local dropPanel = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0, Visible = false }, wrap)
+			corner(dropPanel, 6)
+			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, dropPanel)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, dropPanel)
+
+			local isOpen = false
+			local btns = {}
+
+			local function renderAll()
+				local cur = tostring(Core.Flags[key] ~= nil and Core.Flags[key] or defaultVal)
+				local disp = cur
+				for _, entry in ipairs(btns) do
+					local on = (entry.id == cur)
+					if on then disp = entry.name end
+					entry.btn.Text = (on and "● " or "○ ") .. entry.name
+					entry.btn.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
+				end
+				headerLbl.Text = titlePrefix .. disp
+				arrowLbl.Text = isOpen and "▲" or "▼"
+				dropPanel.Visible = isOpen
+			end
+
+			Core:Connect(headerBtn.MouseButton1Click, function()
+				isOpen = not isOpen
+				renderAll()
+			end)
+
+			local function rebuild()
+				table.clear(btns)
+				for _, ch in ipairs(dropPanel:GetChildren()) do
+					if ch:IsA("TextButton") then ch:Destroy() end
+				end
+				local opts = getOptionsFn()
+				local curStr = tostring(Core.Flags[key] ~= nil and Core.Flags[key] or defaultVal)
+				local found = false
+				for i, opt in ipairs(opts) do
+					local oid = tostring(opt.id)
+					if oid == curStr then found = true end
+					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = opt.name, AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, dropPanel)
+					corner(b, 4)
+					table.insert(btns, { id = oid, name = opt.name, btn = b })
+					b.MouseButton1Click:Connect(function()
+						local val = isNumber and (tonumber(oid) or defaultVal) or oid
+						Config.Set(key, val)
+						isOpen = false
+						logAction("CFG", logPrefix .. opt.name, true)
+						renderAll()
+						if onSelect then onSelect(val) end
+					end)
+				end
+				if not found and #opts > 0 then
+					local fallbackId = tostring(opts[1].id)
+					local val = isNumber and (tonumber(fallbackId) or defaultVal) or fallbackId
+					Core.Flags[key] = val
+				end
+				renderAll()
+			end
+
 			UI[setterName] = rebuild
 			rebuild()
 		end
@@ -3316,6 +3626,7 @@ local function main()
 	if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
 	Helpers.RefreshTiers()
 	Helpers.RefreshChestRarities()
+	Helpers.RefreshStory()
 	Helpers.RefreshDungeons()
 	Helpers.RefreshRaids()
 	Helpers.RefreshBoss()
@@ -3323,7 +3634,7 @@ local function main()
 	Helpers.RefreshPvp()
 	Helpers.RefreshShop()
 
-	UI.CreateTab("Chest", "📦 กล่อง")
+	UI.CreateTab("Chest", "📦 กล่อง/ร้าน")
 	UI.Section("📦 Auto Buy Chest (สายพานฐานตัวเอง)")
 	UI.Toggle("เปิด Auto ซื้อกล่อง", "AutoBuyChest", function(on)
 		logAction("CFG", "Auto Buy Chest: " .. (on and "ON" or "OFF"), on)
@@ -3363,8 +3674,21 @@ local function main()
 		logAction("SHOP", string.format("รีเฟรชร้านค้าแล้ว (%d รายการ)", #Helpers.ShopOptions), true)
 	end)
 
-	UI.CreateTab("Battle", "⚔️ ดันเจียน")
-	UI.Section("⚔️ Auto Battle")
+	UI.CreateTab("Story", "🗺️ เนื้อเรื่อง")
+	UI.Section("🗺️ Auto Story (ลงด่านโลก 1-7+ อัตโนมัติ)")
+	UI.Toggle("เปิด Auto ลงด่านเนื้อเรื่อง (Auto Story)", "AutoStory", function(on)
+		logAction("CFG", "Auto Story: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoStory() end
+	end)
+	UI.SingleDropdown("🌍 โลก (World): ", "StoryWorld", "World_1", Helpers.GetStoryWorlds, "เลือกโลก: ", "RebuildStoryWorlds", function()
+		if UI.RebuildStoryActs then UI.RebuildStoryActs() end
+	end, false)
+	UI.SingleDropdown("📍 ด่าน (Act): ", "StoryAct", 1, function()
+		return Helpers.GetStoryActs(Core.Flags.StoryWorld)
+	end, "เลือกด่าน: ", "RebuildStoryActs", nil, true)
+	UI.Section("🔥 ระดับความยาก (Difficulty)")
+	UI.OptionSelect("StoryDifficulty", "Easy", Helpers.GetStoryDifficulties, "ระดับความยากเนื้อเรื่อง: ", "RebuildStoryDiffs")
+	UI.Section("⚔️ ควบคุมหลังจบด่าน (Auto Replay / Next)")
 	UI.Toggle("เล่นด่านซ้ำอัตโนมัติ (Auto Replay)", "AutoReplay", function(on)
 		logAction("CFG", "Auto Replay: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoReplay() end
@@ -3373,6 +3697,16 @@ local function main()
 		logAction("CFG", "Auto Next Stage: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoNextStage() end
 	end)
+	UI.Button("🔄 รีเฟรชรายชื่อโลก/ด่าน (Story)", function()
+		Helpers.InvalidateModules()
+		Helpers.RefreshStory()
+		if UI.RebuildStoryWorlds then UI.RebuildStoryWorlds() end
+		if UI.RebuildStoryActs then UI.RebuildStoryActs() end
+		if UI.RebuildStoryDiffs then UI.RebuildStoryDiffs() end
+		logAction("STORY", string.format("รีเฟรชข้อมูลเนื้อเรื่องแล้ว (%d โลก | %d ระดับ)", #Helpers.StoryWorlds, #Helpers.StoryDifficulties), true)
+	end)
+
+	UI.CreateTab("Battle", "🏰 ดันเจียน")
 	UI.Section("🏰 Auto Dungeon (ลงดันเจียนวนลูป)")
 	UI.Toggle("เปิด Auto ลงดันเจียนวนลูป", "AutoDungeon", function(on)
 		logAction("CFG", "Auto Dungeon: " .. (on and "ON" or "OFF"), on)
@@ -3437,7 +3771,7 @@ local function main()
 	end)
 	UI.OptionSelect("RaidShopTarget", "All", Helpers.GetRaidShopOptions, "ไอเทม Raid Shop: ", "RebuildRaidShop")
 
-	UI.CreateTab("PvP", "⚡ PvP/อัปเดต")
+	UI.CreateTab("PvP", "⚡ PvP/อื่นๆ")
 	UI.Section("✨ ตัวละครระดับใหม่ (Ascension / Godly)")
 	UI.Toggle("อัปขั้นตัวละคร Ascend อัตโนมัติ (5★ + วัตถุดิบครบ)", "AutoAscendUnit", function(on)
 		logAction("CFG", "Auto Ascend Unit: " .. (on and "ON" or "OFF"), on)
@@ -3493,6 +3827,12 @@ local function main()
 		if Helpers.RefreshChestRarities() and UI.RebuildChestRarities then
 			UI.RebuildChestRarities()
 			logAction("MAP", reason or "อัปเดตรายการระดับกล่อง (Rarity) ตามแมพ", true)
+		end
+		if Helpers.RefreshStory() then
+			if UI.RebuildStoryWorlds then UI.RebuildStoryWorlds() end
+			if UI.RebuildStoryActs then UI.RebuildStoryActs() end
+			if UI.RebuildStoryDiffs then UI.RebuildStoryDiffs() end
+			logAction("MAP", reason or string.format("อัปเดตด่านเนื้อเรื่องตามแมพ (%d โลก | %d ระดับ)", #Helpers.StoryWorlds, #Helpers.StoryDifficulties), true)
 		end
 		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
 			UI.RebuildDungeons()
@@ -3593,6 +3933,20 @@ local function main()
 			Core:Connect(units.ChildAdded, onUnitChange)
 			Core:Connect(units.ChildRemoved, onUnitChange)
 		end
+		local function bindStoryMode(sm)
+			if not (sm and Core._alive) then return end
+			local function onStoryChange(ch)
+				Helpers.InvalidateModules()
+				task.defer(syncMapData, "ตรวจพบอัปเดตโลกเนื้อเรื่อง: " .. ch.Name)
+			end
+			Core:Connect(sm.ChildAdded, onStoryChange)
+			Core:Connect(sm.ChildRemoved, onStoryChange)
+		end
+		local storyMode = Workspace:FindFirstChild("Story_Mode")
+		if storyMode then bindStoryMode(storyMode) end
+		Core:Connect(Workspace.ChildAdded, function(ch)
+			if ch.Name == "Story_Mode" then bindStoryMode(ch) end
+		end)
 	end)
 
 	Core:Connect(LocalPlayer:GetAttributeChangedSignal("PlotId"), function() Helpers._plot = nil end)
@@ -3642,6 +3996,7 @@ local function main()
 	Loops.StartAutoBuyFree()
 	Loops.StartAutoBuyShop()
 	Loops.StartAutoOpen()
+	Loops.StartAutoStory()
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
 	Loops.StartAutoDungeon()
