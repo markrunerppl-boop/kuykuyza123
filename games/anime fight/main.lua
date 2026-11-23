@@ -1364,7 +1364,7 @@ local function main()
 
 	function Loops.AutoReplayTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
-		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and bk == "Raid") or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastReplayAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -1398,7 +1398,7 @@ local function main()
 
 	function Loops.AutoNextStageTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
-		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and bk == "Raid") or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastNextAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -1617,7 +1617,9 @@ local function main()
 				local title = btn:FindFirstChild("Title")
 				if title and title:IsA("TextLabel") then
 					local txt = tostring(title.Text or ""):upper()
-					if txt:find("READY", 1, true) then
+					if txt:find("PLAY AGAIN", 1, true) or txt:find("REPLAY", 1, true) then
+						Loops.raidReplayMine = false
+					elseif txt:find("READY", 1, true) and not txt:find("(0)", 1, true) then
 						Loops.raidReplayMine = true
 						return true
 					end
@@ -1632,27 +1634,31 @@ local function main()
 				Loops.raidEndScreenAt = now
 				if not fromEvent then return true end
 			end
-			if not fromEvent and (now - Loops.raidEndScreenAt < 1.0) then return true end
+			if not fromEvent and (now - Loops.raidEndScreenAt < 0.4) then return true end
 		end
 
-		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 3.5) then return true end
+		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 2.5) then return true end
 
 		local raidQueue = Net.Remote("RaidQueue")
 		if Loops.raidReplaySentAt > 0 then
-			if replayBtn and firesignal then
-				Loops.raidReplaySentAt = now
-				Loops.lastRaidAt = now
-				pcall(firesignal, replayBtn.Activated)
-				logAction("RAID", "กดปุ่มเล่น Raid ซ้ำอีกครั้ง (Replay UI)", true)
-				return true
-			elseif raidQueue and raidQueue:IsA("RemoteEvent") then
+			if raidQueue and raidQueue:IsA("RemoteEvent") then
 				Loops.raidReplaySentAt = now
 				Loops.lastRaidAt = now
 				if Loops.raidReplayState == nil then
 					pcall(function() raidQueue:FireServer("ResultsOpen") end)
+					task.wait(0.15)
 				end
 				pcall(function() raidQueue:FireServer("Again") end)
+				if replayBtn and firesignal then
+					pcall(firesignal, replayBtn.Activated)
+				end
 				logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำอีกครั้ง (Again)", true)
+				return true
+			elseif replayBtn and firesignal then
+				Loops.raidReplaySentAt = now
+				Loops.lastRaidAt = now
+				pcall(firesignal, replayBtn.Activated)
+				logAction("RAID", "กดปุ่มเล่น Raid ซ้ำอีกครั้ง (Replay UI)", true)
 				return true
 			end
 			return true
@@ -1661,9 +1667,6 @@ local function main()
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			Loops.raidReplaySentAt = now
 			Loops.lastRaidAt = now
-			if Loops.raidReplayState == nil then
-				pcall(function() raidQueue:FireServer("ResultsOpen") end)
-			end
 			pcall(function() raidQueue:FireServer("Again") end)
 			logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำ (Again)", true)
 			return true
@@ -1831,7 +1834,8 @@ local function main()
 
 	function Loops.StartAutoRaidReplay()
 		if Core.Flags.AutoRaidReplay then
-			Core:Loop("AutoRaidReplay", "AutoRaidReplay", 1.0, Loops.AutoRaidReplayTick)
+			Loops.ResetRaidReplayState()
+			Core:Loop("AutoRaidReplay", "AutoRaidReplay", 0.5, Loops.AutoRaidReplayTick)
 		end
 	end
 
@@ -2705,7 +2709,8 @@ local function main()
 						Loops.raidReplayState = payload
 						Loops.raidReplayMine = payload.mine == true
 						if Core.Flags.AutoRaidReplay and not Loops.raidReplayMine then
-							task.delay(0.8, function()
+							Loops.raidReplaySentAt = 0
+							task.delay(0.4, function()
 								if not (Core._alive and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace()) then return end
 								Loops.TryRaidReplay(true)
 							end)
