@@ -1587,13 +1587,12 @@ local function main()
 		if reveal and reveal:IsA("GuiObject") and reveal.Visible and not endVisible then
 			if Loops.raidRevealAt == 0 then
 				Loops.raidRevealAt = now
-				return true
 			end
-			if now - Loops.raidRevealAt >= 0.4 then
+			if now - Loops.raidRevealAt >= 0.15 then
 				if firesignal and reveal:IsA("GuiButton") then
 					pcall(firesignal, reveal.Activated)
 				end
-				if now - Loops.raidRevealAt >= 0.8 and reveal.Visible then
+				if now - Loops.raidRevealAt >= 0.3 and reveal.Visible then
 					pcall(function() reveal.Visible = false end)
 				end
 			end
@@ -1629,12 +1628,8 @@ local function main()
 
 		if Loops.raidReplayMine then return true end
 
-		if endVisible then
-			if Loops.raidEndScreenAt == 0 then
-				Loops.raidEndScreenAt = now
-				if not fromEvent then return true end
-			end
-			if not fromEvent and (now - Loops.raidEndScreenAt < 0.4) then return true end
+		if endVisible and Loops.raidEndScreenAt == 0 then
+			Loops.raidEndScreenAt = now
 		end
 
 		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 2.5) then return true end
@@ -2710,7 +2705,7 @@ local function main()
 						Loops.raidReplayMine = payload.mine == true
 						if Core.Flags.AutoRaidReplay and not Loops.raidReplayMine then
 							Loops.raidReplaySentAt = 0
-							task.delay(0.4, function()
+							task.defer(function()
 								if not (Core._alive and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace()) then return end
 								Loops.TryRaidReplay(true)
 							end)
@@ -2727,6 +2722,40 @@ local function main()
 						Loops.raidStartSentAt = 0
 						Loops.ResetRaidReplayState()
 					end
+				end
+			end)
+		end
+		local function bindResultsUI(res)
+			if not res then return end
+			local es = res:FindFirstChild("EndScreen")
+			if es and es:IsA("GuiObject") then
+				Core:Connect(es:GetPropertyChangedSignal("Visible"), function()
+					if es.Visible then
+						if Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
+							Loops.raidReplayMine = false
+							Loops.raidReplaySentAt = 0
+							task.defer(Loops.TryRaidReplay, true)
+						end
+					elseif Helpers.IsRaidPlace() then
+						Loops.ResetRaidReplayState()
+					end
+				end)
+			end
+			local rev = res:FindFirstChild("Reveal")
+			if rev and rev:IsA("GuiObject") then
+				Core:Connect(rev:GetPropertyChangedSignal("Visible"), function()
+					if rev.Visible and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
+						task.defer(Loops.TryRaidReplay, false)
+					end
+				end)
+			end
+		end
+		local pgNow = LocalPlayer:FindFirstChild("PlayerGui")
+		if pgNow then
+			bindResultsUI(pgNow:FindFirstChild("Results"))
+			Core:Connect(pgNow.ChildAdded, function(ch)
+				if ch.Name == "Results" then
+					task.defer(bindResultsUI, ch)
 				end
 			end)
 		end
