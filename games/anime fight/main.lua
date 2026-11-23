@@ -806,16 +806,26 @@ local function main()
 	end
 
 	-- BeltAnchor (Part + BUY prompt) pairs with chest model by XZ position
+	-- Note: for mutated chests (Silver/Gold/Diamond/...), the game sets prompt's Rarity attribute to the Mutation name
 	function Helpers.FindAnchor(folder, chest)
 		local pivot = chest:GetPivot().Position
 		local rarity = chest:GetAttribute("Rarity")
+		local mutation = chest:GetAttribute("Mutation")
+		local hasMut = type(mutation) == "string" and mutation ~= ""
 		local best, bestD = nil, 6
 		for _, a in ipairs(folder:GetChildren()) do
 			if a:IsA("BasePart") then
 				local pr = a:FindFirstChildOfClass("ProximityPrompt")
-				if pr and pr.Enabled and (rarity == nil or pr:GetAttribute("Rarity") == nil or pr:GetAttribute("Rarity") == rarity) then
-					local d = Vector3.new(a.Position.X - pivot.X, 0, a.Position.Z - pivot.Z).Magnitude
-					if d < bestD then best, bestD = pr, d end
+				if pr and pr.Enabled then
+					local prTag = pr:GetAttribute("Rarity")
+					local tagOk = (prTag == nil)
+						or (hasMut and prTag == mutation)
+						or (rarity ~= nil and prTag == rarity)
+						or (rarity == nil and not hasMut)
+					if tagOk then
+						local d = Vector3.new(a.Position.X - pivot.X, 0, a.Position.Z - pivot.Z).Magnitude
+						if d < bestD then best, bestD = pr, d end
+					end
 				end
 			end
 		end
@@ -900,21 +910,47 @@ local function main()
 		return nil
 	end
 
-	-- dynamic chest rarity list (AnimeIdleConfig + Assets.Chests + live map ActiveChests/PlacedChests/Prompts)
+	-- dynamic chest rarity list (AnimeIdleConfig + Assets.Chests + live map ActiveChests/PlacedChests Models)
 	function Helpers.RefreshChestRarities(): boolean
 		local list, seen = {}, {}
+		local mutationSet = {}
+		local cfg = Helpers.GetConfig()
+		if cfg then
+			if type(cfg.MutationOrder) == "table" then
+				for _, m in ipairs(cfg.MutationOrder) do
+					if type(m) == "string" and m ~= "" then mutationSet[m] = true end
+				end
+			end
+			if type(cfg.Mutations) == "table" then
+				for m in pairs(cfg.Mutations) do
+					if type(m) == "string" and m ~= "" then mutationSet[m] = true end
+				end
+			end
+		end
+		for _, t in ipairs(Helpers.TierList) do
+			if type(t) == "string" and t ~= "" and t ~= "Normal" then
+				mutationSet[t] = true
+			end
+		end
+		if type(Core.Flags.ChestRarities) == "table" then
+			for m in pairs(mutationSet) do
+				if Core.Flags.ChestRarities[m] ~= nil then
+					Core.Flags.ChestRarities[m] = nil
+				end
+			end
+		end
+
 		local function addRarity(val)
 			if type(val) ~= "string" then return end
 			local clean = val:match("^%s*(.-)%s*$")
 			if clean == "" then return end
 			clean = clean:gsub("%s*[Cc]hest$", "")
-			if clean ~= "" and not seen[clean] then
+			if clean ~= "" and not mutationSet[clean] and not seen[clean] then
 				seen[clean] = true
 				table.insert(list, clean)
 			end
 		end
 
-		local cfg = Helpers.GetConfig()
 		if cfg then
 			if type(cfg.RarityOrder) == "table" then
 				for _, r in ipairs(cfg.RarityOrder) do addRarity(r) end
@@ -952,11 +988,6 @@ local function main()
 						for _, c in ipairs(ac:GetChildren()) do
 							if c:IsA("Model") then
 								addRarity(Helpers.ChestRarity(c))
-							elseif c:IsA("BasePart") then
-								local pr = c:FindFirstChildOfClass("ProximityPrompt")
-								if pr then
-									addRarity(pr:GetAttribute("Rarity") or pr.ObjectText)
-								end
 							end
 						end
 					end
@@ -2292,9 +2323,16 @@ local function main()
 		local list, folder = Loops.SelectTargets()
 		if not list or #list == 0 then return end
 		Core.Busy = true
-		local ok, err = pcall(Loops.BuyChest, list[1], folder)
+		for _, entry in ipairs(list) do
+			if not (Core._alive and Core.Flags.AutoBuyChest) or os.clock() < Loops.backoffUntil then break end
+			local ok, bought = pcall(Loops.BuyChest, entry, folder)
+			if not ok then
+				logAction("ERR", bought, false)
+			elseif bought then
+				break
+			end
+		end
 		Core.Busy = false
-		if not ok then logAction("ERR", err, false) end
 	end
 
 	function Loops.StartAutoBuy()
@@ -3219,12 +3257,6 @@ local function main()
 						local r = Helpers.ChestRarity(c)
 						if r and not table.find(Helpers.ChestRarityList, r) then
 							syncMapData("พบระดับกล่อง (Rarity) ใหม่: " .. r)
-						end
-					elseif c:IsA("BasePart") then
-						local pr = c:FindFirstChildOfClass("ProximityPrompt")
-						local prRarity = pr and (pr:GetAttribute("Rarity") or pr.ObjectText)
-						if type(prRarity) == "string" and prRarity ~= "" and not table.find(Helpers.ChestRarityList, prRarity) then
-							syncMapData("พบระดับกล่อง (Rarity) ใหม่: " .. prRarity)
 						end
 					end
 				end)
