@@ -471,6 +471,82 @@ local function main()
 		return Helpers.StoryDifficulties
 	end
 
+	function Helpers.ResolveStoryTarget(worldId: string, actNum: number, diffId: string)
+		local storyCfg = Helpers.GetStoryConfig()
+		local inv = Helpers.Inventory
+		local cleared = (type(inv) == "table" and type(inv.story) == "table" and type(inv.story.cleared) == "table") and inv.story.cleared or nil
+		if not (storyCfg and type(storyCfg.CanPlay) == "function" and cleared) then
+			return { world = worldId, level = actNum, difficulty = diffId, autoUnlock = false }
+		end
+
+		local okPlay, canPlay, reason = pcall(storyCfg.CanPlay, cleared, worldId, actNum, diffId)
+		if not okPlay or canPlay ~= false then
+			return { world = worldId, level = actNum, difficulty = diffId, autoUnlock = false }
+		end
+
+		-- 1) Impossible locked -> clear this act on Hard first
+		if diffId == "Impossible" then
+			local okH, canHard = pcall(storyCfg.CanPlay, cleared, worldId, actNum, "Hard")
+			if okH and canHard == true then
+				return {
+					world = worldId,
+					level = actNum,
+					difficulty = "Hard",
+					autoUnlock = true,
+					reason = string.format("ลง %s Act %d (Hard) เพื่อปลดล็อก Impossible", worldId, actNum),
+				}
+			end
+		end
+
+		-- 2) Act locked in unlocked world -> clear earliest uncleared act in this world on Easy
+		local okWU, worldUnlocked = pcall(storyCfg.WorldUnlocked, cleared, worldId)
+		if okWU and worldUnlocked == true then
+			for k = 1, actNum do
+				local okCl, isCl = pcall(storyCfg.IsCleared, cleared, worldId, k)
+				if okCl and not isCl then
+					local okE, canEasy = pcall(storyCfg.CanPlay, cleared, worldId, k, "Easy")
+					if okE and canEasy == true then
+						return {
+							world = worldId,
+							level = k,
+							difficulty = "Easy",
+							autoUnlock = true,
+							reason = string.format("ปลดล็อก %s Act %d (Easy) ก่อน", worldId, k),
+						}
+					end
+				end
+			end
+		end
+
+		-- 3) World locked -> clear earliest uncleared act in highest unlocked prerequisite world
+		if type(storyCfg.Worlds) == "table" then
+			for _, w in ipairs(storyCfg.Worlds) do
+				if type(w) == "table" and w.Id then
+					local okU, u = pcall(storyCfg.WorldUnlocked, cleared, w.Id)
+					if okU and u == true and type(w.Levels) == "table" then
+						for k = 1, #w.Levels do
+							local okCl, isCl = pcall(storyCfg.IsCleared, cleared, w.Id, k)
+							if okCl and not isCl then
+								local okE, canEasy = pcall(storyCfg.CanPlay, cleared, w.Id, k, "Easy")
+								if okE and canEasy == true then
+									return {
+										world = tostring(w.Id),
+										level = k,
+										difficulty = "Easy",
+										autoUnlock = true,
+										reason = string.format("ปลดล็อก %s Act %d (Easy) เพื่อเปิด %s", tostring(w.Id), k, worldId),
+									}
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+
+		return { world = worldId, level = actNum, difficulty = diffId, autoUnlock = false, lockedReason = tostring(reason or "Locked") }
+	end
+
 	function Helpers.GetConfig()
 		return Helpers.RequireModule("AnimeIdleConfig", "Modules", "Gameplay", "AnimeIdleConfig")
 	end
@@ -1591,6 +1667,13 @@ local function main()
 		local battleReq = Net.Remote("BattleRequest")
 		if not battleReq then return end
 
+		if Helpers.Inventory == nil then
+			local reqInv = Net.Remote("RequestInventory")
+			if reqInv and reqInv:IsA("RemoteEvent") then
+				pcall(function() reqInv:FireServer() end)
+			end
+		end
+
 		local worldId = tostring(Core.Flags.StoryWorld or "World_1")
 		local acts = Helpers.GetStoryActs(worldId)
 		local actNum = math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1))
@@ -1598,6 +1681,8 @@ local function main()
 			actNum = #acts
 		end
 		local diffId = tostring(Core.Flags.StoryDifficulty or "Easy")
+
+		local target = Helpers.ResolveStoryTarget(worldId, actNum, diffId)
 
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -1612,13 +1697,15 @@ local function main()
 			Loops.lastStoryAt = os.clock()
 			local sameStage = LocalPlayer:GetAttribute("BattleKind") == "Story"
 				and type(Loops._lastStory) == "table"
-				and Loops._lastStory.world == worldId
-				and Loops._lastStory.level == actNum
-				and Loops._lastStory.difficulty == diffId
+				and not Loops._lastStory.autoUnlock
+				and not target.autoUnlock
+				and Loops._lastStory.world == target.world
+				and Loops._lastStory.level == target.level
+				and Loops._lastStory.difficulty == target.difficulty
 			if sameStage then
 				local ok, res, err = Net.Invoke(battleReq, "Replay")
 				if ok and res ~= false then
-					logAction("STORY", string.format("เล่นซ้ำ %s Act %d (%s)", worldId, actNum, diffId), true)
+					logAction("STORY", string.format("เล่นซ้ำ %s Act %d (%s)", target.world, target.level, target.difficulty), true)
 					Loops.GoHome("STORY")
 				else
 					logAction("STORY", "เล่นซ้ำด่านเนื้อเรื่องไม่สำเร็จ: " .. tostring(err or res), false)
@@ -1626,7 +1713,7 @@ local function main()
 			else
 				local ok, res, err = Net.Invoke(battleReq, "Quit")
 				if ok and res ~= false then
-					logAction("STORY", "ออกจากหน้าสรุปผลเพื่อเข้าด่านที่เลือกใหม่", true)
+					logAction("STORY", "ออกจากหน้าสรุปผลเพื่อเข้าด่านเป้าหมายถัดไป", true)
 				else
 					logAction("STORY", "ออกจากหน้าสรุปผลไม่สำเร็จ: " .. tostring(err or res), false)
 				end
@@ -1636,28 +1723,34 @@ local function main()
 
 		if LocalPlayer:GetAttribute("InBattle") == true then return end
 
-		local storyCfg = Helpers.GetStoryConfig()
-		local inv = Helpers.Inventory
-		if storyCfg and type(storyCfg.CanPlay) == "function" and type(inv) == "table" and type(inv.story) == "table" and type(inv.story.cleared) == "table" then
-			local okC, canPlay, reason = pcall(storyCfg.CanPlay, inv.story.cleared, worldId, actNum, diffId)
-			if okC and canPlay == false then
-				if os.clock() - Loops.lastStoryWarnAt >= 10 then
-					Loops.lastStoryWarnAt = os.clock()
-					logAction("STORY", string.format("ยังไม่ปลดล็อก %s Act %d (%s): %s", worldId, actNum, diffId, tostring(reason or "Locked")), false)
-				end
-				return
+		if target.lockedReason then
+			if os.clock() - Loops.lastStoryWarnAt >= 10 then
+				Loops.lastStoryWarnAt = os.clock()
+				logAction("STORY", string.format("ยังไม่ปลดล็อก %s Act %d (%s): %s", worldId, actNum, diffId, target.lockedReason), false)
 			end
+			return
 		end
 
 		Loops.lastStoryAt = os.clock()
-		local payload = { world = worldId, level = actNum, difficulty = diffId }
+		local payload = { world = target.world, level = target.level, difficulty = target.difficulty }
 		local ok, res, err = Net.Invoke(battleReq, "StartStory", payload)
+		if (not ok or res == false) and target.difficulty == "Impossible" and tostring(err or res):lower():find("hard", 1, true) then
+			payload.difficulty = "Hard"
+			target.autoUnlock = true
+			target.reason = string.format("ลง %s Act %d (Hard) เพื่อปลดล็อก Impossible", target.world, target.level)
+			ok, res, err = Net.Invoke(battleReq, "StartStory", payload)
+		end
+
 		if ok and res ~= false then
-			Loops._lastStory = payload
-			logAction("STORY", string.format("เริ่มด่าน %s Act %d (%s)", worldId, actNum, diffId), true)
+			Loops._lastStory = { world = payload.world, level = payload.level, difficulty = payload.difficulty, autoUnlock = target.autoUnlock }
+			if target.autoUnlock and target.reason then
+				logAction("STORY", target.reason, true)
+			else
+				logAction("STORY", string.format("เริ่มด่าน %s Act %d (%s)", payload.world, payload.level, payload.difficulty), true)
+			end
 			Loops.GoHome("STORY")
 		else
-			logAction("STORY", string.format("เข้าด่าน %s Act %d (%s) ไม่สำเร็จ: %s", worldId, actNum, diffId, tostring(err or res)), false)
+			logAction("STORY", string.format("เข้าด่าน %s Act %d (%s) ไม่สำเร็จ: %s", payload.world, payload.level, payload.difficulty, tostring(err or res)), false)
 		end
 	end
 
