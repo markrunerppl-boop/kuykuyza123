@@ -1601,85 +1601,51 @@ local function main()
 			Loops.raidRevealAt = 0
 		end
 
-		if not endVisible and not fromEvent then
+		if not endVisible then
 			Loops.ResetRaidReplayState()
 			return false
 		end
 
+		if Loops.raidReplaySentAt > 0 then return true end
+
 		local replayBtn = nil
-		if endVisible then
-			local left = endScreen:FindFirstChild("Left")
-			local buttons = left and left:FindFirstChild("Buttons")
-			local btn = buttons and buttons:FindFirstChild("Replay")
-			if btn and btn:IsA("GuiButton") and btn.Visible then
-				replayBtn = btn
-				local title = btn:FindFirstChild("Title")
-				if title and title:IsA("TextLabel") then
-					local txt = tostring(title.Text or ""):upper()
-					if txt:find("PLAY AGAIN", 1, true) or txt:find("REPLAY", 1, true) then
-						Loops.raidReplayMine = false
-					elseif txt:find("READY", 1, true) and not txt:find("(0)", 1, true) then
-						Loops.raidReplayMine = true
-						return true
-					end
+		local left = endScreen:FindFirstChild("Left")
+		local buttons = left and left:FindFirstChild("Buttons")
+		local btn = buttons and buttons:FindFirstChild("Replay")
+		if btn and btn:IsA("GuiButton") and btn.Visible then
+			replayBtn = btn
+			local title = btn:FindFirstChild("Title")
+			if title and title:IsA("TextLabel") then
+				local txt = tostring(title.Text or ""):upper()
+				if txt:find("READY", 1, true) and not txt:find("(0)", 1, true) then
+					Loops.raidReplayMine = true
+					Loops.raidReplaySentAt = now
+					return true
 				end
 			end
 		end
 
-		if Loops.raidReplayMine then return true end
-
-		if endVisible and Loops.raidEndScreenAt == 0 then
+		if Loops.raidEndScreenAt == 0 then
 			Loops.raidEndScreenAt = now
+			if not fromEvent then return true end
 		end
-
-		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 2.5) then return true end
+		if not fromEvent and (now - Loops.raidEndScreenAt < 0.25) then return true end
 
 		local raidQueue = Net.Remote("RaidQueue")
-		if Loops.raidReplaySentAt > 0 then
-			if raidQueue and raidQueue:IsA("RemoteEvent") then
-				Loops.raidReplaySentAt = now
-				Loops.lastRaidAt = now
-				if Loops.raidReplayState == nil then
-					pcall(function() raidQueue:FireServer("ResultsOpen") end)
-					task.wait(0.15)
-				end
-				pcall(function() raidQueue:FireServer("Again") end)
-				if replayBtn and firesignal then
-					pcall(firesignal, replayBtn.Activated)
-				end
-				logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำอีกครั้ง (Again)", true)
-				return true
-			elseif replayBtn and firesignal then
-				Loops.raidReplaySentAt = now
-				Loops.lastRaidAt = now
-				pcall(firesignal, replayBtn.Activated)
-				logAction("RAID", "กดปุ่มเล่น Raid ซ้ำอีกครั้ง (Replay UI)", true)
-				return true
-			end
-			return true
-		end
-
-		if raidQueue and raidQueue:IsA("RemoteEvent") then
+		if replayBtn and firesignal then
 			Loops.raidReplaySentAt = now
+			Loops.raidReplayMine = true
+			Loops.lastRaidAt = now
+			pcall(firesignal, replayBtn.Activated)
+			logAction("RAID", "กดปุ่มเล่น Raid ซ้ำ (Ready/Replay UI)", true)
+			return true
+		elseif raidQueue and raidQueue:IsA("RemoteEvent") then
+			Loops.raidReplaySentAt = now
+			Loops.raidReplayMine = true
 			Loops.lastRaidAt = now
 			pcall(function() raidQueue:FireServer("Again") end)
 			logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำ (Again)", true)
 			return true
-		elseif replayBtn and firesignal then
-			Loops.raidReplaySentAt = now
-			Loops.lastRaidAt = now
-			pcall(firesignal, replayBtn.Activated)
-			logAction("RAID", "กดปุ่มเล่น Raid ซ้ำ (Replay UI)", true)
-			return true
-		else
-			local battleReq = Net.Remote("BattleRequest")
-			if battleReq then
-				Loops.raidReplaySentAt = now
-				Loops.lastRaidAt = now
-				local ok, res = Net.Invoke(battleReq, "Replay")
-				logAction("RAID", ok and res ~= false and "ส่งคำสั่งเล่น Raid ซ้ำ (BattleRequest)" or "ส่งคำสั่งเล่น Raid ซ้ำไม่สำเร็จ", ok and res ~= false)
-				return true
-			end
 		end
 		return false
 	end
@@ -2703,13 +2669,6 @@ local function main()
 					else
 						Loops.raidReplayState = payload
 						Loops.raidReplayMine = payload.mine == true
-						if Core.Flags.AutoRaidReplay and not Loops.raidReplayMine then
-							Loops.raidReplaySentAt = 0
-							task.defer(function()
-								if not (Core._alive and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace()) then return end
-								Loops.TryRaidReplay(true)
-							end)
-						end
 					end
 				elseif payload.state == "replayGo" or payload.state == "idle" or payload.state == "left" or payload.state == "started" or payload.state == "fighting" or payload.state == "closed" or payload.state == "cancelled" then
 					Helpers.RaidQueueState = nil
@@ -2732,9 +2691,11 @@ local function main()
 				Core:Connect(es:GetPropertyChangedSignal("Visible"), function()
 					if es.Visible then
 						if Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
-							Loops.raidReplayMine = false
-							Loops.raidReplaySentAt = 0
-							task.defer(Loops.TryRaidReplay, true)
+							Loops.ResetRaidReplayState()
+							task.delay(0.25, function()
+								if not (Core._alive and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace()) then return end
+								Loops.TryRaidReplay(true)
+							end)
 						end
 					elseif Helpers.IsRaidPlace() then
 						Loops.ResetRaidReplayState()
