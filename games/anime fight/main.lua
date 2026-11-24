@@ -1326,7 +1326,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1884,6 +1884,7 @@ local function main()
 		Loops.raidReplayMine = false
 		Loops.raidReplayState = nil
 		Loops.raidReplaySentAt = 0
+		Loops.raidReplayTries = 0
 	end
 
 	function Loops.TryRaidEndWave(): boolean
@@ -1938,7 +1939,8 @@ local function main()
 			return false
 		end
 
-		if Loops.raidReplaySentAt > 0 then return true end
+		-- กด READY แล้ว (เซิร์ฟยืนยัน mine) -> ห้ามกดซ้ำ (กดซ้ำ = ยกเลิก Ready)
+		if Loops.raidReplayMine then return true end
 
 		local replayBtn = nil
 		local left = endScreen:FindFirstChild("Left")
@@ -1948,10 +1950,11 @@ local function main()
 			replayBtn = btn
 			local title = btn:FindFirstChild("Title")
 			if title and title:IsA("TextLabel") then
+				-- Results_Client: "READY" เมื่อ mine=true, "PLAY AGAIN" เมื่อยังไม่กด
 				local txt = tostring(title.Text or ""):upper()
-				if txt:find("READY", 1, true) and not txt:find("(0)", 1, true) then
+				if txt:sub(1, 5) == "READY" then
 					Loops.raidReplayMine = true
-					Loops.raidReplaySentAt = now
+					if Loops.raidReplaySentAt == 0 then Loops.raidReplaySentAt = now end
 					return true
 				end
 			end
@@ -1959,24 +1962,28 @@ local function main()
 
 		if Loops.raidEndScreenAt == 0 then
 			Loops.raidEndScreenAt = now
-			if not fromEvent then return true end
 		end
-		if not fromEvent and (now - Loops.raidEndScreenAt < 0.25) then return true end
+		-- รอให้ Client ส่ง ResultsOpen และเซิร์ฟส่ง state "replay" กลับมาก่อน (fallback 1.2s)
+		if Loops.raidReplayState == nil and (now - Loops.raidEndScreenAt < 1.2) then return true end
+		-- ส่งไปแล้ว รอยืนยัน 2s ก่อนลองใหม่ (เฉพาะกรณีเซิร์ฟไม่รับ)
+		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 2.0) then return true end
+		local tries = tonumber(Loops.raidReplayTries) or 0
+		if tries >= 5 then return true end
 
 		local raidQueue = Net.Remote("RaidQueue")
-		if replayBtn and firesignal then
+		if raidQueue and raidQueue:IsA("RemoteEvent") then
+			Loops.raidReplayTries = tries + 1
 			Loops.raidReplaySentAt = now
-			Loops.raidReplayMine = true
-			Loops.lastRaidAt = now
-			pcall(firesignal, replayBtn.Activated)
-			logAction("RAID", "กดปุ่มเล่น Raid ซ้ำ (Ready/Replay UI)", true)
-			return true
-		elseif raidQueue and raidQueue:IsA("RemoteEvent") then
-			Loops.raidReplaySentAt = now
-			Loops.raidReplayMine = true
 			Loops.lastRaidAt = now
 			pcall(function() raidQueue:FireServer("Again") end)
-			logAction("RAID", "ส่งคำสั่งเล่น Raid ซ้ำ (Again)", true)
+			logAction("RAID", string.format("กด READY เล่น Raid ซ้ำ (Again) #%d", tries + 1), true)
+			return true
+		elseif replayBtn and firesignal then
+			Loops.raidReplayTries = tries + 1
+			Loops.raidReplaySentAt = now
+			Loops.lastRaidAt = now
+			pcall(firesignal, replayBtn.Activated)
+			logAction("RAID", string.format("กดปุ่ม READY เล่น Raid ซ้ำ (UI) #%d", tries + 1), true)
 			return true
 		end
 		return false
