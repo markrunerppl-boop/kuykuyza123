@@ -1992,11 +1992,10 @@ local function main()
 			replayBtn = btn
 			local title = btn:FindFirstChild("Title")
 			if title and title:IsA("TextLabel") then
-				-- Results_Client: "READY" เมื่อ mine=true, "PLAY AGAIN" เมื่อยังไม่กด
+				-- ยืนยัน READY จากข้อความปุ่มเฉพาะหลังส่งคำสั่งในรอบนี้แล้ว ป้องกันข้อความค้างจากรอบก่อน
 				local txt = tostring(title.Text or ""):upper()
-				if txt:sub(1, 5) == "READY" then
+				if Loops.raidReplaySentAt > 0 and txt:sub(1, 5) == "READY" then
 					Loops.raidReplayMine = true
-					if Loops.raidReplaySentAt == 0 then Loops.raidReplaySentAt = now end
 					return true
 				end
 			end
@@ -2005,10 +2004,10 @@ local function main()
 		if Loops.raidEndScreenAt == 0 then
 			Loops.raidEndScreenAt = now
 		end
-		-- ส่งไปแล้ว รอยืนยัน 1.5s ก่อนลองใหม่ (เฉพาะกรณีเซิร์ฟยังไม่ตอบ mine=true)
-		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 1.5) then return true end
+		-- ส่งไปแล้ว รอยืนยัน 0.7s ก่อนลองใหม่ (เฉพาะกรณีเซิร์ฟยังไม่ตอบ mine=true)
+		if Loops.raidReplaySentAt > 0 and (now - Loops.raidReplaySentAt < 0.7) then return true end
 		local tries = tonumber(Loops.raidReplayTries) or 0
-		if tries >= 5 then return true end
+		if tries >= 12 then return true end
 
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
@@ -2178,7 +2177,7 @@ local function main()
 	function Loops.StartAutoRaidReplay()
 		if Core.Flags.AutoRaidReplay then
 			Loops.ResetRaidReplayState()
-			Core:Loop("AutoRaidReplay", "AutoRaidReplay", 0.5, Loops.AutoRaidReplayTick)
+			Core:Loop("AutoRaidReplay", "AutoRaidReplay", 0.3, Loops.AutoRaidReplayTick)
 		end
 	end
 
@@ -2363,10 +2362,10 @@ local function main()
 			replayBtn = btn
 			local title = btn:FindFirstChild("Title")
 			if title and title:IsA("TextLabel") then
+				-- ยืนยัน READY จากข้อความปุ่มเฉพาะหลังส่งคำสั่งในรอบนี้แล้ว ป้องกันข้อความค้างจากรอบก่อน
 				local txt = tostring(title.Text or ""):upper()
-				if txt:sub(1, 5) == "READY" then
+				if Loops.bossReplaySentAt > 0 and txt:sub(1, 5) == "READY" then
 					Loops.bossReplayMine = true
-					if Loops.bossReplaySentAt == 0 then Loops.bossReplaySentAt = now end
 					return true
 				end
 			end
@@ -2375,9 +2374,9 @@ local function main()
 		if Loops.bossEndScreenAt == 0 then
 			Loops.bossEndScreenAt = now
 		end
-		if Loops.bossReplaySentAt > 0 and (now - Loops.bossReplaySentAt < 1.5) then return true end
+		if Loops.bossReplaySentAt > 0 and (now - Loops.bossReplaySentAt < 0.7) then return true end
 		local tries = tonumber(Loops.bossReplayTries) or 0
-		if tries >= 5 then return true end
+		if tries >= 12 then return true end
 
 		local raidQueue = Net.Remote("RaidQueue") or Net.Remote("BossQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
@@ -2510,7 +2509,7 @@ local function main()
 	function Loops.StartAutoBossReplay()
 		if Core.Flags.AutoBossReplay then
 			Loops.ResetBossReplayState()
-			Core:Loop("AutoBossReplay", "AutoBossReplay", 0.5, Loops.AutoBossReplayTick)
+			Core:Loop("AutoBossReplay", "AutoBossReplay", 0.3, Loops.AutoBossReplayTick)
 		end
 	end
 
@@ -3023,19 +3022,28 @@ local function main()
 						Helpers.RaidQueueState = payload
 					end
 				elseif payload.state == "replay" then
+					local nowEv = os.clock()
 					if isBoss then
+						local firstState = Loops.bossReplayState == nil
 						Loops.bossReplayState = payload
 						Loops.bossReplayMine = payload.mine == true
 						if Core.Flags.AutoBossReplay and not Loops.bossReplayMine then
+							if firstState or (Loops.bossReplaySentAt > 0 and nowEv - Loops.bossReplaySentAt >= 0.25) then
+								Loops.bossReplaySentAt = 0
+							end
 							task.defer(function()
 								if not (Core._alive and Core.Flags.AutoBossReplay and Helpers.IsBossPlace()) then return end
 								Loops.TryBossReplay(true)
 							end)
 						end
 					else
+						local firstState = Loops.raidReplayState == nil
 						Loops.raidReplayState = payload
 						Loops.raidReplayMine = payload.mine == true
 						if Core.Flags.AutoRaidReplay and not Loops.raidReplayMine then
+							if firstState or (Loops.raidReplaySentAt > 0 and nowEv - Loops.raidReplaySentAt >= 0.25) then
+								Loops.raidReplaySentAt = 0
+							end
 							task.defer(function()
 								if not (Core._alive and Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace()) then return end
 								Loops.TryRaidReplay(true)
@@ -3058,38 +3066,50 @@ local function main()
 		end
 		local function bindResultsUI(res)
 			if not res then return end
-			local es = res:FindFirstChild("EndScreen")
-			if es and es:IsA("GuiObject") then
-				Core:Connect(es:GetPropertyChangedSignal("Visible"), function()
-					if es.Visible then
-						if Core.Flags.AutoBossReplay and Helpers.IsBossPlace() then
-							Loops.ResetBossReplayState()
-							task.defer(Loops.TryBossReplay, true)
-						elseif Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
-							Loops.ResetRaidReplayState()
-							task.defer(Loops.TryRaidReplay, true)
-						end
-					else
-						if Helpers.IsBossPlace() then
-							Loops.ResetBossReplayState()
-						elseif Helpers.IsRaidPlace() then
-							Loops.ResetRaidReplayState()
-						end
-					end
-				end)
-			end
-			local rev = res:FindFirstChild("Reveal")
-			if rev and rev:IsA("GuiObject") then
-				Core:Connect(rev:GetPropertyChangedSignal("Visible"), function()
-					if rev.Visible then
-						if Core.Flags.AutoBossReplay and Helpers.IsBossPlace() then
-							task.defer(Loops.TryBossReplay, false)
-						elseif Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
-							task.defer(Loops.TryRaidReplay, false)
+			task.spawn(function()
+				local es = res:FindFirstChild("EndScreen") or res:WaitForChild("EndScreen", 10)
+				if Core._alive and es and es:IsA("GuiObject") then
+					local function onEndVisible()
+						if es.Visible then
+							if Core.Flags.AutoBossReplay and Helpers.IsBossPlace() then
+								Loops.bossEndScreenAt = 0
+								Loops.bossReplayMine = false
+								Loops.bossReplaySentAt = 0
+								Loops.bossReplayTries = 0
+								task.defer(Loops.TryBossReplay, true)
+							elseif Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
+								Loops.raidEndScreenAt = 0
+								Loops.raidReplayMine = false
+								Loops.raidReplaySentAt = 0
+								Loops.raidReplayTries = 0
+								task.defer(Loops.TryRaidReplay, true)
+							end
+						else
+							if Helpers.IsBossPlace() then
+								Loops.ResetBossReplayState()
+							elseif Helpers.IsRaidPlace() then
+								Loops.ResetRaidReplayState()
+							end
 						end
 					end
-				end)
-			end
+					Core:Connect(es:GetPropertyChangedSignal("Visible"), onEndVisible)
+					if es.Visible then onEndVisible() end
+				end
+			end)
+			task.spawn(function()
+				local rev = res:FindFirstChild("Reveal") or res:WaitForChild("Reveal", 10)
+				if Core._alive and rev and rev:IsA("GuiObject") then
+					Core:Connect(rev:GetPropertyChangedSignal("Visible"), function()
+						if rev.Visible then
+							if Core.Flags.AutoBossReplay and Helpers.IsBossPlace() then
+								task.defer(Loops.TryBossReplay, false)
+							elseif Core.Flags.AutoRaidReplay and Helpers.IsRaidPlace() then
+								task.defer(Loops.TryRaidReplay, false)
+							end
+						end
+					end)
+				end
+			end)
 		end
 		local pgNow = LocalPlayer:FindFirstChild("PlayerGui")
 		if pgNow then
