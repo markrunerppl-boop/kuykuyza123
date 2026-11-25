@@ -10,6 +10,9 @@ local function main()
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local HttpService = game:GetService("HttpService")
 	local UserInputService = game:GetService("UserInputService")
+	local RunService = game:GetService("RunService")
+	local Lighting = game:GetService("Lighting")
+	local StatsService = game:GetService("Stats")
 
 	local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 	local PlaceId = game.PlaceId
@@ -46,6 +49,7 @@ local function main()
 
 	function Core:Destroy()
 		self._alive = false
+		if self._onDestroy then pcall(self._onDestroy) end
 		for _, c in ipairs(self._conns) do pcall(function() c:Disconnect() end) end
 		for _, th in pairs(self._loops) do pcall(task.cancel, th) end
 		table.clear(self._conns)
@@ -56,9 +60,43 @@ local function main()
 	-- =================================================================
 	-- 2. STATS / LOGS (Circular Buffer)
 	-- =================================================================
-	local Stats = { logs = {}, bought = 0, spent = 0 }
+	local Stats = {
+		logs = {},
+		bought = 0,
+		spent = 0,
+		opened = 0,
+		shopBought = 0,
+		storyRuns = 0,
+		dungeonRuns = 0,
+		raidRuns = 0,
+		bossRuns = 0,
+		pvpRuns = 0,
+		ascended = 0,
+		startedAt = os.time(),
+		startCash = nil,
+	}
 	local function logAction(cat, msg, ok)
-		table.insert(Stats.logs, 1, { time = os.date("%H:%M:%S"), cat = cat, msg = tostring(msg), ok = ok })
+		local text = tostring(msg)
+		if ok == true then
+			if cat == "OPEN" then
+				Stats.opened += 1
+			elseif cat == "SHOP" and text:find("ซื้อ", 1, true) then
+				Stats.shopBought += 1
+			elseif cat == "STORY" and (text:find("เริ่มด่าน", 1, true) or text:find("เล่นซ้ำ", 1, true)) then
+				Stats.storyRuns += 1
+			elseif cat == "DUNGEON" and text:find("เริ่มลงดันเจียน", 1, true) then
+				Stats.dungeonRuns += 1
+			elseif cat == "RAID" and (text:find("กดเริ่ม", 1, true) or text:find("กด Play", 1, true) or text:find("READY", 1, true)) then
+				Stats.raidRuns += 1
+			elseif cat == "BOSS" and (text:find("กดเริ่ม", 1, true) or text:find("กด Play", 1, true) or text:find("READY", 1, true) or text:find("สู้บอสซ้ำ", 1, true)) then
+				Stats.bossRuns += 1
+			elseif cat == "PVP" and (text:find("เข้าคิว", 1, true) or text:find("เล่น PvP ซ้ำ", 1, true)) then
+				Stats.pvpRuns += 1
+			elseif cat == "ASCEND" then
+				Stats.ascended += 1
+			end
+		end
+		table.insert(Stats.logs, 1, { time = os.date("%H:%M:%S"), cat = cat, msg = text, ok = ok })
 		if #Stats.logs > 80 then table.remove(Stats.logs) end
 		if Core._updateLogUI then pcall(Core._updateLogUI) end
 	end
@@ -124,6 +162,9 @@ local function main()
 			AutoAscendUnit = false,
 			AutoClaimBattlePass = false,
 			AutoClaimWeekly = false,
+			FpsBoost = false,
+			FpsBoost3DOff = true,
+			FpsBoostCap = "0",
 			UIWidth = 340,
 			UIHeight = 450,
 			UIExpanded = false,
@@ -3106,6 +3147,518 @@ local function main()
 	end)
 
 	-- =================================================================
+	-- 6.5 ULTIMATE FPS BOOST + FARMING STATS OVERLAY
+	-- =================================================================
+	local FpsBoost = {
+		active = false,
+		render3DOff = false,
+		fps = 0,
+		savedProps = setmetatable({}, { __mode = "k" }),
+		savedLighting = nil,
+		savedTerrain = nil,
+		savedQuality = nil,
+		_descConn = nil,
+		_fpsConn = nil,
+		_uiThread = nil,
+		_scanThread = nil,
+		_capApplied = false,
+		_gui = nil,
+		_fullFrame = nil,
+		_miniFrame = nil,
+		_refs = {},
+	}
+
+	function FpsBoost.GetCapOptions()
+		return {
+			{ id = "0", name = "ไม่จำกัด (Max)" },
+			{ id = "30", name = "30 FPS" },
+			{ id = "60", name = "60 FPS" },
+			{ id = "15", name = "15 FPS (ประหยัดสุด)" },
+		}
+	end
+
+	local function saveProp(inst: Instance, prop: string)
+		local bucket = FpsBoost.savedProps[inst]
+		if not bucket then
+			bucket = {}
+			FpsBoost.savedProps[inst] = bucket
+		end
+		if bucket[prop] == nil then
+			local ok, val = pcall(function() return (inst :: any)[prop] end)
+			if ok then bucket[prop] = val end
+		end
+	end
+
+	function FpsBoost.OptimizeInstance(inst: Instance)
+		if not FpsBoost.active or not inst or not inst.Parent then return end
+		if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
+			or inst:IsA("Fire") or inst:IsA("Smoke") or inst:IsA("Sparkles")
+			or inst:IsA("PointLight") or inst:IsA("SpotLight") or inst:IsA("SurfaceLight") then
+			saveProp(inst, "Enabled")
+			pcall(function() (inst :: any).Enabled = false end)
+		elseif inst:IsA("Explosion") then
+			saveProp(inst, "Visible")
+			pcall(function() (inst :: any).Visible = false end)
+		elseif inst:IsA("Decal") or inst:IsA("Texture") then
+			saveProp(inst, "Transparency")
+			pcall(function() (inst :: any).Transparency = 1 end)
+		elseif inst:IsA("BasePart") then
+			saveProp(inst, "Material")
+			saveProp(inst, "CastShadow")
+			saveProp(inst, "Reflectance")
+			pcall(function()
+				inst.Material = Enum.Material.SmoothPlastic
+				inst.CastShadow = false
+				inst.Reflectance = 0
+			end)
+		elseif inst:IsA("PostEffect") or inst:IsA("Clouds") then
+			saveProp(inst, "Enabled")
+			pcall(function() (inst :: any).Enabled = false end)
+		elseif inst:IsA("Atmosphere") then
+			saveProp(inst, "Density")
+			pcall(function() (inst :: any).Density = 0 end)
+		end
+	end
+
+	function FpsBoost.ApplyEnvironment()
+		if not FpsBoost.savedLighting then
+			local lSave = {}
+			for _, prop in ipairs({ "GlobalShadows", "FogEnd", "EnvironmentDiffuseScale", "EnvironmentSpecularScale" }) do
+				local ok, val = pcall(function() return (Lighting :: any)[prop] end)
+				if ok then lSave[prop] = val end
+			end
+			FpsBoost.savedLighting = lSave
+		end
+		pcall(function()
+			Lighting.GlobalShadows = false
+			Lighting.FogEnd = 9e9
+			Lighting.EnvironmentDiffuseScale = 0
+			Lighting.EnvironmentSpecularScale = 0
+		end)
+		for _, ch in ipairs(Lighting:GetChildren()) do
+			FpsBoost.OptimizeInstance(ch)
+		end
+
+		local terrain = Workspace:FindFirstChildOfClass("Terrain")
+		if terrain then
+			if not FpsBoost.savedTerrain then
+				local tSave = {}
+				for _, prop in ipairs({ "WaterWaveSize", "WaterWaveSpeed", "WaterReflectance", "WaterTransparency" }) do
+					local ok, val = pcall(function() return (terrain :: any)[prop] end)
+					if ok then tSave[prop] = val end
+				end
+				FpsBoost.savedTerrain = tSave
+			end
+			pcall(function()
+				terrain.WaterWaveSize = 0
+				terrain.WaterWaveSpeed = 0
+				terrain.WaterReflectance = 0
+				terrain.WaterTransparency = 0
+			end)
+		end
+
+		pcall(function()
+			local rs = settings().Rendering
+			if FpsBoost.savedQuality == nil then
+				FpsBoost.savedQuality = rs.QualityLevel
+			end
+			rs.QualityLevel = Enum.QualityLevel.Level01
+		end)
+	end
+
+	function FpsBoost.ApplyFpsCap()
+		local capFn = (ENV and ENV.setfpscap) or setfpscap
+		if type(capFn) == "function" then
+			local cap = tonumber(Core.Flags.FpsBoostCap) or 0
+			pcall(capFn, cap)
+			FpsBoost._capApplied = true
+		end
+	end
+
+	local function formatDuration(sec: number): string
+		sec = math.max(0, math.floor(sec))
+		local h = sec // 3600
+		local m = (sec % 3600) // 60
+		local s = sec % 60
+		return string.format("%02d:%02d:%02d", h, m, s)
+	end
+
+	function FpsBoost.GetFarmingSummary()
+		local inBattle = LocalPlayer:GetAttribute("InBattle") == true
+		local battleKind = tostring(LocalPlayer:GetAttribute("BattleKind") or "")
+		local battleFloor = tonumber(LocalPlayer:GetAttribute("BattleFloor")) or 0
+		local inRaid = LocalPlayer:GetAttribute("InRaid") == true
+		local pvpSide = LocalPlayer:GetAttribute("PvpSide")
+
+		local activity = "💤 สแตนด์บาย (ยังไม่ได้เปิดโหมดฟาร์ม)"
+		if battleKind == "Story" or (Core.Flags.AutoStory and not Helpers.IsBossPlace() and not Helpers.IsRaidPlace()) then
+			local ls = type(Loops._lastStory) == "table" and Loops._lastStory or nil
+			local world = ls and ls.world or tostring(Core.Flags.StoryWorld or "World_1")
+			local act = ls and ls.level or (tonumber(Core.Flags.StoryAct) or 1)
+			local diff = ls and ls.difficulty or tostring(Core.Flags.StoryDifficulty or "Easy")
+			local stateTxt = inBattle and "กำลังต่อสู้" or "รอเข้าด่าน"
+			activity = string.format("🗺️ ฟาร์มเนื้อเรื่อง: %s Act %d (%s) [%s]", tostring(world), tonumber(act) or 1, tostring(diff), stateTxt)
+		elseif battleKind == "Dungeon" or Core.Flags.AutoDungeon then
+			local dId = tostring(Core.Flags.DungeonId or "ShrineGrounds")
+			local endF = tonumber(Core.Flags.DungeonEndFloor) or 10
+			local flTxt = battleFloor > 0 and string.format("ชั้น %d/%d", battleFloor, endF) or (inBattle and "กำลังลุย" or "รอเข้าด่าน")
+			activity = string.format("🏰 ฟาร์มดันเจียน: %s (%s)", dId, flTxt)
+		elseif battleKind == "Raid" or inRaid or Helpers.IsRaidPlace() or Core.Flags.AutoRaid then
+			local rDiff = tostring(Core.Flags.RaidDifficulty or "Easy")
+			local waveTxt = battleFloor > 0 and ("Wave " .. tostring(battleFloor)) or (inBattle and "กำลังสู้" or "หน้าคิว Raid")
+			activity = string.format("🔥 ฟาร์ม Raid: %s (%s)", rDiff, waveTxt)
+		elseif battleKind == "Boss" or Helpers.IsBossPlace() or Core.Flags.AutoBoss then
+			local bName = tostring(Helpers.BossToday or "Daily Boss")
+			local bDiff = tostring(Core.Flags.BossDifficulty or "Easy")
+			local st = inBattle and "กำลังสู้บอส" or "หน้าคิว Boss"
+			activity = string.format("👹 ฟาร์ม Boss: %s (%s | %s)", bName, bDiff, st)
+		elseif battleKind == "Pvp" or pvpSide ~= nil or Core.Flags.AutoPvp then
+			local sideTxt = pvpSide and ("Side " .. tostring(pvpSide)) or (inBattle and "กำลังสู้" or "รอคิว")
+			activity = string.format("⚔️ ฟาร์ม PvP (%s)", sideTxt)
+		elseif Core.Flags.AutoBuyChest or Core.Flags.AutoOpenChest or Core.Flags.AutoBuyShop or Core.Flags.AutoBuyFreeChest then
+			local parts = {}
+			if Core.Flags.AutoBuyChest then table.insert(parts, "ซื้อกล่อง") end
+			if Core.Flags.AutoBuyFreeChest then table.insert(parts, "กล่องฟรี") end
+			if Core.Flags.AutoOpenChest then table.insert(parts, "เปิดกล่อง") end
+			if Core.Flags.AutoBuyShop then table.insert(parts, "ซื้อร้านค้า") end
+			activity = "📦 ฟาร์มล็อบบี้: " .. table.concat(parts, " + ")
+		end
+
+		local activeList = {}
+		local labels = {
+			{ "AutoBuyChest", "ซื้อกล่อง" },
+			{ "AutoBuyFreeChest", "กล่องฟรี" },
+			{ "AutoOpenChest", "เปิดกล่อง" },
+			{ "AutoBuyShop", "ร้านค้า" },
+			{ "AutoStory", "เนื้อเรื่อง" },
+			{ "AutoDungeon", "ดันเจียน" },
+			{ "AutoRaid", "Raid" },
+			{ "AutoBoss", "Boss" },
+			{ "AutoPvp", "PvP" },
+			{ "AutoAscendUnit", "Ascend" },
+			{ "AutoUpgradeSkill", "อัพสกิล" },
+			{ "AutoClaimBattlePass", "รับ BP" },
+			{ "AutoClaimWeekly", "รับ Weekly" },
+		}
+		for _, pair in ipairs(labels) do
+			if Core.Flags[pair[1]] == true then
+				table.insert(activeList, pair[2])
+			end
+		end
+
+		local ping = 0
+		pcall(function()
+			ping = math.floor(StatsService.Network.ServerStatsItem["Data Ping"]:GetValue())
+		end)
+
+		local cash = Helpers.GetCash()
+		local baseCash = Stats.startCash or cash
+		local deltaCash = cash - baseCash
+		local deltaPrefix = deltaCash >= 0 and "+" or "-"
+
+		local logLines = {}
+		for i = 1, math.min(#Stats.logs, 5) do
+			local e = Stats.logs[i]
+			local col = e.ok and "#7CFC8A" or "#FF7070"
+			local clean = e.msg:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+			table.insert(logLines, string.format('<font color="%s">[%s] %s</font> %s', col, e.time, e.cat, clean))
+		end
+
+		return {
+			activity = activity,
+			activeModules = #activeList > 0 and table.concat(activeList, " • ") or "ไม่มีระบบอัตโนมัติที่เปิดอยู่",
+			fps = math.max(0, math.floor(FpsBoost.fps + 0.5)),
+			ping = ping,
+			uptime = formatDuration(os.time() - (Stats.startedAt or os.time())),
+			cashText = string.format("¥%s (%s¥%s)", Helpers.Format(cash), deltaPrefix, Helpers.Format(math.abs(deltaCash))),
+			chestText = string.format("ซื้อ %d (¥%s) | เปิด %d | ร้าน %d", Stats.bought, Helpers.Format(Stats.spent), Stats.opened, Stats.shopBought),
+			runsText = string.format("Story %d | Dgn %d | Raid %d | Boss %d | PvP %d", Stats.storyRuns, Stats.dungeonRuns, Stats.raidRuns, Stats.bossRuns, Stats.pvpRuns),
+			currencyText = string.format("Raid: %s | PvP: %s | BP Lv.%d | Ascend: %d",
+				Helpers.Format(tonumber(LocalPlayer:GetAttribute("RaidCoins")) or 0),
+				Helpers.Format(tonumber(LocalPlayer:GetAttribute("PvpTokens")) or tonumber(LocalPlayer:GetAttribute("PvpCoins")) or 0),
+				tonumber(LocalPlayer:GetAttribute("BattlePassLevel")) or 0,
+				Stats.ascended),
+			logsRich = #logLines > 0 and table.concat(logLines, "\n") or '<font color="#9696A5">ยังไม่มีประวัติการทำงาน</font>',
+		}
+	end
+
+	function FpsBoost.EnsureOverlay()
+		if FpsBoost._gui and FpsBoost._gui.Parent then return end
+		local parentGui
+		pcall(function() parentGui = gethui and gethui() end)
+		if not parentGui then pcall(function() parentGui = game:GetService("CoreGui") end) end
+		if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
+
+		local og = Instance.new("ScreenGui")
+		og.Name = "KuykuyHub_FpsBoostOverlay"
+		og.IgnoreGuiInset = true
+		og.ResetOnSpawn = false
+		og.DisplayOrder = 900
+		og.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		og.Enabled = false
+		local okP = pcall(function() og.Parent = parentGui end)
+		if not okP then og.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+		FpsBoost._gui = og
+
+		local function mk(cls, props, parent)
+			local o = Instance.new(cls)
+			for k, v in pairs(props) do (o :: any)[k] = v end
+			o.Parent = parent
+			return o
+		end
+		local function corner(o, r)
+			mk("UICorner", { CornerRadius = UDim.new(0, r or 8) }, o)
+		end
+
+		local C_DARK, C_CARD, C_PANEL, C_ACC, C_TXT, C_SUB =
+			Color3.fromRGB(12, 13, 18), Color3.fromRGB(22, 23, 30), Color3.fromRGB(32, 34, 44),
+			Color3.fromRGB(255, 140, 60), Color3.fromRGB(238, 240, 245), Color3.fromRGB(155, 160, 175)
+
+		-- Full-Screen Dark Dashboard (3D OFF mode)
+		local full = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C_DARK, BorderSizePixel = 0, Visible = false }, og)
+		FpsBoost._fullFrame = full
+
+		local card = mk("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0.92, 0, 0.88, 0),
+			BackgroundColor3 = C_CARD,
+			BorderSizePixel = 0,
+		}, full)
+		corner(card, 10)
+		mk("UISizeConstraint", { MaxSize = Vector2.new(580, 440), MinSize = Vector2.new(300, 280) }, card)
+		mk("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }, card)
+		mk("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, card)
+
+		local hdr = mk("Frame", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1 }, card)
+		mk("TextLabel", { Size = UDim2.new(0.55, 0, 1, 0), BackgroundTransparency = 1, Text = "⚡ KUYKUY HUB | FPS BOOST", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, hdr)
+		local fullPerf = mk("TextLabel", { Size = UDim2.new(0.45, 0, 1, 0), Position = UDim2.fromScale(0.55, 0), BackgroundTransparency = 1, Text = "FPS: -- | Ping: --ms", TextColor3 = Color3.fromRGB(124, 252, 138), Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right }, hdr)
+
+		local actBox = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, card)
+		corner(actBox, 8)
+		mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, actBox)
+		mk("TextLabel", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "🎯 สถานะการฟาร์มปัจจุบัน (Current Activity)", TextColor3 = C_SUB, Font = Enum.Font.Gotham, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left }, actBox)
+		local fullActivity = mk("TextLabel", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 18), BackgroundTransparency = 1, Text = "...", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, actBox)
+
+		local modBox = mk("Frame", { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 42), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, card)
+		corner(modBox, 8)
+		mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5) }, modBox)
+		local fullMods = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left }, modBox)
+
+		local statBox = mk("Frame", { LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 96), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, card)
+		corner(statBox, 8)
+		mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, statBox)
+		local fullStats = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.Gotham, TextSize = 12, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, statBox)
+
+		local logBox = mk("Frame", { LayoutOrder = 5, Size = UDim2.new(1, 0, 0, 114), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, card)
+		corner(logBox, 8)
+		mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, logBox)
+		local fullLogs = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", RichText = true, TextColor3 = C_TXT, Font = Enum.Font.Code, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, logBox)
+
+		local btnRow = mk("Frame", { LayoutOrder = 6, Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1 }, card)
+		mk("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 1, 0), CellPadding = UDim2.fromOffset(8, 0), SortOrder = Enum.SortOrder.LayoutOrder }, btnRow)
+		local btnToggle3D = mk("TextButton", { LayoutOrder = 1, BackgroundColor3 = Color3.fromRGB(55, 85, 130), Text = "👁️ เปิดภาพ 3D (โหมดย่อ)", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 12 }, btnRow)
+		corner(btnToggle3D, 6)
+		local btnStopBoost = mk("TextButton", { LayoutOrder = 2, BackgroundColor3 = Color3.fromRGB(160, 52, 52), Text = "⏹️ ปิด FPS Boost", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 12 }, btnRow)
+		corner(btnStopBoost, 6)
+
+		-- Compact Floating Mini-HUD (Low-Poly 3D ON mode)
+		local mini = mk("Frame", {
+			Position = UDim2.new(1, -310, 0, 14),
+			Size = UDim2.fromOffset(296, 152),
+			BackgroundColor3 = C_CARD,
+			BackgroundTransparency = 0.12,
+			BorderSizePixel = 0,
+			Visible = false,
+		}, og)
+		corner(mini, 8)
+		mk("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, mini)
+		mk("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, mini)
+
+		local miniPerf = mk("TextLabel", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Text = "⚡ FPS: -- | Ping: --ms", TextColor3 = Color3.fromRGB(124, 252, 138), Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left }, mini)
+		local miniAct = mk("TextLabel", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, Text = "...", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, mini)
+		local miniStats = mk("TextLabel", { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 62), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, mini)
+
+		local miniBtns = mk("Frame", { LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 }, mini)
+		mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 1, 0), CellPadding = UDim2.fromOffset(6, 0), SortOrder = Enum.SortOrder.LayoutOrder }, miniBtns)
+		local btnMini3DOff = mk("TextButton", { LayoutOrder = 1, BackgroundColor3 = C_PANEL, Text = "🌑 ปิด 3D (จอดำ)", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 11 }, miniBtns)
+		corner(btnMini3DOff, 5)
+		local btnMiniStop = mk("TextButton", { LayoutOrder = 2, BackgroundColor3 = Color3.fromRGB(160, 52, 52), Text = "⏹️ ปิด Boost", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 11 }, miniBtns)
+		corner(btnMiniStop, 5)
+
+		btnToggle3D.MouseButton1Click:Connect(function()
+			Config.Set("FpsBoost3DOff", false)
+			FpsBoost.Set3DRenderOff(false)
+			if Core._syncToggle then Core._syncToggle("FpsBoost3DOff") end
+		end)
+		btnMini3DOff.MouseButton1Click:Connect(function()
+			Config.Set("FpsBoost3DOff", true)
+			FpsBoost.Set3DRenderOff(true)
+			if Core._syncToggle then Core._syncToggle("FpsBoost3DOff") end
+		end)
+		local function stopAll()
+			Config.Set("FpsBoost", false)
+			FpsBoost.Disable()
+			if Core._syncToggle then Core._syncToggle("FpsBoost") end
+		end
+		btnStopBoost.MouseButton1Click:Connect(stopAll)
+		btnMiniStop.MouseButton1Click:Connect(stopAll)
+
+		FpsBoost._refs = {
+			fullPerf = fullPerf,
+			fullActivity = fullActivity,
+			fullMods = fullMods,
+			fullStats = fullStats,
+			fullLogs = fullLogs,
+			miniPerf = miniPerf,
+			miniAct = miniAct,
+			miniStats = miniStats,
+		}
+	end
+
+	function FpsBoost.UpdateOverlay()
+		if not FpsBoost.active or not FpsBoost._gui then return end
+		local s = FpsBoost.GetFarmingSummary()
+		local r = FpsBoost._refs
+		if r.fullPerf then
+			r.fullPerf.Text = string.format("FPS: %d | Ping: %dms | %s | 3D: OFF", s.fps, s.ping, s.uptime)
+			r.fullActivity.Text = s.activity
+			r.fullMods.Text = "⚙️ ระบบที่เปิดอยู่: " .. s.activeModules
+			r.fullStats.Text = string.format("💰 เงิน: %s\n📦 กล่อง/ร้าน: %s\n⚔️ รอบที่ลง: %s\n🏅 แต้ม: %s", s.cashText, s.chestText, s.runsText, s.currencyText)
+			r.fullLogs.Text = s.logsRich
+		end
+		if r.miniPerf then
+			r.miniPerf.Text = string.format("⚡ FPS: %d | Ping: %dms | %s", s.fps, s.ping, s.uptime)
+			r.miniAct.Text = s.activity
+			r.miniStats.Text = string.format("💰 %s\n📦 %s\n⚔️ %s", s.cashText, s.chestText, s.runsText)
+		end
+	end
+
+	function FpsBoost.Set3DRenderOff(off: boolean)
+		FpsBoost.render3DOff = off == true
+		pcall(function()
+			RunService:Set3dRenderingEnabled(not FpsBoost.render3DOff)
+		end)
+		if FpsBoost._fullFrame and FpsBoost._miniFrame then
+			FpsBoost._fullFrame.Visible = FpsBoost.active and FpsBoost.render3DOff
+			FpsBoost._miniFrame.Visible = FpsBoost.active and (not FpsBoost.render3DOff)
+		end
+		FpsBoost.UpdateOverlay()
+	end
+
+	function FpsBoost.Enable()
+		if FpsBoost.active then return end
+		FpsBoost.active = true
+		if Stats.startCash == nil then Stats.startCash = Helpers.GetCash() end
+
+		FpsBoost.ApplyEnvironment()
+		FpsBoost.ApplyFpsCap()
+
+		if FpsBoost._scanThread then pcall(task.cancel, FpsBoost._scanThread) end
+		FpsBoost._scanThread = task.spawn(function()
+			local all = Workspace:GetDescendants()
+			for i, inst in ipairs(all) do
+				if not (Core._alive and FpsBoost.active) then break end
+				FpsBoost.OptimizeInstance(inst)
+				if i % 250 == 0 then task.wait() end
+			end
+			FpsBoost._scanThread = nil
+		end)
+
+		if FpsBoost._descConn then pcall(function() FpsBoost._descConn:Disconnect() end) end
+		FpsBoost._descConn = Workspace.DescendantAdded:Connect(function(desc)
+			if not FpsBoost.active then return end
+			task.defer(FpsBoost.OptimizeInstance, desc)
+		end)
+
+		if FpsBoost._fpsConn then pcall(function() FpsBoost._fpsConn:Disconnect() end) end
+		FpsBoost._fpsConn = RunService.RenderStepped:Connect(function(dt)
+			if dt > 0 then
+				local instFps = 1 / dt
+				FpsBoost.fps = (FpsBoost.fps == 0) and instFps or (FpsBoost.fps * 0.85 + instFps * 0.15)
+			end
+		end)
+
+		FpsBoost.EnsureOverlay()
+		if FpsBoost._gui then FpsBoost._gui.Enabled = true end
+		FpsBoost.Set3DRenderOff(Core.Flags.FpsBoost3DOff == true)
+
+		if FpsBoost._uiThread then pcall(task.cancel, FpsBoost._uiThread) end
+		FpsBoost._uiThread = task.spawn(function()
+			while Core._alive and FpsBoost.active do
+				pcall(FpsBoost.UpdateOverlay)
+				task.wait(0.5)
+			end
+			FpsBoost._uiThread = nil
+		end)
+
+		logAction("FPS", "เปิด Ultimate FPS Boost สำเร็จ" .. (FpsBoost.render3DOff and " (3D OFF)" or " (Low-Poly)"), true)
+	end
+
+	function FpsBoost.Disable()
+		pcall(function() RunService:Set3dRenderingEnabled(true) end)
+		if not FpsBoost.active and not FpsBoost._gui then return end
+		local wasActive = FpsBoost.active
+		FpsBoost.active = false
+		FpsBoost.render3DOff = false
+
+		if FpsBoost._descConn then pcall(function() FpsBoost._descConn:Disconnect() end) FpsBoost._descConn = nil end
+		if FpsBoost._fpsConn then pcall(function() FpsBoost._fpsConn:Disconnect() end) FpsBoost._fpsConn = nil end
+		if FpsBoost._scanThread then pcall(task.cancel, FpsBoost._scanThread) FpsBoost._scanThread = nil end
+		if FpsBoost._uiThread then pcall(task.cancel, FpsBoost._uiThread) FpsBoost._uiThread = nil end
+
+		if FpsBoost.savedLighting then
+			for prop, val in pairs(FpsBoost.savedLighting) do
+				pcall(function() (Lighting :: any)[prop] = val end)
+			end
+			FpsBoost.savedLighting = nil
+		end
+		local terrain = Workspace:FindFirstChildOfClass("Terrain")
+		if terrain and FpsBoost.savedTerrain then
+			for prop, val in pairs(FpsBoost.savedTerrain) do
+				pcall(function() (terrain :: any)[prop] = val end)
+			end
+			FpsBoost.savedTerrain = nil
+		end
+		if FpsBoost.savedQuality ~= nil then
+			pcall(function() settings().Rendering.QualityLevel = FpsBoost.savedQuality end)
+			FpsBoost.savedQuality = nil
+		end
+		for inst, props in pairs(FpsBoost.savedProps) do
+			if inst and inst.Parent then
+				for prop, val in pairs(props) do
+					pcall(function() (inst :: any)[prop] = val end)
+				end
+			end
+		end
+		table.clear(FpsBoost.savedProps)
+
+		if FpsBoost._capApplied then
+			local capFn = (ENV and ENV.setfpscap) or setfpscap
+			if type(capFn) == "function" then pcall(capFn, 60) end
+			FpsBoost._capApplied = false
+		end
+
+		if FpsBoost._gui then
+			FpsBoost._gui.Enabled = false
+			if FpsBoost._fullFrame then FpsBoost._fullFrame.Visible = false end
+			if FpsBoost._miniFrame then FpsBoost._miniFrame.Visible = false end
+		end
+
+		if wasActive and Core._alive then
+			logAction("FPS", "ปิด Ultimate FPS Boost และคืนค่ากราฟิกแล้ว", true)
+		end
+	end
+
+	Core._onDestroy = function()
+		FpsBoost.Disable()
+		if FpsBoost._gui then
+			pcall(function() FpsBoost._gui:Destroy() end)
+			FpsBoost._gui = nil
+		end
+	end
+
+	-- =================================================================
 	-- 7. UI
 	-- =================================================================
 	local UI = {}
@@ -3118,10 +3671,16 @@ local function main()
 		local gui = Instance.new("ScreenGui")
 		gui.Name = "KuykuyHub_AnimeFight"
 		gui.ResetOnSpawn = false
+		gui.DisplayOrder = 1000
 		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		local okP = pcall(function() gui.Parent = parentGui end)
 		if not okP then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 		Core._gui = gui
+		UI._toggleRenderers = {}
+		function UI.SyncToggle(key)
+			if UI._toggleRenderers[key] then UI._toggleRenderers[key]() end
+		end
+		Core._syncToggle = UI.SyncToggle
 
 		local C_BG, C_PANEL, C_ACC, C_TXT, C_SUB = Color3.fromRGB(22, 22, 28), Color3.fromRGB(34, 34, 44), Color3.fromRGB(255, 140, 60), Color3.fromRGB(235, 235, 240), Color3.fromRGB(150, 150, 165)
 
@@ -3294,6 +3853,7 @@ local function main()
 				knob.Position = on and UDim2.fromOffset(20, 2) or UDim2.fromOffset(2, 2)
 				knob.BackgroundColor3 = on and C_ACC or C_SUB
 			end
+			UI._toggleRenderers[key] = render
 			render()
 			Core:Connect(row.MouseButton1Click, function()
 				Config.Set(key, not (Core.Flags[key] == true))
@@ -3371,7 +3931,7 @@ local function main()
 			rebuild()
 		end
 
-		function UI.OptionSelect(key, defaultVal, getOptionsFn, logPrefix, setterName)
+		function UI.OptionSelect(key, defaultVal, getOptionsFn, logPrefix, setterName, onSelect)
 			local holder = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, body)
 			corner(holder, 6)
 			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, holder)
@@ -3396,6 +3956,7 @@ local function main()
 						Config.Set(key, opt.id)
 						logAction("CFG", logPrefix .. opt.name, true)
 						renderAll()
+						if onSelect then onSelect(opt.id) end
 					end)
 				end
 				renderAll()
@@ -3872,6 +4433,17 @@ local function main()
 	UI.OptionSelect("RaidShopTarget", "All", Helpers.GetRaidShopOptions, "ไอเทม Raid Shop: ", "RebuildRaidShop")
 
 	UI.CreateTab("PvP", "⚡ PvP/อื่นๆ")
+	UI.Section("🚀 Ultimate FPS Boost (บูส FPS + โชว์สถิติฟาร์ม)")
+	UI.Toggle("เปิด Ultimate FPS Boost + โชว์สถิติ", "FpsBoost", function(on)
+		if on then FpsBoost.Enable() else FpsBoost.Disable() end
+	end)
+	UI.Toggle("ปิดการเรนเดอร์ 3D (จอดำประหยัดเครื่องสุดยอด)", "FpsBoost3DOff", function(on)
+		logAction("CFG", "FPS Boost 3D Off: " .. (on and "ON" or "OFF"), on)
+		if FpsBoost.active then FpsBoost.Set3DRenderOff(on) end
+	end)
+	UI.OptionSelect("FpsBoostCap", "0", FpsBoost.GetCapOptions, "จำกัด FPS: ", "RebuildFpsCap", function()
+		if FpsBoost.active then FpsBoost.ApplyFpsCap() end
+	end)
 	UI.Section("✨ ตัวละครระดับใหม่ (Ascension / Godly)")
 	UI.Toggle("อัปขั้นตัวละคร Ascend อัตโนมัติ (5★ + วัตถุดิบครบ)", "AutoAscendUnit", function(on)
 		logAction("CFG", "Auto Ascend Unit: " .. (on and "ON" or "OFF"), on)
@@ -4117,6 +4689,7 @@ local function main()
 	Loops.StartAutoPvp()
 	Loops.StartAutoBuyPvpShop()
 	Loops.StartAutoUpgradeSkill()
+	if Core.Flags.FpsBoost then FpsBoost.Enable() end
 	logAction("SYS", "โหลดสคริปต์สำเร็จ | Config: " .. Config.File, true)
 end
 
