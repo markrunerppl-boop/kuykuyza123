@@ -1368,7 +1368,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -2619,17 +2619,70 @@ local function main()
 	end
 
 	function Loops.AutoClaimBattlePassTick()
+		if Loops.bpBusy then return end
 		if os.clock() - Loops.lastBpAt < 5 then return end
-		local claimable = tonumber(LocalPlayer:GetAttribute("BattlePassClaimable")) or 0
-		if claimable <= 0 then return end
 		local bp = Net.Remote("BattlePass")
 		if not (bp and bp:IsA("RemoteFunction")) then return end
+
+		local bpCfg = Helpers.GetBattlePassConfig()
+		local maxLevel = tonumber(bpCfg and bpCfg.MaxLevel) or 50
+		local claimable = tonumber(LocalPlayer:GetAttribute("BattlePassClaimable")) or 0
+		local bpLevel = tonumber(LocalPlayer:GetAttribute("BattlePassLevel")) or 0
+		local needClaim = claimable > 0
+		local canCheckReset = bpLevel >= maxLevel and (os.clock() - Loops.lastBpResetAt >= 10)
+		if not needClaim and not canCheckReset then return end
+
+		Loops.bpBusy = true
 		Loops.lastBpAt = os.clock()
-		local ok, res, err = Net.Invoke(bp, "ClaimAll")
-		if ok and res == true then
-			logAction("PASS", string.format("รับรางวัล Battle Pass ทั้งหมดสำเร็จ (%d รายการ)", claimable), true)
-		else
-			logAction("PASS", "รับรางวัล Battle Pass ไม่สำเร็จ: " .. tostring(err or res), false)
+
+		local okRun, runErr = pcall(function()
+			if needClaim then
+				local ok, res, err = Net.Invoke(bp, "ClaimAll")
+				if ok and res == true then
+					logAction("PASS", string.format("รับรางวัล Battle Pass ทั้งหมดสำเร็จ (%d รายการ)", claimable), true)
+					if canCheckReset then task.wait(0.35) end
+				else
+					logAction("PASS", "รับรางวัล Battle Pass ไม่สำเร็จ: " .. tostring(err or res), false)
+					return
+				end
+			end
+
+			if canCheckReset then
+				-- เช็กสถานะจริงจาก Server ก่อนยิงคำสั่ง Reset
+				local okS, stOk, stData = Net.Invoke(bp, "State")
+				if not (okS and stOk == true and type(stData) == "table") then return end
+
+				local srvLevel = tonumber(stData.level) or 0
+				if srvLevel < maxLevel then return end
+
+				local endsAt = tonumber(stData.endsAt) or tonumber(bpCfg and bpCfg.Ends) or 0
+				if endsAt > 0 and endsAt <= os.time() then return end
+
+				local srvClaimable = tonumber(stData.claimable) or 0
+				if srvClaimable > 0 then
+					local okC, resC, errC = Net.Invoke(bp, "ClaimAll")
+					if okC and resC == true then
+						logAction("PASS", string.format("รับรางวัล Battle Pass ก่อนรีเซ็ตสำเร็จ (%d รายการ)", srvClaimable), true)
+						task.wait(0.35)
+					else
+						logAction("PASS", "รับรางวัลก่อนรีเซ็ตไม่สำเร็จ (ยกเลิกการรีเซ็ต): " .. tostring(errC or resC), false)
+						return
+					end
+				end
+
+				Loops.lastBpResetAt = os.clock()
+				local okR, resR, errR = Net.Invoke(bp, "Reset")
+				if okR and resR == true then
+					logAction("PASS", string.format("รีเซ็ต Battle Pass สำเร็จ (Lv.%d -> Lv.0)", srvLevel), true)
+				else
+					logAction("PASS", "รีเซ็ต Battle Pass ไม่สำเร็จ: " .. tostring(errR or resR), false)
+				end
+			end
+		end)
+
+		Loops.bpBusy = false
+		if not okRun then
+			logAction("PASS", "Battle Pass error: " .. tostring(runErr), false)
 		end
 	end
 
@@ -4470,7 +4523,7 @@ local function main()
 		if on then Loops.StartAutoAscend() end
 	end)
 	UI.Section("🎁 รางวัลอัปเดต (Battle Pass / Weekly)")
-	UI.Toggle("รับรางวัล Battle Pass อัตโนมัติ (ClaimAll)", "AutoClaimBattlePass", function(on)
+	UI.Toggle("รับรางวัล + รีเซ็ต Battle Pass อัตโนมัติ (ClaimAll / Reset)", "AutoClaimBattlePass", function(on)
 		logAction("CFG", "Auto Claim Battle Pass: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoClaimBattlePass() end
 	end)
@@ -4657,6 +4710,15 @@ local function main()
 	Core:Connect(LocalPlayer:GetAttributeChangedSignal("BattlePassClaimable"), function()
 		if Core.Flags.AutoClaimBattlePass and (tonumber(LocalPlayer:GetAttribute("BattlePassClaimable")) or 0) > 0 then
 			task.defer(Loops.AutoClaimBattlePassTick)
+		end
+	end)
+	Core:Connect(LocalPlayer:GetAttributeChangedSignal("BattlePassLevel"), function()
+		if Core.Flags.AutoClaimBattlePass then
+			local bpCfg = Helpers.GetBattlePassConfig()
+			local maxLevel = tonumber(bpCfg and bpCfg.MaxLevel) or 50
+			if (tonumber(LocalPlayer:GetAttribute("BattlePassLevel")) or 0) >= maxLevel then
+				task.defer(Loops.AutoClaimBattlePassTick)
+			end
 		end
 	end)
 
