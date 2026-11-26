@@ -1368,7 +1368,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1891,27 +1891,27 @@ local function main()
 			local diff = tostring(Core.Flags.RaidDifficulty or "Easy")
 			local size = math.clamp(math.floor(tonumber(Core.Flags.RaidPartySize) or 4), 1, 4)
 			local friends = Core.Flags.RaidFriendsOnly == true
-			task.wait(0.18)
+			task.wait(0.06)
 			if not stillBuilding() then return end
 			local cur = Helpers.RaidQueueState or state
 			if cur.difficulty ~= diff then
 				pcall(function() raidQueue:FireServer("Difficulty", diff) end)
-				task.wait(0.12)
+				task.wait(0.06)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if tonumber(cur.size) ~= size then
 				pcall(function() raidQueue:FireServer("Size", size) end)
-				task.wait(0.12)
+				task.wait(0.06)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if (cur.friendsOnly == true) ~= friends then
 				pcall(function() raidQueue:FireServer("Friends") end)
-				task.wait(0.12)
+				task.wait(0.06)
 				if not stillBuilding() then return end
 			end
-			task.wait(0.15)
+			task.wait(0.06)
 			if not stillBuilding() then return end
 			Loops.lastRaidAt = os.clock()
 			pcall(function() raidQueue:FireServer("Play") end)
@@ -1929,20 +1929,109 @@ local function main()
 		Loops.raidReplayTries = 0
 	end
 
+	function Loops.FindEmptyRaidPad(queues: Instance, myPos: Vector3?)
+		local bestFree, bestFreeScore = nil, -math.huge
+		local bestFallback, bestFallbackDist = nil, -1
+		local otherPositions = {}
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer then
+				local ch = plr.Character
+				local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+				if hrp and hrp:IsA("BasePart") then
+					table.insert(otherPositions, hrp.Position)
+				end
+			end
+		end
+		for _, pad in ipairs(queues:GetChildren()) do
+			local blocked = pad:GetAttribute("Blocked") == true
+			local leaderId = tonumber(pad:GetAttribute("LeaderId")) or 0
+			local isOtherLeader = leaderId ~= 0 and leaderId ~= LocalPlayer.UserId
+			local count = tonumber(pad:GetAttribute("Count") or pad:GetAttribute("Players") or pad:GetAttribute("Members")) or 0
+			local stateAttr = tostring(pad:GetAttribute("State") or ""):lower()
+			local busyState = stateAttr ~= "" and stateAttr ~= "idle" and stateAttr ~= "open" and stateAttr ~= "empty"
+			if not blocked and not isOtherLeader and (count == 0 or leaderId == LocalPlayer.UserId) and (not busyState or leaderId == LocalPlayer.UserId) then
+				local hitbox = pad:FindFirstChild("Hitbox") or pad:FindFirstChildWhichIsA("BasePart")
+				if hitbox and hitbox:IsA("BasePart") then
+					local uiOccupied = false
+					if leaderId ~= LocalPlayer.UserId then
+						for _, d in ipairs(pad:GetDescendants()) do
+							if d:IsA("TextLabel") then
+								local n = tonumber(tostring(d.Text or ""):match("^(%d+)%s*/%s*%d+"))
+								if n and n > 0 then
+									uiOccupied = true
+									break
+								end
+							end
+						end
+					end
+					if not uiOccupied then
+						local pos = hitbox.Position
+						local minOtherDist = math.huge
+						for _, opos in ipairs(otherPositions) do
+							local d = (opos - pos).Magnitude
+							if d < minOtherDist then minOtherDist = d end
+						end
+						local radius = math.max(hitbox.Size.X, hitbox.Size.Z) * 0.65 + 10
+						if minOtherDist > radius then
+							local myDist = myPos and (myPos - pos).Magnitude or 0
+							local score = -myDist
+							if score > bestFreeScore then
+								bestFreeScore = score
+								bestFree = { pad = pad, hitbox = hitbox }
+							end
+						elseif minOtherDist > bestFallbackDist then
+							bestFallbackDist = minOtherDist
+							bestFallback = { pad = pad, hitbox = hitbox }
+						end
+					end
+				end
+			end
+		end
+		return bestFree or bestFallback
+	end
+
 	function Loops.TryRaidEndWave(): boolean
 		if not Helpers.IsRaidPlace() then return false end
 		local endWave = math.floor(tonumber(Core.Flags.RaidEndWave) or 0)
 		if endWave <= 0 then return false end
-		if LocalPlayer:GetAttribute("InBattle") ~= true then return false end
+		if LocalPlayer:GetAttribute("InBattle") ~= true then
+			Loops.raidBattleStartedAt = 0
+			Loops.raidWaveArmed = false
+			Loops.raidQuitTriggered = false
+			return false
+		end
 		if LocalPlayer:GetAttribute("BattleKind") ~= "Raid" and LocalPlayer:GetAttribute("InRaid") ~= true then return false end
-		local floor = tonumber(LocalPlayer:GetAttribute("BattleFloor")) or 0
-		if floor < endWave then return false end
 		local now = os.clock()
+		if Loops.raidBattleStartedAt == 0 then
+			Loops.raidBattleStartedAt = now
+			Loops.raidWaveArmed = false
+			Loops.raidQuitTriggered = false
+		end
+		local floor = tonumber(LocalPlayer:GetAttribute("BattleFloor")) or 0
+		-- กัน BattleFloor ค้างจากรอบก่อน: ต้องเห็นเวฟรีเซ็ตต่ำกว่า endWave ก่อนจึงจะอนุญาตให้ออก
+		if endWave > 1 then
+			if floor > 0 and floor < endWave then
+				Loops.raidWaveArmed = true
+			end
+			if not Loops.raidWaveArmed then return false end
+		else
+			if floor == 1 and (now - Loops.raidBattleStartedAt >= 2.0) then
+				Loops.raidWaveArmed = true
+			end
+			if not Loops.raidWaveArmed then return false end
+		end
+		if floor < endWave then return false end
+		if now - Loops.raidBattleStartedAt < 1.2 then return false end
+		if Loops.raidQuitTriggered and (now - (Loops.lastRaidQuitAt or 0) < 2.5) then return true end
 		if now - (Loops.lastRaidQuitAt or 0) < 1.5 then return true end
-		Loops.lastRaidQuitAt = now
+
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local battleGui = pg and pg:FindFirstChild("Battle")
 		local playFrame = battleGui and battleGui:FindFirstChild("Play")
+		if playFrame and playFrame:IsA("GuiObject") and not playFrame.Visible then return false end
+
+		Loops.lastRaidQuitAt = now
+		Loops.raidQuitTriggered = true
 		local buttons = playFrame and playFrame:FindFirstChild("Buttons")
 		local quitBtn = buttons and buttons:FindFirstChild("Quit")
 		if quitBtn and quitBtn:IsA("GuiButton") and firesignal then
@@ -2099,8 +2188,8 @@ local function main()
 		local qState = Helpers.RaidQueueState
 		if not (type(qState) == "table" and qState.leader and qState.state == "queued") then return false end
 		local now = os.clock()
-		if now - Loops.raidQueueStateAt < 0.35 then return true end
-		if Loops.raidStartSentAt >= Loops.raidQueueStateAt and (now - Loops.raidStartSentAt < 2.5) then return true end
+		if now - Loops.raidQueueStateAt < 0.12 then return true end
+		if Loops.raidStartSentAt >= Loops.raidQueueStateAt and (now - Loops.raidStartSentAt < 2.0) then return true end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			Loops.lastRaidAt = now
@@ -2123,6 +2212,9 @@ local function main()
 		local endVisible = endScreen and endScreen:IsA("GuiObject") and endScreen.Visible
 		local revealVisible = reveal and reveal:IsA("GuiObject") and reveal.Visible
 		if endVisible or revealVisible then
+			Loops.raidBattleStartedAt = 0
+			Loops.raidWaveArmed = false
+			Loops.raidQuitTriggered = false
 			if Core.Flags.AutoRaidReplay then
 				Loops.TryRaidReplay(false)
 				return
@@ -2135,7 +2227,10 @@ local function main()
 			Loops.ResetRaidReplayState()
 		end
 
-		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true then
+		local battleGui = pg and pg:FindFirstChild("Battle")
+		local playFrame = battleGui and battleGui:FindFirstChild("Play")
+		local playVisible = playFrame and playFrame:IsA("GuiObject") and playFrame.Visible
+		if LocalPlayer:GetAttribute("InRaid") == true or LocalPlayer:GetAttribute("InBattle") == true or playVisible then
 			Helpers.RaidQueueState = nil
 			Loops.raidQueueState = nil
 			Loops.raidStartSentAt = 0
@@ -2144,11 +2239,15 @@ local function main()
 			return
 		end
 
+		Loops.raidBattleStartedAt = 0
+		Loops.raidWaveArmed = false
+		Loops.raidQuitTriggered = false
+
 		local qState = Helpers.RaidQueueState
 		if type(qState) == "table" then
 			if qState.leader then
 				if qState.state == "building" then
-					if now - Loops.raidQueueStateAt < 0.25 then return end
+					if now - Loops.raidQueueStateAt < 0.1 then return end
 					Loops.ApplyRaidSetup(qState)
 					return
 				elseif qState.state == "queued" then
@@ -2159,25 +2258,19 @@ local function main()
 			return
 		end
 
-		if now - Loops.lastRaidAt < 1.2 then return end
+		if now - Loops.lastRaidAt < 0.6 then return end
 
 		local lobby = Workspace:FindFirstChild("Lobby")
 		local queues = lobby and lobby:FindFirstChild("Queues")
 		if not (queues and Helpers.IsAlive()) then return end
 		local root = Helpers.GetRoot()
 		if not root then return end
-		for _, pad in ipairs(queues:GetChildren()) do
-			local blocked = pad:GetAttribute("Blocked") == true
-			local leaderId = pad:GetAttribute("LeaderId")
-			if not blocked or leaderId == LocalPlayer.UserId then
-				local hitbox = pad:FindFirstChild("Hitbox") or pad:FindFirstChildWhichIsA("BasePart")
-				if hitbox and hitbox:IsA("BasePart") then
-					Loops.lastRaidAt = now
-					root.CFrame = hitbox.CFrame + Vector3.new(0, 3, 0)
-					logAction("RAID", "เข้าแท่นคิว Raid: " .. pad.Name, true)
-					return
-				end
-			end
+		local picked = Loops.FindEmptyRaidPad(queues, root.Position)
+		if picked and picked.hitbox then
+			Loops.lastRaidAt = now
+			root.CFrame = picked.hitbox.CFrame + Vector3.new(0, 3, 0)
+			logAction("RAID", "เข้าประตู Raid ว่าง: " .. picked.pad.Name, true)
+			return
 		end
 	end
 
@@ -3090,6 +3183,21 @@ local function main()
 							end
 						end
 						Helpers.RaidQueueState = payload
+						if payload.leader then
+							if payload.state == "building" and Core.Flags.AutoRaid and not Loops.raidSetupBusy then
+								task.defer(function()
+									if Core._alive and Core.Flags.AutoRaid and Helpers.IsRaidPlace() and not Loops.raidSetupBusy then
+										Loops.ApplyRaidSetup(payload)
+									end
+								end)
+							elseif payload.state == "queued" and Core.Flags.RaidStartNow then
+								task.delay(0.12, function()
+									if Core._alive and Core.Flags.RaidStartNow and Helpers.IsRaidPlace() then
+										Loops.TryRaidStartNow()
+									end
+								end)
+							end
+						end
 					end
 				elseif payload.state == "replay" then
 					local nowEv = os.clock()
@@ -3190,6 +3298,17 @@ local function main()
 				end
 			end)
 		end
+		Core:Connect(LocalPlayer:GetAttributeChangedSignal("InBattle"), function()
+			if LocalPlayer:GetAttribute("InBattle") == true then
+				Loops.raidBattleStartedAt = os.clock()
+				Loops.raidWaveArmed = false
+				Loops.raidQuitTriggered = false
+			else
+				Loops.raidBattleStartedAt = 0
+				Loops.raidWaveArmed = false
+				Loops.raidQuitTriggered = false
+			end
+		end)
 		Core:Connect(LocalPlayer:GetAttributeChangedSignal("BattleFloor"), function()
 			if Helpers.IsRaidPlace() and (tonumber(Core.Flags.RaidEndWave) or 0) > 0 then
 				task.defer(Loops.TryRaidEndWave)
