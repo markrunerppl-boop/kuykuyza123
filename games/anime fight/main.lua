@@ -1368,7 +1368,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1891,27 +1891,27 @@ local function main()
 			local diff = tostring(Core.Flags.RaidDifficulty or "Easy")
 			local size = math.clamp(math.floor(tonumber(Core.Flags.RaidPartySize) or 4), 1, 4)
 			local friends = Core.Flags.RaidFriendsOnly == true
-			task.wait(0.6)
+			task.wait(0.18)
 			if not stillBuilding() then return end
 			local cur = Helpers.RaidQueueState or state
 			if cur.difficulty ~= diff then
 				pcall(function() raidQueue:FireServer("Difficulty", diff) end)
-				task.wait(0.35)
+				task.wait(0.12)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if tonumber(cur.size) ~= size then
 				pcall(function() raidQueue:FireServer("Size", size) end)
-				task.wait(0.35)
+				task.wait(0.12)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if (cur.friendsOnly == true) ~= friends then
 				pcall(function() raidQueue:FireServer("Friends") end)
-				task.wait(0.35)
+				task.wait(0.12)
 				if not stillBuilding() then return end
 			end
-			task.wait(0.5)
+			task.wait(0.15)
 			if not stillBuilding() then return end
 			Loops.lastRaidAt = os.clock()
 			pcall(function() raidQueue:FireServer("Play") end)
@@ -1933,21 +1933,38 @@ local function main()
 		if not Helpers.IsRaidPlace() then return false end
 		local endWave = math.floor(tonumber(Core.Flags.RaidEndWave) or 0)
 		if endWave <= 0 then return false end
-		if LocalPlayer:GetAttribute("InBattle") ~= true or LocalPlayer:GetAttribute("BattleKind") ~= "Raid" then return false end
+		if LocalPlayer:GetAttribute("InBattle") ~= true then return false end
+		if LocalPlayer:GetAttribute("BattleKind") ~= "Raid" and LocalPlayer:GetAttribute("InRaid") ~= true then return false end
 		local floor = tonumber(LocalPlayer:GetAttribute("BattleFloor")) or 0
-		if floor <= endWave then return false end
+		if floor < endWave then return false end
 		local now = os.clock()
-		if now - Loops.lastRaidAt < 3 then return true end
-		Loops.lastRaidAt = now
+		if now - (Loops.lastRaidQuitAt or 0) < 1.5 then return true end
+		Loops.lastRaidQuitAt = now
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local battleGui = pg and pg:FindFirstChild("Battle")
+		local playFrame = battleGui and battleGui:FindFirstChild("Play")
+		local buttons = playFrame and playFrame:FindFirstChild("Buttons")
+		local quitBtn = buttons and buttons:FindFirstChild("Quit")
+		if quitBtn and quitBtn:IsA("GuiButton") and firesignal then
+			pcall(firesignal, quitBtn.Activated)
+			logAction("RAID", string.format("ถึงเวฟ %d -> ออกเข้าใหม่ (Quit UI)", floor), true)
+			return true
+		end
+		local battleReq = Net.Remote("BattleRequest")
+		if battleReq then
+			local ok, res = Net.Invoke(battleReq, "Quit")
+			if ok and res ~= false then
+				logAction("RAID", string.format("ถึงเวฟ %d -> ออกเข้าใหม่ (Quit)", floor), true)
+				return true
+			end
+		end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			pcall(function() raidQueue:FireServer("Return") end)
-		else
-			local battleReq = Net.Remote("BattleRequest")
-			if battleReq then Net.Invoke(battleReq, "Quit") end
+			logAction("RAID", string.format("ถึงเวฟ %d -> ออกเข้าใหม่ (Return)", floor), true)
+			return true
 		end
-		logAction("RAID", string.format("จบเวฟ %d -> ออกจาก Raid", endWave), true)
-		return true
+		return false
 	end
 
 	function Loops.TryRaidReplay(fromEvent: boolean?): boolean
@@ -2065,7 +2082,7 @@ local function main()
 			Loops.raidEndScreenAt = now
 			return true
 		end
-		if now - Loops.raidEndScreenAt < 1.8 or now - Loops.lastRaidAt < 3.5 then return true end
+		if now - Loops.raidEndScreenAt < 0.35 or now - Loops.lastRaidAt < 1.5 then return true end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			Loops.lastRaidAt = now
@@ -2082,8 +2099,8 @@ local function main()
 		local qState = Helpers.RaidQueueState
 		if not (type(qState) == "table" and qState.leader and qState.state == "queued") then return false end
 		local now = os.clock()
-		if now - Loops.raidQueueStateAt < 1.8 then return true end
-		if Loops.raidStartSentAt >= Loops.raidQueueStateAt and (now - Loops.raidStartSentAt < 5) then return true end
+		if now - Loops.raidQueueStateAt < 0.35 then return true end
+		if Loops.raidStartSentAt >= Loops.raidQueueStateAt and (now - Loops.raidStartSentAt < 2.5) then return true end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			Loops.lastRaidAt = now
@@ -2126,14 +2143,12 @@ local function main()
 			Loops.TryRaidEndWave()
 			return
 		end
-		if now - Loops.lastRaidAt < 3.5 then return end
 
 		local qState = Helpers.RaidQueueState
 		if type(qState) == "table" then
 			if qState.leader then
 				if qState.state == "building" then
-					if now - Loops.raidQueueStateAt < 1.0 then return end
-					Loops.lastRaidAt = now
+					if now - Loops.raidQueueStateAt < 0.25 then return end
 					Loops.ApplyRaidSetup(qState)
 					return
 				elseif qState.state == "queued" then
@@ -2143,6 +2158,8 @@ local function main()
 			end
 			return
 		end
+
+		if now - Loops.lastRaidAt < 1.2 then return end
 
 		local lobby = Workspace:FindFirstChild("Lobby")
 		local queues = lobby and lobby:FindFirstChild("Queues")
@@ -2166,7 +2183,7 @@ local function main()
 
 	function Loops.StartAutoRaid()
 		if Core.Flags.AutoRaid then
-			Core:Loop("AutoRaid", "AutoRaid", 1.0, Loops.AutoRaidTick)
+			Core:Loop("AutoRaid", "AutoRaid", 0.35, Loops.AutoRaidTick)
 		end
 	end
 
@@ -2187,7 +2204,7 @@ local function main()
 
 	function Loops.StartAutoRaidReturn()
 		if Core.Flags.AutoRaidReturn then
-			Core:Loop("AutoRaidReturn", "AutoRaidReturn", 1.0, Loops.AutoRaidReturnTick)
+			Core:Loop("AutoRaidReturn", "AutoRaidReturn", 0.5, Loops.AutoRaidReturnTick)
 		end
 	end
 
@@ -2197,7 +2214,7 @@ local function main()
 
 	function Loops.StartRaidStartNow()
 		if Core.Flags.RaidStartNow then
-			Core:Loop("RaidStartNow", "RaidStartNow", 1.0, Loops.RaidStartNowTick)
+			Core:Loop("RaidStartNow", "RaidStartNow", 0.4, Loops.RaidStartNowTick)
 		end
 	end
 
@@ -4498,7 +4515,7 @@ local function main()
 		logAction("CFG", "Auto Raid Return: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoRaidReturn() end
 	end)
-	UI.NumberInput("จบเวฟที่ (0 = ไม่จำกัด)", "RaidEndWave", 0)
+	UI.NumberInput("ออกเข้าใหม่เมื่อถึงเวฟ (0 = ไม่จำกัด)", "RaidEndWave", 0)
 	UI.Toggle("ซื้อของร้าน Raid Merchant อัตโนมัติ", "AutoBuyRaidShop", function(on)
 		logAction("CFG", "Auto Buy Raid Shop: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoBuyRaidShop() end
