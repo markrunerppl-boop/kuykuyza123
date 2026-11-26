@@ -1536,6 +1536,7 @@ local function main()
 	end
 
 	function Loops.PlaceChest(tier: number, mutation: string?): boolean
+		if Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return false end
 		local plot = Helpers.GetPlot()
 		local remote = Net.Remote("PlaceChest")
 		if not (plot and remote) then return false end
@@ -1558,7 +1559,7 @@ local function main()
 	end
 
 	function Loops.AutoOpenTick()
-		if Core.Busy then return end
+		if Core.Busy or Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		if not Helpers.IsAlive() then return end
 		local plot = Helpers.GetPlot()
 		local placed = plot and plot:FindFirstChild("PlacedChests")
@@ -1804,6 +1805,7 @@ local function main()
 
 	function Loops.AutoDungeonTick()
 		if os.clock() - Loops.lastDungeonAt < 2 then return end
+		if Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		local battleReq = Net.Remote("BattleRequest")
 		if not battleReq then return end
 
@@ -1891,27 +1893,27 @@ local function main()
 			local diff = tostring(Core.Flags.RaidDifficulty or "Easy")
 			local size = math.clamp(math.floor(tonumber(Core.Flags.RaidPartySize) or 4), 1, 4)
 			local friends = Core.Flags.RaidFriendsOnly == true
-			task.wait(0.06)
+			task.wait(0.1)
 			if not stillBuilding() then return end
 			local cur = Helpers.RaidQueueState or state
 			if cur.difficulty ~= diff then
 				pcall(function() raidQueue:FireServer("Difficulty", diff) end)
-				task.wait(0.06)
+				task.wait(0.1)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if tonumber(cur.size) ~= size then
 				pcall(function() raidQueue:FireServer("Size", size) end)
-				task.wait(0.06)
+				task.wait(0.1)
 				if not stillBuilding() then return end
 			end
 			cur = Helpers.RaidQueueState or cur
 			if (cur.friendsOnly == true) ~= friends then
 				pcall(function() raidQueue:FireServer("Friends") end)
-				task.wait(0.06)
+				task.wait(0.1)
 				if not stillBuilding() then return end
 			end
-			task.wait(0.06)
+			task.wait(0.1)
 			if not stillBuilding() then return end
 			Loops.lastRaidAt = os.clock()
 			pcall(function() raidQueue:FireServer("Play") end)
@@ -2039,6 +2041,7 @@ local function main()
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local battleGui = pg and pg:FindFirstChild("Battle")
 		local playFrame = battleGui and battleGui:FindFirstChild("Play")
+		if playFrame and playFrame:IsA("GuiObject") and not playFrame.Visible then return false end
 
 		Loops.lastRaidQuitAt = now
 		Loops.raidQuitTriggered = true
@@ -2060,17 +2063,12 @@ local function main()
 		end
 		task.delay(0.5, function()
 			if not Core._alive then return end
-			local pgi = LocalPlayer:FindFirstChild("PlayerGui")
-			local bg = pgi and pgi:FindFirstChild("Battle")
-			local pf = bg and bg:FindFirstChild("Play")
 			if LocalPlayer:GetAttribute("InBattle") ~= true and LocalPlayer:GetAttribute("InRaid") ~= true then
+				local pgi = LocalPlayer:FindFirstChild("PlayerGui")
+				local bg = pgi and pgi:FindFirstChild("Battle")
+				local pf = bg and bg:FindFirstChild("Play")
 				if pf and pf:IsA("GuiObject") and pf.Visible then
 					pcall(function() pf.Visible = false end)
-				end
-			else
-				local rq = Net.Remote("RaidQueue")
-				if rq and rq:IsA("RemoteEvent") then
-					pcall(function() rq:FireServer("Return") end)
 				end
 			end
 		end)
@@ -2209,8 +2207,9 @@ local function main()
 		local qState = Helpers.RaidQueueState
 		if not (type(qState) == "table" and qState.leader and qState.state == "queued") then return false end
 		local now = os.clock()
-		if now - Loops.raidQueueStateAt < 0.12 then return true end
-		if Loops.raidStartSentAt >= Loops.raidQueueStateAt and (now - Loops.raidStartSentAt < 2.0) then return true end
+		if now - Loops.raidQueueStateAt < 0.2 then return true end
+		-- ยิง StartNow แค่ 1 ครั้งต่อ 1 รอบคิว เพื่อไม่ให้ยิงซ้ำจนขึ้นแจ้งเตือน
+		if Loops.raidStartSentAt >= Loops.raidQueueStateAt then return true end
 		local raidQueue = Net.Remote("RaidQueue")
 		if raidQueue and raidQueue:IsA("RemoteEvent") then
 			Loops.lastRaidAt = now
@@ -2283,7 +2282,8 @@ local function main()
 			return
 		end
 
-		if now - Loops.lastRaidAt < 0.6 then return end
+		if now - (Loops.lastRaidQuitAt or 0) < 1.2 then return end
+		if now - Loops.lastRaidAt < 1.2 then return end
 
 		local lobby = Workspace:FindFirstChild("Lobby")
 		local queues = lobby and lobby:FindFirstChild("Queues")
@@ -2292,6 +2292,10 @@ local function main()
 		if not root then return end
 		local picked = Loops.FindEmptyRaidPad(queues, root.Position)
 		if picked and picked.hitbox then
+			-- ถ้ายืนอยู่ในแท่นคิวแล้ว รอเซิร์ฟตอบ building ก่อน ไม่วาร์ปซ้ำ
+			if (root.Position - picked.hitbox.Position).Magnitude <= 8 and (now - Loops.lastRaidAt < 2.5) then
+				return
+			end
 			Loops.lastRaidAt = now
 			root.CFrame = picked.hitbox.CFrame + Vector3.new(0, 3, 0)
 			logAction("RAID", "เข้าประตู Raid ว่าง: " .. picked.pad.Name, true)
@@ -3099,7 +3103,7 @@ local function main()
 	end
 
 	function Loops.AutoBuyTick()
-		if Core.Busy or os.clock() < Loops.backoffUntil then return end
+		if Core.Busy or os.clock() < Loops.backoffUntil or Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		if not Helpers.IsAlive() then return end
 		local list, folder = Loops.SelectTargets()
 		if not list or #list == 0 then return end
@@ -3124,7 +3128,7 @@ local function main()
 
 	function Loops.AutoBuyFreeTick()
 		if Core.Flags.AutoBuyChest then return end
-		if Core.Busy or os.clock() < Loops.backoffUntil then return end
+		if Core.Busy or os.clock() < Loops.backoffUntil or Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		if not Helpers.IsAlive() then return end
 		local plot = Helpers.GetPlot()
 		local folder = plot and plot:FindFirstChild("ActiveChests")
