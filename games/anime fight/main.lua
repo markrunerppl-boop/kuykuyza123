@@ -72,6 +72,7 @@ local function main()
 		bossRuns = 0,
 		pvpRuns = 0,
 		ascended = 0,
+		soldUnits = 0,
 		startedAt = os.time(),
 		startCash = nil,
 	}
@@ -160,6 +161,8 @@ local function main()
 			ShopMinRarity = "All",
 			ShopTargets = {},
 			AutoAscendUnit = false,
+			AutoSellUnits = false,
+			SellUnitMaxRarity = "Epic",
 			AutoClaimBattlePass = false,
 			AutoClaimWeekly = false,
 			FpsBoost = false,
@@ -781,6 +784,38 @@ local function main()
 		return list
 	end
 
+	function Helpers.GetUnitSellRarityOptions()
+		if #Helpers.RarityOrder == 0 then Helpers.RefreshRaritiesAndAscension() end
+		local list, seen = {}, {}
+		for _, r in ipairs(Helpers.RarityOrder) do
+			if type(r) == "string" and r ~= "" and not seen[r] then
+				seen[r] = true
+				table.insert(list, { id = r, name = r .. " ลงมา" })
+			end
+		end
+		if #list == 0 then
+			for _, r in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }) do
+				table.insert(list, { id = r, name = r .. " ลงมา" })
+			end
+		end
+		return list
+	end
+
+	function Helpers.GetUnitRarity(unit): string
+		if type(unit) ~= "table" then return "Common" end
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local unitsFolder = assets and assets:FindFirstChild("Units")
+		local unitModel = unitsFolder and unit.name and unitsFolder:FindFirstChild(tostring(unit.name))
+		local attrRarity = unitModel and unitModel:GetAttribute("Rarity")
+		if type(attrRarity) == "string" and attrRarity ~= "" then
+			return attrRarity
+		end
+		if type(unit.rarity) == "string" and unit.rarity ~= "" then
+			return unit.rarity
+		end
+		return "Common"
+	end
+
 	function Helpers.GetPvpConfig()
 		local mods = ReplicatedStorage:FindFirstChild("Modules")
 		local gp = mods and mods:FindFirstChild("Gameplay")
@@ -1368,7 +1403,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastSellAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -2757,6 +2792,113 @@ local function main()
 		end
 	end
 
+	function Loops.SellTrashUnits(maxRarity: string?, silentIfEmpty: boolean?)
+		local inv = Helpers.Inventory
+		if type(inv) ~= "table" or type(inv.units) ~= "table" then
+			Loops.RequestSkillSync()
+			if not silentIfEmpty then
+				logAction("SELL", "กำลังซิงค์ข้อมูลคลังตัวละคร ลองใหม่อีกครั้ง", false)
+			end
+			return 0, 0
+		end
+		if #Helpers.RarityOrder == 0 then Helpers.RefreshRaritiesAndAscension() end
+		local rarityRank = {}
+		for i, r in ipairs(Helpers.RarityOrder) do
+			rarityRank[r] = i
+		end
+		local targetRarity = tostring(maxRarity or Core.Flags.SellUnitMaxRarity or "Epic")
+		local maxRank = rarityRank[targetRarity]
+		if not maxRank then
+			if not silentIfEmpty then
+				logAction("SELL", "ไม่พบระดับความหายาก: " .. targetRarity, false)
+			end
+			return 0, 0
+		end
+
+		local teamIds = {}
+		if type(inv.team) == "table" then
+			for _, t in pairs(inv.team) do
+				if type(t) == "table" and t.id then
+					teamIds[t.id] = true
+				end
+			end
+		end
+
+		local batch = {}
+		for _, unit in pairs(inv.units) do
+			if type(unit) == "table" and unit.id and unit.name then
+				if unit.locked ~= true and unit.placed ~= true and not teamIds[unit.id] then
+					local rarity = Helpers.GetUnitRarity(unit)
+					local rank = rarityRank[rarity]
+					if rank and rank <= maxRank then
+						table.insert(batch, { kind = "Unit", id = unit.id, count = 1 })
+					end
+				end
+			end
+		end
+
+		if #batch == 0 then
+			if not silentIfEmpty then
+				logAction("SELL", string.format("ไม่พบตัวละครระดับ %s ลงมาที่ขายได้", targetRarity), true)
+			end
+			return 0, 0
+		end
+
+		local sellItemsRemote = Net.Remote("SellItems")
+		local sellItemRemote = Net.Remote("SellItem")
+		local totalSold, totalCoins = 0, 0
+
+		if sellItemsRemote and sellItemsRemote:IsA("RemoteFunction") then
+			for i = 1, #batch, 300 do
+				if not Core._alive then break end
+				if i > 1 then task.wait(0.2) end
+				local chunk = table.move(batch, i, math.min(i + 299, #batch), 1, {})
+				local okS, resS = Net.Invoke(sellItemsRemote, chunk)
+				if okS and type(resS) == "table" then
+					totalSold += tonumber(resS.sold) or #chunk
+					totalCoins += tonumber(resS.coins) or 0
+				elseif not okS then
+					logAction("SELL", "ขายตัวละครล้มเหลว: " .. tostring(resS), false)
+					break
+				end
+			end
+		elseif sellItemRemote and sellItemRemote:IsA("RemoteFunction") then
+			for _, entry in ipairs(batch) do
+				if not Core._alive then break end
+				local okS, resS = Net.Invoke(sellItemRemote, entry.kind, entry.id, entry.count)
+				if okS and type(resS) == "number" then
+					totalSold += 1
+					totalCoins += resS
+				end
+			end
+		else
+			logAction("SELL", "ไม่พบ Remote สำหรับขายตัวละคร (SellItems/SellItem)", false)
+			return 0, 0
+		end
+
+		if totalSold > 0 then
+			Stats.soldUnits += totalSold
+			logAction("SELL", string.format("ขายตัวละครระดับ %s ลงมาสำเร็จ %d ตัว (+%s coins)", targetRarity, totalSold, Helpers.Format(math.floor(totalCoins + 0.5))), true)
+			Loops.RequestSkillSync()
+		elseif not silentIfEmpty then
+			logAction("SELL", string.format("ไม่สามารถขายตัวละครระดับ %s ลงมาได้", targetRarity), false)
+		end
+		return totalSold, totalCoins
+	end
+
+	function Loops.AutoSellUnitsTick()
+		if os.clock() - Loops.lastSellAt < 4 then return end
+		Loops.lastSellAt = os.clock()
+		Loops.SellTrashUnits(Core.Flags.SellUnitMaxRarity, true)
+	end
+
+	function Loops.StartAutoSellUnits()
+		if Core.Flags.AutoSellUnits then
+			if type(Helpers.Inventory) ~= "table" then Loops.RequestSkillSync() end
+			Core:Loop("AutoSellUnits", "AutoSellUnits", 2.0, Loops.AutoSellUnitsTick)
+		end
+	end
+
 	function Loops.AutoClaimBattlePassTick()
 		if Loops.bpBusy then return end
 		if os.clock() - Loops.lastBpAt < 5 then return end
@@ -3576,6 +3718,7 @@ local function main()
 			{ "AutoBoss", "Boss" },
 			{ "AutoPvp", "PvP" },
 			{ "AutoAscendUnit", "Ascend" },
+			{ "AutoSellUnits", "ขายยูนิต" },
 			{ "AutoUpgradeSkill", "อัพสกิล" },
 			{ "AutoClaimBattlePass", "รับ BP" },
 			{ "AutoClaimWeekly", "รับ Weekly" },
@@ -4689,6 +4832,17 @@ local function main()
 		logAction("CFG", "Auto Ascend Unit: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoAscend() end
 	end)
+	UI.Section("🗑️ ขายตัวละครอัตโนมัติ (Sell Units)")
+	UI.OptionSelect("SellUnitMaxRarity", "Epic", Helpers.GetUnitSellRarityOptions, "ขายระดับ: ", "RebuildSellUnitRarities")
+	UI.Toggle("ขายตัวละครขยะอัตโนมัติ (ข้ามล็อก/ในทีม)", "AutoSellUnits", function(on)
+		logAction("CFG", "Auto Sell Units: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoSellUnits() end
+	end)
+	UI.Button("🗑️ ขายตัวละครตามระดับที่เลือกทันที", function()
+		task.spawn(function()
+			Loops.SellTrashUnits(Core.Flags.SellUnitMaxRarity, false)
+		end)
+	end)
 	UI.Section("🎁 รางวัลอัปเดต (Battle Pass / Weekly)")
 	UI.Toggle("รับรางวัล + รีเซ็ต Battle Pass อัตโนมัติ (ClaimAll / Reset)", "AutoClaimBattlePass", function(on)
 		logAction("CFG", "Auto Claim Battle Pass: " .. (on and "ON" or "OFF"), on)
@@ -4762,6 +4916,7 @@ local function main()
 		end
 		if Helpers.RefreshRaritiesAndAscension() then
 			if UI.RebuildShopRarities then UI.RebuildShopRarities() end
+			if UI.RebuildSellUnitRarities then UI.RebuildSellUnitRarities() end
 			logAction("MAP", reason or string.format("อัปเดตระดับยูนิต (%d ระดับ) / Ascend (%d สาย)", #Helpers.RarityOrder, #Helpers.AscensionPaths), true)
 		end
 		if Helpers.RefreshPvp() then
@@ -4932,6 +5087,7 @@ local function main()
 	Loops.StartAutoBossReplay()
 	Loops.StartAutoBuyBossShop()
 	Loops.StartAutoAscend()
+	Loops.StartAutoSellUnits()
 	Loops.StartAutoClaimBattlePass()
 	Loops.StartAutoClaimWeekly()
 	Loops.StartAutoTravelPvp()
