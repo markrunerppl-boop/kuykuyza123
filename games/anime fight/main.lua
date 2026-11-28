@@ -3265,6 +3265,49 @@ local function main()
 		end)
 	end
 
+	function Loops.HideAfkNotice()
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not pg then return end
+		local onScreen = pg:FindFirstChild("OnScreen")
+		local afk = onScreen and onScreen:FindFirstChild("AFK")
+		if afk and afk:IsA("GuiObject") then
+			if afk.Visible then afk.Visible = false end
+			if Loops._afkVisInst ~= afk then
+				if Loops._afkVisConn then pcall(function() Loops._afkVisConn:Disconnect() end) end
+				Loops._afkVisInst = afk
+				Loops._afkVisConn = Core:Connect(afk:GetPropertyChangedSignal("Visible"), function()
+					if Core.Flags.AntiAfk and afk.Visible then
+						afk.Visible = false
+					end
+				end)
+			end
+		end
+		local tpScreen = pg:FindFirstChild("AfkTeleportScreen")
+		if tpScreen then pcall(function() tpScreen:Destroy() end) end
+	end
+
+	function Loops.AntiAfkTick()
+		Loops.HideAfkNotice()
+		pcall(function()
+			local vim = game:GetService("VirtualInputManager")
+			vim:SendKeyEvent(true, Enum.KeyCode.F15, false, game)
+			task.wait(0.03)
+			vim:SendKeyEvent(false, Enum.KeyCode.F15, false, game)
+		end)
+		local afkRemote = Net.Remote("AfkActive")
+		if afkRemote and afkRemote:IsA("RemoteEvent") then
+			pcall(function() afkRemote:FireServer() end)
+		end
+	end
+
+	function Loops.StartAntiAfk()
+		Loops.InitAntiAfk()
+		if Core.Flags.AntiAfk then
+			Loops.HideAfkNotice()
+			Core:Loop("AntiAfk", "AntiAfk", 35, Loops.AntiAfkTick)
+		end
+	end
+
 	function Loops.AutoBuyTick()
 		if Core.Busy or os.clock() < Loops.backoffUntil or Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		if not Helpers.IsAlive() then return end
@@ -4838,8 +4881,9 @@ local function main()
 
 	UI.CreateTab("PvP", "⚡ PvP/อื่นๆ")
 	UI.Section("🚀 Ultimate FPS Boost (บูส FPS + โชว์สถิติฟาร์ม)")
-	UI.Toggle("กันหลุด AFK อัตโนมัติ (Anti-AFK 20 นาที)", "AntiAfk", function(on)
+	UI.Toggle("กันหลุด AFK อัตโนมัติ (Anti-AFK + กันหน้าต่าง AFK)", "AntiAfk", function(on)
 		logAction("CFG", "Anti-AFK: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAntiAfk() end
 	end)
 	UI.Toggle("เปิด Ultimate FPS Boost + โชว์สถิติ", "FpsBoost", function(on)
 		if on then FpsBoost.Enable() else FpsBoost.Disable() end
@@ -5118,7 +5162,7 @@ local function main()
 	Loops.StartAutoPvp()
 	Loops.StartAutoBuyPvpShop()
 	Loops.StartAutoUpgradeSkill()
-	Loops.InitAntiAfk()
+	Loops.StartAntiAfk()
 	if Core.Flags.FpsBoost then FpsBoost.Enable() end
 	logAction("SYS", "โหลดสคริปต์สำเร็จ | Config: " .. Config.File, true)
 end
