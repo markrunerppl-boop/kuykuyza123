@@ -123,6 +123,7 @@ local function main()
 			AutoNextStage = false,
 			AutoStory = false,
 			AutoSwapMaxUnits = false,
+			SwapMaxUnitsCount = 0,
 			StoryWorld = "World_1",
 			StoryAct = 1,
 			StoryWorlds = { World_1 = true },
@@ -759,44 +760,80 @@ local function main()
 		return math.max(1, math.min(unlocked, maxCap))
 	end
 
+	function Helpers.GetSwapQuota(inv): (number, number, number)
+		local maxSlots = Helpers.GetTeamSlotCount(inv)
+		local raw = math.floor(tonumber(Core.Flags.SwapMaxUnitsCount) or 0)
+		local swapCount = (raw <= 0 or raw >= maxSlots) and maxSlots or math.clamp(raw, 1, maxSlots)
+		local keepCarry = math.max(0, maxSlots - swapCount)
+		return maxSlots, swapCount, keepCarry
+	end
+
 	function Helpers.HasMaxLevelTeamUnit(inv): (boolean, string?, boolean)
 		if type(inv) ~= "table" or type(inv.units) ~= "table" then
 			return false, nil, false
 		end
 		local unitById = {}
-		local nonMaxCount = 0
 		for _, u in pairs(inv.units) do
 			if type(u) == "table" and u.id and u.name then
 				unitById[tostring(u.id)] = u
-				local lv = tonumber(u.level) or 1
-				if lv < Helpers.GetUnitLevelCap(tostring(u.name)) then
-					nonMaxCount += 1
-				end
 			end
 		end
 
+		local maxSlots, _, keepCarry = Helpers.GetSwapQuota(inv)
 		local team = type(inv.team) == "table" and inv.team or {}
-		local maxSlots = Helpers.GetTeamSlotCount(inv)
-		local maxedName = nil
+		local equipped = {}
+		local equippedSet = {}
 		for s = 1, maxSlots do
 			local entry = team[tostring(s)] or team[s]
 			if entry ~= nil then
-				local uid = type(entry) == "table" and entry.id or entry
-				local u = unitById[tostring(uid)] or (type(entry) == "table" and entry or nil)
+				local uid = tostring(type(entry) == "table" and entry.id or entry)
+				local u = unitById[uid] or (type(entry) == "table" and entry or nil)
 				if type(u) == "table" and u.name then
-					local lv = tonumber(u.level) or 1
-					if lv >= Helpers.GetUnitLevelCap(tostring(u.name)) then
-						maxedName = string.format("%s Lv.%d", tostring(u.name), lv)
-						break
-					end
+					equippedSet[uid] = true
+					table.insert(equipped, {
+						slot = s,
+						id = uid,
+						name = tostring(u.name),
+						level = tonumber(u.level) or 1,
+						cap = Helpers.GetUnitLevelCap(tostring(u.name)),
+						power = Helpers.GetUnitPower(u, inv),
+					})
 				end
 			end
 		end
 
+		table.sort(equipped, function(a, b)
+			if a.power ~= b.power then return a.power > b.power end
+			return a.level > b.level
+		end)
+
+		local carrySet = {}
+		for i = 1, math.min(keepCarry, #equipped) do
+			carrySet[equipped[i].id] = true
+		end
+
+		local maxedName = nil
+		for _, eq in ipairs(equipped) do
+			if not carrySet[eq.id] and eq.level >= eq.cap then
+				maxedName = string.format("%s Lv.%d", eq.name, eq.level)
+				break
+			end
+		end
 		if not maxedName then
 			return false, nil, false
 		end
-		return true, maxedName, nonMaxCount > 0
+
+		local hasReplacement = false
+		for uid, u in pairs(unitById) do
+			if not carrySet[uid] and not equippedSet[uid] then
+				local lv = tonumber(u.level) or 1
+				if lv < Helpers.GetUnitLevelCap(tostring(u.name)) then
+					hasReplacement = true
+					break
+				end
+			end
+		end
+		return true, maxedName, hasReplacement
 	end
 
 	function Helpers.SwapMaxLevelTeamUnits(): boolean
@@ -805,14 +842,59 @@ local function main()
 		local setSlot = Net.Remote("SetTeamSlot")
 		if not (setSlot and setSlot:IsA("RemoteFunction")) then return false end
 
-		local candidates = {}
+		local unitById = {}
 		for _, u in pairs(inv.units) do
 			if type(u) == "table" and u.id and u.name then
+				unitById[tostring(u.id)] = u
+			end
+		end
+
+		local maxSlots, swapCount, keepCarry = Helpers.GetSwapQuota(inv)
+		local team = type(inv.team) == "table" and inv.team or {}
+		local curSlot = {}
+		local equipped = {}
+		local equippedCount = 0
+		for s = 1, maxSlots do
+			local entry = team[tostring(s)] or team[s]
+			if entry ~= nil then
+				local uid = tostring(type(entry) == "table" and entry.id or entry)
+				curSlot[s] = uid
+				equippedCount += 1
+				local u = unitById[uid] or (type(entry) == "table" and entry or nil)
+				if type(u) == "table" and u.name then
+					table.insert(equipped, {
+						id = uid,
+						name = tostring(u.name),
+						level = tonumber(u.level) or 1,
+						power = Helpers.GetUnitPower(u, inv),
+					})
+				end
+			end
+		end
+
+		table.sort(equipped, function(a, b)
+			if a.power ~= b.power then return a.power > b.power end
+			return a.level > b.level
+		end)
+
+		local desired = {}
+		local desiredSet = {}
+		local carrySet = {}
+		for i = 1, math.min(keepCarry, #equipped) do
+			local c = equipped[i]
+			carrySet[c.id] = true
+			desiredSet[c.id] = true
+			table.insert(desired, c)
+		end
+
+		local candidates = {}
+		for uid, u in pairs(unitById) do
+			if not carrySet[uid] then
 				local lv = tonumber(u.level) or 1
 				local cap = Helpers.GetUnitLevelCap(tostring(u.name))
 				if lv < cap then
 					table.insert(candidates, {
-						id = tostring(u.id),
+						id = uid,
 						name = tostring(u.name),
 						level = lv,
 						power = Helpers.GetUnitPower(u, inv),
@@ -830,25 +912,15 @@ local function main()
 			return a.level > b.level
 		end)
 
-		local maxSlots = Helpers.GetTeamSlotCount(inv)
-		local desired = {}
-		local desiredSet = {}
-		for s = 1, math.min(maxSlots, #candidates) do
-			desired[s] = candidates[s]
-			desiredSet[candidates[s].id] = true
+		local farmAdded = 0
+		for _, cand in ipairs(candidates) do
+			if #desired >= maxSlots or farmAdded >= swapCount then break end
+			desiredSet[cand.id] = true
+			table.insert(desired, cand)
+			farmAdded += 1
 		end
 
-		local team = type(inv.team) == "table" and inv.team or {}
-		local curSlot = {}
-		local equippedCount = 0
-		for s = 1, maxSlots do
-			local entry = team[tostring(s)] or team[s]
-			if entry ~= nil then
-				local uid = tostring(type(entry) == "table" and entry.id or entry)
-				curSlot[s] = uid
-				equippedCount += 1
-			end
-		end
+		if #desired == 0 then return false end
 
 		local changed = false
 		-- Step 1: Unequip maxed/non-desired units (leave at least 1 unit equipped until overwritten)
@@ -865,11 +937,10 @@ local function main()
 			end
 		end
 
-		-- Step 2: Equip desired units into slots 1..#desired (descending power)
+		-- Step 2: Equip desired units into slots 1..#desired
 		for s = 1, #desired do
 			local targetId = desired[s].id
 			if curSlot[s] ~= targetId then
-				-- If targetId is currently in another slot, unequip it from that slot first
 				for other = 1, maxSlots do
 					if other ~= s and curSlot[other] == targetId and equippedCount > 1 then
 						local okU, resU = Net.Invoke(setSlot, other, nil)
@@ -912,9 +983,10 @@ local function main()
 		if changed then
 			local names = {}
 			for s = 1, #desired do
-				table.insert(names, string.format("%s(Lv.%d)", desired[s].name, desired[s].level))
+				local tag = carrySet[desired[s].id] and "★" or ""
+				table.insert(names, string.format("%s%s(Lv.%d)", tag, desired[s].name, desired[s].level))
 			end
-			logAction("STORY", string.format("เปลี่ยนตัวละครที่ยังไม่ตันแล้ว (%d ตัว): %s", #desired, table.concat(names, ", ")), true)
+			logAction("STORY", string.format("จัดทีมใหม่ (เก็บแบก %d / ฟาร์มเวล %d): %s", math.min(keepCarry, #equipped), farmAdded, table.concat(names, ", ")), true)
 		end
 		return changed
 	end
@@ -1996,6 +2068,10 @@ local function main()
 	function Loops.AutoReplayTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
 		if (Core.Flags.AutoStory and bk == "Story") or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if Core.Flags.AutoSwapMaxUnits and bk == "Story" and type(Helpers.Inventory) == "table" then
+			local hasMax, _, canReplace = Helpers.HasMaxLevelTeamUnit(Helpers.Inventory)
+			if hasMax and canReplace then return end
+		end
 		if os.clock() - Loops.lastReplayAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -2031,6 +2107,10 @@ local function main()
 	function Loops.AutoNextStageTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
 		if Core.Flags.AutoStory or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if Core.Flags.AutoSwapMaxUnits and bk == "Story" and type(Helpers.Inventory) == "table" then
+			local hasMax, _, canReplace = Helpers.HasMaxLevelTeamUnit(Helpers.Inventory)
+			if hasMax and canReplace then return end
+		end
 		if os.clock() - Loops.lastNextAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
@@ -2266,6 +2346,54 @@ local function main()
 		if Core.Flags.AutoStory then
 			Loops._storyQueueIdx = 1
 			Core:Loop("AutoStory", "AutoStory", 0.8, Loops.AutoStoryTick)
+		end
+	end
+
+	function Loops.AutoSwapMaxUnitsTick()
+		if Core.Flags.AutoStory then return end
+		if Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
+		if os.clock() - Loops.lastSwapAt < 2 then return end
+		if type(Helpers.Inventory) ~= "table" then
+			local reqInv = Net.Remote("RequestInventory")
+			if reqInv and reqInv:IsA("RemoteEvent") then
+				pcall(function() reqInv:FireServer() end)
+			end
+			return
+		end
+		local hasMax, maxName, canReplace = Helpers.HasMaxLevelTeamUnit(Helpers.Inventory)
+		if not hasMax then return end
+		if not canReplace then
+			if os.clock() - Loops.lastSwapWarnAt >= 30 then
+				Loops.lastSwapWarnAt = os.clock()
+				logAction("STORY", string.format("ตัวละครเวลตัน (%s) แต่ไม่มีตัวที่ยังไม่ตันเหลือในคลัง (คงทีมเดิม)", tostring(maxName)), false)
+			end
+			return
+		end
+		local battleReq = Net.Remote("BattleRequest")
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		local endScreen = results and results:FindFirstChild("EndScreen")
+		local endVisible = endScreen and endScreen:IsA("GuiObject") and endScreen.Visible
+		if endVisible or (LocalPlayer:GetAttribute("InBattle") == true and LocalPlayer:GetAttribute("BattleKind") == "Story") then
+			if battleReq then
+				Loops.lastSwapAt = os.clock()
+				local okQ, resQ = Net.Invoke(battleReq, "Quit")
+				if okQ and resQ ~= false then
+					Helpers.CloseResultsUI()
+					logAction("STORY", string.format("พบตัวละครเวลตัน (%s) -> ออกจากด่านเพื่อเปลี่ยนตัว", tostring(maxName)), true)
+				end
+			end
+			return
+		end
+		if LocalPlayer:GetAttribute("InBattle") ~= true then
+			Loops.lastSwapAt = os.clock()
+			Helpers.SwapMaxLevelTeamUnits()
+		end
+	end
+
+	function Loops.StartAutoSwapMaxUnits()
+		if Core.Flags.AutoSwapMaxUnits then
+			Core:Loop("AutoSwapMaxUnits", "AutoSwapMaxUnits", 1.2, Loops.AutoSwapMaxUnitsTick)
 		end
 	end
 
@@ -3800,26 +3928,17 @@ local function main()
 						Helpers.SkillTree = data.skillTree
 						Helpers._skillSynced = true
 					end
-					task.defer(function()
-						if Core._alive and Helpers.RefreshShop() and Core._rebuildShopUI then
-							pcall(Core._rebuildShopUI)
-						end
-					end)
+					Core._pendingShopRebuild = true
 				end
 			end)
 		end
 		local function bindShopChanged(sc)
 			if not (sc and sc:IsA("RemoteEvent")) then return end
 			Core:Connect(sc.OnClientEvent, function()
-				task.defer(function()
-					if not Core._alive then return end
-					if Helpers.RefreshShop() and Core._rebuildShopUI then
-						pcall(Core._rebuildShopUI)
-					end
-					if Core.Flags.AutoBuyShop then
-						Loops.AutoBuyShopTick()
-					end
-				end)
+				Core._pendingShopRebuild = true
+				if Core.Flags.AutoBuyShop then
+					task.defer(Loops.AutoBuyShopTick)
+				end
 			end)
 		end
 		bindShopChanged(ev:FindFirstChild("ShopChanged"))
@@ -5358,7 +5477,9 @@ local function main()
 	end)
 	UI.Toggle("เปลี่ยนตัวละครอัตโนมัติเมื่อเวลตัน (เรียงพลังสูงสุด)", "AutoSwapMaxUnits", function(on)
 		logAction("CFG", "Auto Swap Max Units: " .. (on and "ON" or "OFF"), on)
+		if on then Loops.StartAutoSwapMaxUnits() end
 	end)
+	UI.NumberInput("จำนวนตัวที่เปลี่ยนออก (0 = ทั้งหมด)", "SwapMaxUnitsCount", 0)
 	UI.MultiDropdown("🌍 โลก (Worlds): ", "StoryWorlds", Helpers.GetStoryWorlds, "เลือกโลกเนื้อเรื่อง: ", "RebuildStoryWorlds", function()
 		Loops._storyQueueIdx = 1
 	end)
@@ -5527,48 +5648,54 @@ local function main()
 	local function syncMapData(reason: string?)
 		if not Core._alive then return end
 		if Helpers.RefreshTiers() and UI.RebuildTiers then
-			UI.RebuildTiers()
+			pcall(UI.RebuildTiers)
 			logAction("MAP", reason or "อัปเดตรายการระดับกล่องตามแมพ", true)
 		end
 		if Helpers.RefreshChestRarities() and UI.RebuildChestRarities then
-			UI.RebuildChestRarities()
+			pcall(UI.RebuildChestRarities)
 			logAction("MAP", reason or "อัปเดตรายการระดับกล่อง (Rarity) ตามแมพ", true)
 		end
 		if Helpers.RefreshStory() then
-			if UI.RebuildStoryWorlds then UI.RebuildStoryWorlds() end
-			if UI.RebuildStoryActs then UI.RebuildStoryActs() end
-			if UI.RebuildStoryDiffs then UI.RebuildStoryDiffs() end
+			if UI.RebuildStoryWorlds then pcall(UI.RebuildStoryWorlds) end
+			if UI.RebuildStoryActs then pcall(UI.RebuildStoryActs) end
+			if UI.RebuildStoryDiffs then pcall(UI.RebuildStoryDiffs) end
 			logAction("MAP", reason or string.format("อัปเดตด่านเนื้อเรื่องตามแมพ (%d โลก | %d ระดับ)", #Helpers.StoryWorlds, #Helpers.StoryDifficulties), true)
 		end
 		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
-			UI.RebuildDungeons()
+			pcall(UI.RebuildDungeons)
 			logAction("MAP", reason or "อัปเดตรายชื่อดันเจียนตามแมพ", true)
 		end
 		if Helpers.RefreshRaids() then
-			if UI.RebuildRaidDiffs then UI.RebuildRaidDiffs() end
-			if UI.RebuildRaidShop then UI.RebuildRaidShop() end
+			if UI.RebuildRaidDiffs then pcall(UI.RebuildRaidDiffs) end
+			if UI.RebuildRaidShop then pcall(UI.RebuildRaidShop) end
 			logAction("MAP", reason or "อัปเดตข้อมูล Raid (ความยาก/ร้านค้า) ตามแมพ", true)
 		end
 		if Helpers.RefreshBoss() then
-			if UI.RebuildBossDiffs then UI.RebuildBossDiffs() end
-			if UI.RebuildBossShop then UI.RebuildBossShop() end
+			if UI.RebuildBossDiffs then pcall(UI.RebuildBossDiffs) end
+			if UI.RebuildBossShop then pcall(UI.RebuildBossShop) end
 			logAction("MAP", reason or ("อัปเดตข้อมูล Boss: " .. tostring(Helpers.BossToday or "-")), true)
 		end
 		if Helpers.RefreshRaritiesAndAscension() then
-			if UI.RebuildShopRarities then UI.RebuildShopRarities() end
-			if UI.RebuildSellUnitRarities then UI.RebuildSellUnitRarities() end
+			if UI.RebuildShopRarities then pcall(UI.RebuildShopRarities) end
+			if UI.RebuildSellUnitRarities then pcall(UI.RebuildSellUnitRarities) end
 			logAction("MAP", reason or string.format("อัปเดตระดับยูนิต (%d ระดับ) / Ascend (%d สาย)", #Helpers.RarityOrder, #Helpers.AscensionPaths), true)
 		end
 		if Helpers.RefreshPvp() then
 			logAction("MAP", reason or "อัปเดตข้อมูล PvP ตามแมพ", true)
 		end
 		if Helpers.RefreshShop() then
-			if UI.RebuildShopKinds then UI.RebuildShopKinds() end
-			if UI.RebuildShopRarities then UI.RebuildShopRarities() end
-			if UI.RebuildShopItems then UI.RebuildShopItems() end
+			if UI.RebuildShopKinds then pcall(UI.RebuildShopKinds) end
+			if UI.RebuildShopRarities then pcall(UI.RebuildShopRarities) end
+			if UI.RebuildShopItems then pcall(UI.RebuildShopItems) end
 			logAction("SHOP", reason or string.format("อัปเดตรายการร้านค้าเรียลไทม์ (%d รายการ)", #Helpers.ShopOptions), true)
 		elseif UI.UpdateShopHeader then
 			pcall(UI.UpdateShopHeader)
+		end
+	end
+
+	local function queueMapSync(reason: string?)
+		if Core._alive then
+			Core._pendingSyncReason = reason or Core._pendingSyncReason or ""
 		end
 	end
 
@@ -5577,19 +5704,17 @@ local function main()
 			local ac = p:WaitForChild("ActiveChests", 10)
 			if not (ac and Core._alive) then return end
 			Core:Connect(ac.ChildAdded, function(c)
-				task.defer(function()
-					if not Core._alive then return end
-					if c:IsA("Model") then
-						local t = Helpers.ChestTier(c)
-						if not table.find(Helpers.TierList, t) then
-							syncMapData("พบระดับ Mutation กล่องใหม่: " .. t)
-						end
-						local r = Helpers.ChestRarity(c)
-						if r and not table.find(Helpers.ChestRarityList, r) then
-							syncMapData("พบระดับกล่อง (Rarity) ใหม่: " .. r)
-						end
+				if not Core._alive then return end
+				if c:IsA("Model") then
+					local t = Helpers.ChestTier(c)
+					if not table.find(Helpers.TierList, t) then
+						queueMapSync("พบระดับ Mutation กล่องใหม่: " .. t)
 					end
-				end)
+					local r = Helpers.ChestRarity(c)
+					if r and not table.find(Helpers.ChestRarityList, r) then
+						queueMapSync("พบระดับกล่อง (Rarity) ใหม่: " .. r)
+					end
+				end
 			end)
 		end
 		local function bindPlots(plots)
@@ -5617,7 +5742,7 @@ local function main()
 			local function onModChange(desc)
 				if desc:IsA("ModuleScript") then
 					Helpers.InvalidateModules()
-					task.defer(syncMapData, "ตรวจพบอัปเดตโมดูลแมพ: " .. desc.Name)
+					queueMapSync("ตรวจพบอัปเดตโมดูลแมพ: " .. desc.Name)
 				end
 			end
 			Core:Connect(mods.DescendantAdded, onModChange)
@@ -5628,14 +5753,14 @@ local function main()
 		if chests and Core._alive then
 			Core:Connect(chests.ChildAdded, function()
 				table.clear(Helpers._chestTemplates)
-				task.defer(syncMapData, "พบกล่องใหม่ใน Assets")
+				queueMapSync("พบกล่องใหม่ใน Assets")
 			end)
 		end
 		local units = assets and (assets:FindFirstChild("Units") or assets:WaitForChild("Units", 5))
 		if units and Core._alive then
 			local function onUnitChange()
 				Helpers.InvalidateModules()
-				task.defer(syncMapData, "ตรวจพบอัปเดตยูนิตใน Assets")
+				queueMapSync("ตรวจพบอัปเดตยูนิตใน Assets")
 			end
 			Core:Connect(units.ChildAdded, onUnitChange)
 			Core:Connect(units.ChildRemoved, onUnitChange)
@@ -5644,7 +5769,7 @@ local function main()
 			if not (sm and Core._alive) then return end
 			local function onStoryChange(ch)
 				Helpers.InvalidateModules()
-				task.defer(syncMapData, "ตรวจพบอัปเดตโลกเนื้อเรื่อง: " .. ch.Name)
+				queueMapSync("ตรวจพบอัปเดตโลกเนื้อเรื่อง: " .. ch.Name)
 			end
 			Core:Connect(sm.ChildAdded, onStoryChange)
 			Core:Connect(sm.ChildRemoved, onStoryChange)
@@ -5686,7 +5811,15 @@ local function main()
 
 	task.spawn(function()
 		while Core._alive do
-			syncMapData()
+			local syncReason = Core._pendingSyncReason
+			Core._pendingSyncReason = nil
+			if Core._pendingShopRebuild then
+				Core._pendingShopRebuild = false
+				if Helpers.RefreshShop() and Core._rebuildShopUI then
+					pcall(Core._rebuildShopUI)
+				end
+			end
+			syncMapData((syncReason and syncReason ~= "") and syncReason or nil)
 			local plot = Helpers.GetPlot()
 			pcall(function()
 				local modeLine
@@ -5713,6 +5846,7 @@ local function main()
 	Loops.StartAutoBuyShop()
 	Loops.StartAutoOpen()
 	Loops.StartAutoStory()
+	Loops.StartAutoSwapMaxUnits()
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
 	Loops.StartAutoDungeon()
