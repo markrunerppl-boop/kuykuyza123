@@ -3704,9 +3704,10 @@ local function main()
 		if os.clock() - Loops.lastShopAt < 1.2 then return end
 		local shopBuy = Net.Remote("ShopBuy")
 		if not (shopBuy and shopBuy:IsA("RemoteFunction")) then return end
-		if Helpers.Inventory == nil then
+		if type(Helpers.Inventory) ~= "table" then
 			local req = Net.Remote("RequestInventory")
 			if req and req:IsA("RemoteEvent") then pcall(function() req:FireServer() end) end
+			return
 		end
 		if Helpers.RefreshShop() and Core._rebuildShopUI then
 			pcall(Core._rebuildShopUI)
