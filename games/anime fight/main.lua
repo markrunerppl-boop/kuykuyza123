@@ -2067,8 +2067,9 @@ local function main()
 
 	function Loops.AutoReplayTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
-		if (Core.Flags.AutoStory and bk == "Story") or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
-		if Core.Flags.AutoSwapMaxUnits and bk == "Story" and type(Helpers.Inventory) == "table" then
+		local isStoryMode = not Helpers.IsRaidPlace() and not Helpers.IsBossPlace() and bk ~= "Dungeon" and bk ~= "Pvp"
+		if (Core.Flags.AutoStory and isStoryMode) or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if Core.Flags.AutoSwapMaxUnits and isStoryMode and type(Helpers.Inventory) == "table" then
 			local hasMax, _, canReplace = Helpers.HasMaxLevelTeamUnit(Helpers.Inventory)
 			if hasMax and canReplace then return end
 		end
