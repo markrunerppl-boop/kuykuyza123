@@ -308,7 +308,15 @@ local function main()
 			cur = cur:FindFirstChild(part) or cur:WaitForChild(part, 1.5)
 		end
 		if cur and cur:IsA("ModuleScript") then
-			local ok, mod = pcall(require, cur)
+			local done, ok, mod = false, false, nil
+			task.spawn(function()
+				ok, mod = pcall(require, cur)
+				done = true
+			end)
+			local t0 = os.clock()
+			while not done and os.clock() - t0 < 1.5 and Core._alive do
+				task.wait()
+			end
 			if ok and type(mod) == "table" then
 				Helpers._modInsts[key] = cur
 				Helpers._mods[key] = mod
@@ -316,6 +324,32 @@ local function main()
 			end
 		end
 		return nil
+	end
+
+	function Helpers.SafeMountGui(gui: ScreenGui)
+		local candidates = {}
+		local okH, hui = pcall(function() return gethui and gethui() end)
+		if okH and hui then table.insert(candidates, hui) end
+		local okC, cg = pcall(function() return game:GetService("CoreGui") end)
+		if okC and cg then table.insert(candidates, cg) end
+		local pg = LocalPlayer:WaitForChild("PlayerGui")
+		table.insert(candidates, pg)
+
+		for _, parentGui in ipairs(candidates) do
+			local ok = pcall(function()
+				gui.Parent = parentGui
+				local probe = Instance.new("Folder")
+				probe.Name = "_kuykuy_probe"
+				probe.Parent = gui
+				local _ = probe.Name
+				probe:Destroy()
+			end)
+			if ok and gui.Parent == parentGui then
+				return parentGui
+			end
+		end
+		gui.Parent = pg
+		return pg
 	end
 
 	function Helpers.InvalidateModules()
@@ -3993,11 +4027,6 @@ local function main()
 
 	function FpsBoost.EnsureOverlay()
 		if FpsBoost._gui and FpsBoost._gui.Parent then return end
-		local parentGui
-		pcall(function() parentGui = gethui and gethui() end)
-		if not parentGui then pcall(function() parentGui = game:GetService("CoreGui") end) end
-		if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
-
 		local og = Instance.new("ScreenGui")
 		og.Name = "KuykuyHub_FpsBoostOverlay"
 		og.IgnoreGuiInset = true
@@ -4005,8 +4034,7 @@ local function main()
 		og.DisplayOrder = 900
 		og.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		og.Enabled = false
-		local okP = pcall(function() og.Parent = parentGui end)
-		if not okP then og.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+		Helpers.SafeMountGui(og)
 		FpsBoost._gui = og
 
 		local function mk(cls, props, parent)
@@ -4272,18 +4300,12 @@ local function main()
 	-- =================================================================
 	local UI = {}
 	do
-		local parentGui
-		pcall(function() parentGui = gethui and gethui() end)
-		if not parentGui then pcall(function() parentGui = game:GetService("CoreGui") end) end
-		if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
-
 		local gui = Instance.new("ScreenGui")
 		gui.Name = "KuykuyHub_AnimeFight"
 		gui.ResetOnSpawn = false
 		gui.DisplayOrder = 1000
 		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		local okP = pcall(function() gui.Parent = parentGui end)
-		if not okP then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+		Helpers.SafeMountGui(gui)
 		Core._gui = gui
 		UI._toggleRenderers = {}
 		function UI.SyncToggle(key)
@@ -4304,10 +4326,22 @@ local function main()
 		end
 		UI.mk, UI.corner = mk, corner
 
-		local curW, curH = 340, 450
+		local function getViewportBounds()
+			local cam = Workspace.CurrentCamera
+			local vp = (cam and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0) and cam.ViewportSize or Vector2.new(1280, 720)
+			local maxW = math.min(720, math.max(240, math.floor(vp.X - 24)))
+			local maxH = math.min(700, math.max(210, math.floor(vp.Y - 24)))
+			return vp, maxW, maxH
+		end
+
+		local initVp, initMaxW, initMaxH = getViewportBounds()
+		local curW = math.clamp(340, 240, initMaxW)
+		local curH = math.clamp(450, 210, initMaxH)
 		local minimized, expanded = false, false
 
-		local main = mk("Frame", { Size = UDim2.fromOffset(curW, curH), Position = UDim2.new(0, 40, 0.5, -225), BackgroundColor3 = C_BG, BorderSizePixel = 0, Active = true, ClipsDescendants = true }, gui)
+		local initX = math.clamp(24, 8, math.max(8, math.floor(initVp.X - curW - 8)))
+		local initY = math.clamp(math.floor((initVp.Y - curH) * 0.5), 8, math.max(8, math.floor(initVp.Y - curH - 8)))
+		local main = mk("Frame", { Size = UDim2.fromOffset(curW, curH), Position = UDim2.fromOffset(initX, initY), BackgroundColor3 = C_BG, BorderSizePixel = 0, Active = true, ClipsDescendants = true }, gui)
 		corner(main, 8)
 		local top = mk("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C_PANEL, BorderSizePixel = 0 }, main)
 		corner(top, 8)
@@ -4328,11 +4362,23 @@ local function main()
 		corner(statusBar, 6)
 		local resizeGrip = mk("TextButton", { Size = UDim2.fromOffset(14, 14), Position = UDim2.new(1, -14, 1, -14), BackgroundTransparency = 1, Text = "◢", TextColor3 = C_SUB, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, contentWrap)
 
+		local function clampWindowPosition()
+			local vp = getViewportBounds()
+			local hNow = minimized and 30 or curH
+			local absX = main.Position.X.Scale * vp.X + main.Position.X.Offset
+			local absY = main.Position.Y.Scale * vp.Y + main.Position.Y.Offset
+			local nx = math.clamp(math.floor(absX), 8, math.max(8, math.floor(vp.X - curW - 8)))
+			local ny = math.clamp(math.floor(absY), 8, math.max(8, math.floor(vp.Y - hNow - 8)))
+			main.Position = UDim2.fromOffset(nx, ny)
+		end
+
 		local function applyWindowSize(saveIt)
-			curW = math.clamp(math.floor(curW), 280, 720)
-			curH = math.clamp(math.floor(curH), 260, 700)
+			local _, maxW, maxH = getViewportBounds()
+			curW = math.clamp(math.floor(curW), 240, maxW)
+			curH = math.clamp(math.floor(curH), 210, maxH)
 			contentWrap.Visible = not minimized
 			main.Size = minimized and UDim2.fromOffset(curW, 30) or UDim2.fromOffset(curW, curH)
+			clampWindowPosition()
 			btnMin.Text = minimized and "+" or "-"
 			btnSize.Text = expanded and "❐" or "□"
 			if saveIt then
@@ -4369,10 +4415,12 @@ local function main()
 					if dragging then
 						local d = i.Position - dStart
 						main.Position = UDim2.new(pStart.X.Scale, pStart.X.Offset + d.X, pStart.Y.Scale, pStart.Y.Offset + d.Y)
+						clampWindowPosition()
 					elseif resizing and not minimized then
+						local _, maxW, maxH = getViewportBounds()
 						local d = i.Position - rStart
-						curW = math.clamp(sW + d.X, 280, 720)
-						curH = math.clamp(sH + d.Y, 260, 700)
+						curW = math.clamp(sW + d.X, 240, maxW)
+						curH = math.clamp(sH + d.Y, 210, maxH)
 						expanded = (curW >= 440 or curH >= 520)
 						main.Size = UDim2.fromOffset(curW, curH)
 						btnSize.Text = expanded and "❐" or "□"
