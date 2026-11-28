@@ -592,6 +592,43 @@ local function main()
 		return { world = worldId, level = actNum, difficulty = diffId, autoUnlock = false, lockedReason = tostring(reason or "Locked") }
 	end
 
+	function Helpers.CloseResultsUI()
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local results = pg and pg:FindFirstChild("Results")
+		if not results then return end
+		local hide = results:FindFirstChild("Hide")
+		if hide and hide:IsA("BindableEvent") then
+			pcall(function() hide:Fire() end)
+		end
+	end
+
+	function Helpers.FindNextStoryWorld(endScreen)
+		local storyCfg = Helpers.GetStoryConfig()
+		if not (storyCfg and type(storyCfg.Worlds) == "table") then return nil end
+		local mapFrame = endScreen and endScreen:FindFirstChild("Map", true)
+		local worldLbl = mapFrame and mapFrame:FindFirstChild("WorldName")
+		local diffLbl = mapFrame and mapFrame:FindFirstChild("Difficulty")
+		local curWorldName = (worldLbl and worldLbl:IsA("TextLabel")) and worldLbl.Text or ""
+		local curDiffText = (diffLbl and diffLbl:IsA("TextLabel")) and diffLbl.Text:upper() or "EASY"
+
+		local curIdx = nil
+		for i, w in ipairs(storyCfg.Worlds) do
+			if type(w) == "table" and (tostring(w.Name or "") == curWorldName or tostring(w.Id or "") == curWorldName) then
+				curIdx = i
+				break
+			end
+		end
+		if not curIdx then return nil end
+		local nextWorld = storyCfg.Worlds[curIdx + 1]
+		if not (type(nextWorld) == "table" and nextWorld.Id) then return nil end
+
+		local diffId = "Easy"
+		if curDiffText:find("HARD", 1, true) then
+			diffId = "Hard"
+		end
+		return { world = tostring(nextWorld.Id), level = 1, difficulty = diffId }
+	end
+
 	function Helpers.GetConfig()
 		return Helpers.RequireModule("AnimeIdleConfig", "Modules", "Gameplay", "AnimeIdleConfig")
 	end
@@ -1132,7 +1169,8 @@ local function main()
 		local rarity = chest:GetAttribute("Rarity")
 		local mutation = chest:GetAttribute("Mutation")
 		local hasMut = type(mutation) == "string" and mutation ~= ""
-		local best, bestD = nil, 6
+		local expectedObj = Helpers.ChestRarity(chest)
+		local best, bestD, bestObjMatch = nil, 6, false
 		for _, a in ipairs(folder:GetChildren()) do
 			if a:IsA("BasePart") then
 				local pr = a:FindFirstChildOfClass("ProximityPrompt")
@@ -1143,8 +1181,15 @@ local function main()
 						or (rarity ~= nil and prTag == rarity)
 						or (rarity == nil and not hasMut)
 					if tagOk then
-						local d = Vector3.new(a.Position.X - pivot.X, 0, a.Position.Z - pivot.Z).Magnitude
-						if d < bestD then best, bestD = pr, d end
+						local objText = pr.ObjectText
+						local objMatch = expectedObj ~= nil and type(objText) == "string" and objText ~= "" and objText == expectedObj
+						local objConflict = expectedObj ~= nil and type(objText) == "string" and objText ~= "" and objText ~= expectedObj
+						if not objConflict then
+							local d = Vector3.new(a.Position.X - pivot.X, 0, a.Position.Z - pivot.Z).Magnitude
+							if d < 6 and ((objMatch and not bestObjMatch) or (objMatch == bestObjMatch and d < bestD)) then
+								best, bestD, bestObjMatch = pr, d, objMatch
+							end
+						end
 					end
 				end
 			end
@@ -1199,27 +1244,14 @@ local function main()
 		return changed
 	end
 
-	-- chest rarity key (Common/Uncommon/Rare/.../Bloodmoon/future rarities)
+	-- chest label/key (Common..Bloodmoon, Astral, Solar, and future tiers via AnimeIdleConfig.ChestLabel)
 	function Helpers.ChestRarity(chest): string?
 		if not chest then return nil end
-		local r = chest:GetAttribute("Rarity") or chest:GetAttribute("ChestRarity")
-		if type(r) == "string" and r ~= "" then return r end
-		local tierNum = tonumber(chest:GetAttribute("Tier"))
-		if tierNum then
-			local cfg = Helpers.GetConfig()
-			if cfg then
-				if type(cfg.Chests) == "table" then
-					local entry = cfg.Chests[tierNum]
-					if type(entry) == "table" then
-						local cr = entry.Rarity or entry.rarity or entry.Name
-						if type(cr) == "string" and cr ~= "" then
-							return (cr:gsub("%s*[Cc]hest$", ""))
-						end
-					end
-				end
-				if type(cfg.RarityOrder) == "table" and type(cfg.RarityOrder[tierNum]) == "string" and cfg.RarityOrder[tierNum] ~= "" then
-					return cfg.RarityOrder[tierNum]
-				end
+		local cfg = Helpers.GetConfig()
+		if cfg and type(cfg.ChestLabel) == "function" then
+			local ok, lbl = pcall(cfg.ChestLabel, chest)
+			if ok and type(lbl) == "string" and lbl ~= "" then
+				return lbl
 			end
 		end
 		local cname = chest:GetAttribute("ChestName")
@@ -1227,10 +1259,12 @@ local function main()
 			local stripped = cname:gsub("%s*[Cc]hest$", "")
 			if stripped ~= "" then return stripped end
 		end
+		local r = chest:GetAttribute("Rarity") or chest:GetAttribute("ChestRarity")
+		if type(r) == "string" and r ~= "" then return r end
 		return nil
 	end
 
-	-- dynamic chest rarity list (AnimeIdleConfig + Assets.Chests + live map ActiveChests/PlacedChests Models)
+	-- dynamic chest list (Assets.Chests sorted by Tier + live map ActiveChests/PlacedChests Models)
 	function Helpers.RefreshChestRarities(): boolean
 		local list, seen = {}, {}
 		local mutationSet = {}
@@ -1271,20 +1305,6 @@ local function main()
 			end
 		end
 
-		if cfg then
-			if type(cfg.RarityOrder) == "table" then
-				for _, r in ipairs(cfg.RarityOrder) do addRarity(r) end
-			end
-			if type(cfg.Chests) == "table" then
-				for _, c in ipairs(cfg.Chests) do
-					if type(c) == "table" then addRarity(c.Rarity or c.rarity or c.Name) end
-				end
-				for _, c in pairs(cfg.Chests) do
-					if type(c) == "table" then addRarity(c.Rarity or c.rarity or c.Name) end
-				end
-			end
-		end
-
 		local assets = ReplicatedStorage:FindFirstChild("Assets")
 		local chests = assets and assets:FindFirstChild("Chests")
 		if chests then
@@ -1313,6 +1333,10 @@ local function main()
 					end
 				end
 			end
+		end
+
+		if #list == 0 and cfg and type(cfg.RarityOrder) == "table" then
+			for _, r in ipairs(cfg.RarityOrder) do addRarity(r) end
 		end
 
 		local changed = #list ~= #Helpers.ChestRarityList
@@ -1425,8 +1449,11 @@ local function main()
 				local price = Helpers.ChestPrice(chest)
 				local tier = Helpers.ChestTier(chest)
 				local rarity = Helpers.ChestRarity(chest)
+				local rawRarity = chest:GetAttribute("Rarity")
 				local isFree = price == 0 and buyFree
-				local rarityOk = (not hasRarityFilter) or (rarity ~= nil and rarities[rarity] == true)
+				local rarityOk = (not hasRarityFilter)
+					or (rarity ~= nil and rarities[rarity] == true)
+					or (type(rawRarity) == "string" and rarities[rawRarity] == true)
 				if isFree or (tiers[tier] == true and rarityOk and price >= minPrice and price <= cash) then
 					table.insert(list, { chest = chest, price = price, tier = tier, rarity = rarity })
 				end
@@ -1697,6 +1724,7 @@ local function main()
 		Loops.lastReplayAt = os.clock()
 		local ok, res, err = Net.Invoke(remote, "Replay")
 		if ok and res ~= false then
+			Helpers.CloseResultsUI()
 			logAction("REPLAY", "ส่งคำสั่งเล่นซ้ำ (Replay) สำเร็จ", true)
 			Loops.GoHome("REPLAY")
 		else
@@ -1712,27 +1740,53 @@ local function main()
 
 	function Loops.AutoNextStageTick()
 		local bk = LocalPlayer:GetAttribute("BattleKind")
-		if (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
+		if Core.Flags.AutoStory or (Core.Flags.AutoDungeon and bk == "Dungeon") or ((Core.Flags.AutoRaid or Core.Flags.AutoRaidReplay or Core.Flags.AutoRaidReturn) and (bk == "Raid" or Helpers.IsRaidPlace())) or ((Core.Flags.AutoBoss or Core.Flags.AutoBossReplay or Core.Flags.AutoBossReturn) and (bk == "Boss" or Helpers.IsBossPlace())) or ((Core.Flags.AutoPvp or Core.Flags.AutoPvpReplay) and (bk == "Pvp" or LocalPlayer:GetAttribute("PvpSide") ~= nil)) then return end
 		if os.clock() - Loops.lastNextAt < 3 then return end
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
 		local endScreen = results and results:FindFirstChild("EndScreen")
 		if not (endScreen and endScreen:IsA("GuiObject") and endScreen.Visible) then return end
 
+		local remote = Net.Remote("BattleRequest")
+		if not remote then return end
+
 		local left = endScreen:FindFirstChild("Left")
 		local buttons = left and left:FindFirstChild("Buttons")
 		local nextBtn = buttons and buttons:FindFirstChild("Next")
-		if not (nextBtn and nextBtn:IsA("GuiObject") and nextBtn.Visible) then return end
+		if nextBtn and nextBtn:IsA("GuiObject") and nextBtn.Visible then
+			Loops.lastNextAt = os.clock()
+			local ok, res, err = Net.Invoke(remote, "NextAct")
+			if ok and res ~= false then
+				Helpers.CloseResultsUI()
+				logAction("NEXT", "ส่งคำสั่งเล่นด่านถัดไป (NextAct) สำเร็จ", true)
+				Loops.GoHome("NEXT")
+			else
+				logAction("NEXT", "ไปด่านถัดไปไม่สำเร็จ: " .. tostring(err or res), false)
+			end
+			return
+		end
 
-		local remote = Net.Remote("BattleRequest")
-		if not remote then return end
-		Loops.lastNextAt = os.clock()
-		local ok, res, err = Net.Invoke(remote, "NextAct")
-		if ok and res ~= false then
-			logAction("NEXT", "ส่งคำสั่งเล่นด่านถัดไป (NextAct) สำเร็จ", true)
-			Loops.GoHome("NEXT")
-		else
-			logAction("NEXT", "ไปด่านถัดไปไม่สำเร็จ: " .. tostring(err or res), false)
+		-- End of world (Act 8 Victory): advance to next World Act 1
+		if bk == "Story" then
+			local titleLbl = endScreen:FindFirstChild("Title", true)
+			if titleLbl and titleLbl:IsA("TextLabel") and titleLbl.Text == "VICTORY!" then
+				local nextWorldTarget = Helpers.FindNextStoryWorld(endScreen)
+				if nextWorldTarget then
+					Loops.lastNextAt = os.clock()
+					local okQ, resQ = Net.Invoke(remote, "Quit")
+					if okQ and resQ ~= false then
+						Helpers.CloseResultsUI()
+						task.wait(0.25)
+						local okS, resS, errS = Net.Invoke(remote, "StartStory", nextWorldTarget)
+						if okS and resS ~= false then
+							logAction("NEXT", string.format("จบโลกแล้ว -> ข้ามไป %s Act %d (%s)", nextWorldTarget.world, nextWorldTarget.level, nextWorldTarget.difficulty), true)
+							Loops.GoHome("NEXT")
+						else
+							logAction("NEXT", "ข้ามโลกถัดไปไม่สำเร็จ: " .. tostring(errS or resS), false)
+						end
+					end
+				end
+			end
 		end
 	end
 
@@ -1769,12 +1823,6 @@ local function main()
 		local results = pg and pg:FindFirstChild("Results")
 		local endScreen = results and results:FindFirstChild("EndScreen")
 		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
-			if Core.Flags.AutoNextStage then
-				local left = endScreen:FindFirstChild("Left")
-				local buttons = left and left:FindFirstChild("Buttons")
-				local nextBtn = buttons and buttons:FindFirstChild("Next")
-				if nextBtn and nextBtn:IsA("GuiObject") and nextBtn.Visible then return end
-			end
 			Loops.lastStoryAt = os.clock()
 			local sameStage = LocalPlayer:GetAttribute("BattleKind") == "Story"
 				and type(Loops._lastStory) == "table"
@@ -1786,6 +1834,7 @@ local function main()
 			if sameStage then
 				local ok, res, err = Net.Invoke(battleReq, "Replay")
 				if ok and res ~= false then
+					Helpers.CloseResultsUI()
 					logAction("STORY", string.format("เล่นซ้ำ %s Act %d (%s)", target.world, target.level, target.difficulty), true)
 					Loops.GoHome("STORY")
 				else
@@ -1794,6 +1843,7 @@ local function main()
 			else
 				local ok, res, err = Net.Invoke(battleReq, "Quit")
 				if ok and res ~= false then
+					Helpers.CloseResultsUI()
 					logAction("STORY", "ออกจากหน้าสรุปผลเพื่อเข้าด่านเป้าหมายถัดไป", true)
 				else
 					logAction("STORY", "ออกจากหน้าสรุปผลไม่สำเร็จ: " .. tostring(err or res), false)
