@@ -883,38 +883,32 @@ local function main()
 		local locked = type(Core.Flags.LockedTeamUnits) == "table" and Core.Flags.LockedTeamUnits or {}
 		local maxSlots = Helpers.GetTeamSlotCount(inv)
 		local team = type(inv.team) == "table" and inv.team or {}
-		local curSlot = {}
-		local equippedCount = 0
-		local desired = {}
-		local desiredSet = {}
-		local carrySet = {}
+		local equippedSet = {}
+		local swapSlots = {}
 
 		for s = 1, maxSlots do
 			local entry = team[tostring(s)] or team[s]
-			if entry ~= nil then
+			if entry == nil then
+				table.insert(swapSlots, s)
+			else
 				local uid = tostring(type(entry) == "table" and entry.id or entry)
-				curSlot[s] = uid
-				equippedCount += 1
-				if locked[uid] == true then
-					local u = unitById[uid] or (type(entry) == "table" and entry or nil)
-					if type(u) == "table" and u.name then
-						carrySet[uid] = true
-						desiredSet[uid] = true
-						table.insert(desired, {
-							id = uid,
-							name = tostring(u.name),
-							level = tonumber(u.level) or 1,
-							power = Helpers.GetUnitPower(u, inv),
-						})
-					end
+				equippedSet[uid] = true
+				local u = unitById[uid] or (type(entry) == "table" and entry or nil)
+				local lv = (type(u) == "table" and tonumber(u.level)) or 1
+				local cap = (type(u) == "table" and u.name) and Helpers.GetUnitLevelCap(tostring(u.name)) or 250
+				if locked[uid] ~= true and lv >= cap then
+					table.insert(swapSlots, s)
 				end
 			end
 		end
 
-		local lockedCount = #desired
+		if #swapSlots == 0 then
+			return false
+		end
+
 		local candidates = {}
 		for uid, u in pairs(unitById) do
-			if not carrySet[uid] then
+			if not equippedSet[uid] then
 				local lv = tonumber(u.level) or 1
 				local cap = Helpers.GetUnitLevelCap(tostring(u.name))
 				if lv < cap then
@@ -937,66 +931,18 @@ local function main()
 			return a.level > b.level
 		end)
 
-		local farmAdded = 0
-		for _, cand in ipairs(candidates) do
-			if #desired >= maxSlots then break end
-			desiredSet[cand.id] = true
-			table.insert(desired, cand)
-			farmAdded += 1
-		end
-
-		if #desired == 0 then return false end
-
 		local changed = false
-		-- Step 1: Unequip maxed/non-desired units (leave at least 1 unit equipped until overwritten)
-		for s = maxSlots, 1, -1 do
-			local uid = curSlot[s]
-			if uid and not desiredSet[uid] and equippedCount > 1 then
-				local ok, res = Net.Invoke(setSlot, s, nil)
-				if ok and res ~= false then
-					curSlot[s] = nil
-					equippedCount -= 1
-					changed = true
-					task.wait(0.08)
-				end
-			end
-		end
-
-		-- Step 2: Equip desired units into slots 1..#desired
-		for s = 1, #desired do
-			local targetId = desired[s].id
-			if curSlot[s] ~= targetId then
-				for other = 1, maxSlots do
-					if other ~= s and curSlot[other] == targetId and equippedCount > 1 then
-						local okU, resU = Net.Invoke(setSlot, other, nil)
-						if okU and resU ~= false then
-							curSlot[other] = nil
-							equippedCount -= 1
-							task.wait(0.08)
-						end
-						break
-					end
-				end
-				local okE, resE = Net.Invoke(setSlot, s, targetId)
-				if okE and resE ~= false then
-					if curSlot[s] == nil then equippedCount += 1 end
-					curSlot[s] = targetId
-					changed = true
-					task.wait(0.08)
-				end
-			end
-		end
-
-		-- Step 3: Unequip any leftover maxed unit beyond #desired
-		for s = #desired + 1, maxSlots do
-			if curSlot[s] and not desiredSet[curSlot[s]] and equippedCount > 1 then
-				local okU, resU = Net.Invoke(setSlot, s, nil)
-				if okU and resU ~= false then
-					curSlot[s] = nil
-					equippedCount -= 1
-					changed = true
-					task.wait(0.08)
-				end
+		local swappedNames = {}
+		local candIdx = 1
+		for _, slot in ipairs(swapSlots) do
+			local cand = candidates[candIdx]
+			if not cand then break end
+			candIdx += 1
+			local okE, resE = Net.Invoke(setSlot, slot, cand.id)
+			if okE and resE ~= false then
+				changed = true
+				table.insert(swappedNames, string.format("[S%d] %s(Lv.%d)", slot, cand.name, cand.level))
+				task.wait(0.08)
 			end
 		end
 
@@ -1006,12 +952,7 @@ local function main()
 		end
 
 		if changed then
-			local names = {}
-			for s = 1, #desired do
-				local tag = carrySet[desired[s].id] and "🔒" or ""
-				table.insert(names, string.format("%s%s(Lv.%d)", tag, desired[s].name, desired[s].level))
-			end
-			logAction("STORY", string.format("จัดทีมใหม่ (ล็อก %d / ฟาร์มเวล %d): %s", lockedCount, farmAdded, table.concat(names, ", ")), true)
+			logAction("STORY", string.format("เปลี่ยนเฉพาะช่องเวลตัน (%d ช่อง): %s", #swappedNames, table.concat(swappedNames, ", ")), true)
 		end
 		return changed
 	end
