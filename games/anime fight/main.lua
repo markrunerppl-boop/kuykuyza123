@@ -309,15 +309,7 @@ local function main()
 			cur = cur:FindFirstChild(part) or cur:WaitForChild(part, 1.5)
 		end
 		if cur and cur:IsA("ModuleScript") then
-			local done, ok, mod = false, false, nil
-			task.spawn(function()
-				ok, mod = pcall(require, cur)
-				done = true
-			end)
-			local t0 = os.clock()
-			while not done and os.clock() - t0 < 1.5 and Core._alive do
-				task.wait()
-			end
+			local ok, mod = pcall(require, cur)
 			if ok and type(mod) == "table" then
 				Helpers._modInsts[key] = cur
 				Helpers._mods[key] = mod
@@ -4547,8 +4539,10 @@ local function main()
 		gui.ResetOnSpawn = false
 		gui.DisplayOrder = 1000
 		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-		Helpers.SafeMountGui(gui)
 		Core._gui = gui
+		function UI.Mount()
+			Helpers.SafeMountGui(gui)
+		end
 		UI._toggleRenderers = {}
 		function UI.SyncToggle(key)
 			if UI._toggleRenderers[key] then UI._toggleRenderers[key]() end
@@ -5527,6 +5521,7 @@ local function main()
 
 	UI.SetTab(Core.Flags.ActiveTab or "Chest")
 	local status = UI.StatusLabel()
+	UI.Mount()
 
 	-- real-time: map / config / assets auto-update watchers
 	local function syncMapData(reason: string?)
