@@ -122,6 +122,7 @@ local function main()
 			AutoReplay = false,
 			AutoNextStage = false,
 			AutoStory = false,
+			AutoSwapMaxUnits = false,
 			StoryWorld = "World_1",
 			StoryAct = 1,
 			StoryWorlds = { World_1 = true },
@@ -717,6 +718,213 @@ local function main()
 			diffId = "Hard"
 		end
 		return { world = tostring(nextWorld.Id), level = 1, difficulty = diffId }
+	end
+
+	function Helpers.GetDungeonConfig()
+		return Helpers.RequireModule("DungeonConfig", "Modules", "Gameplay", "DungeonConfig")
+	end
+
+	function Helpers.GetUnitLevelCap(unitName: string?): number
+		local dc = Helpers.GetDungeonConfig()
+		if dc and type(dc.LevelCap) == "function" then
+			local ok, cap = pcall(dc.LevelCap, unitName)
+			if ok and type(cap) == "number" and cap > 0 then
+				return cap
+			end
+		end
+		return (dc and tonumber(dc.MaxLevel)) or 250
+	end
+
+	function Helpers.GetUnitPower(unit, inv): number
+		local dc = Helpers.GetDungeonConfig()
+		if not (dc and type(dc.Power) == "function" and type(unit) == "table" and unit.name) then
+			return 0
+		end
+		local items = {}
+		if type(unit.equip) == "table" and type(inv) == "table" and type(inv.items) == "table" then
+			for _, eqId in pairs(unit.equip) do
+				for _, it in ipairs(inv.items) do
+					if type(it) == "table" and it.id == eqId then
+						table.insert(items, { Def = it.def, Power = it.power, Passive = it.passive })
+					end
+				end
+			end
+		end
+		local mods = {
+			Mutation = unit.mutation,
+			Items = items,
+			Stars = tonumber(unit.stars) or 0,
+			Rolls = unit.rolls,
+		}
+		local ok, p = pcall(dc.Power, unit.name, tonumber(unit.level) or 1, mods)
+		return (ok and type(p) == "number") and p or 0
+	end
+
+	function Helpers.GetTeamSlotCount(inv): number
+		local dc = Helpers.GetDungeonConfig()
+		local maxCap = (dc and tonumber(dc.TeamSize)) or 5
+		local unlocked = (type(inv) == "table" and tonumber(inv.teamSlots)) or 1
+		return math.max(1, math.min(unlocked, maxCap))
+	end
+
+	function Helpers.HasMaxLevelTeamUnit(inv): (boolean, string?, boolean)
+		if type(inv) ~= "table" or type(inv.units) ~= "table" then
+			return false, nil, false
+		end
+		local unitById = {}
+		local nonMaxCount = 0
+		for _, u in pairs(inv.units) do
+			if type(u) == "table" and u.id and u.name then
+				unitById[tostring(u.id)] = u
+				local lv = tonumber(u.level) or 1
+				if lv < Helpers.GetUnitLevelCap(tostring(u.name)) then
+					nonMaxCount += 1
+				end
+			end
+		end
+
+		local team = type(inv.team) == "table" and inv.team or {}
+		local maxSlots = Helpers.GetTeamSlotCount(inv)
+		local maxedName = nil
+		for s = 1, maxSlots do
+			local entry = team[tostring(s)] or team[s]
+			if entry ~= nil then
+				local uid = type(entry) == "table" and entry.id or entry
+				local u = unitById[tostring(uid)] or (type(entry) == "table" and entry or nil)
+				if type(u) == "table" and u.name then
+					local lv = tonumber(u.level) or 1
+					if lv >= Helpers.GetUnitLevelCap(tostring(u.name)) then
+						maxedName = string.format("%s Lv.%d", tostring(u.name), lv)
+						break
+					end
+				end
+			end
+		end
+
+		if not maxedName then
+			return false, nil, false
+		end
+		return true, maxedName, nonMaxCount > 0
+	end
+
+	function Helpers.SwapMaxLevelTeamUnits(): boolean
+		local inv = Helpers.Inventory
+		if type(inv) ~= "table" or type(inv.units) ~= "table" then return false end
+		local setSlot = Net.Remote("SetTeamSlot")
+		if not (setSlot and setSlot:IsA("RemoteFunction")) then return false end
+
+		local candidates = {}
+		for _, u in pairs(inv.units) do
+			if type(u) == "table" and u.id and u.name then
+				local lv = tonumber(u.level) or 1
+				local cap = Helpers.GetUnitLevelCap(tostring(u.name))
+				if lv < cap then
+					table.insert(candidates, {
+						id = tostring(u.id),
+						name = tostring(u.name),
+						level = lv,
+						power = Helpers.GetUnitPower(u, inv),
+					})
+				end
+			end
+		end
+
+		if #candidates == 0 then
+			return false
+		end
+
+		table.sort(candidates, function(a, b)
+			if a.power ~= b.power then return a.power > b.power end
+			return a.level > b.level
+		end)
+
+		local maxSlots = Helpers.GetTeamSlotCount(inv)
+		local desired = {}
+		local desiredSet = {}
+		for s = 1, math.min(maxSlots, #candidates) do
+			desired[s] = candidates[s]
+			desiredSet[candidates[s].id] = true
+		end
+
+		local team = type(inv.team) == "table" and inv.team or {}
+		local curSlot = {}
+		local equippedCount = 0
+		for s = 1, maxSlots do
+			local entry = team[tostring(s)] or team[s]
+			if entry ~= nil then
+				local uid = tostring(type(entry) == "table" and entry.id or entry)
+				curSlot[s] = uid
+				equippedCount += 1
+			end
+		end
+
+		local changed = false
+		-- Step 1: Unequip maxed/non-desired units (leave at least 1 unit equipped until overwritten)
+		for s = maxSlots, 1, -1 do
+			local uid = curSlot[s]
+			if uid and not desiredSet[uid] and equippedCount > 1 then
+				local ok, res = Net.Invoke(setSlot, s, nil)
+				if ok and res ~= false then
+					curSlot[s] = nil
+					equippedCount -= 1
+					changed = true
+					task.wait(0.08)
+				end
+			end
+		end
+
+		-- Step 2: Equip desired units into slots 1..#desired (descending power)
+		for s = 1, #desired do
+			local targetId = desired[s].id
+			if curSlot[s] ~= targetId then
+				-- If targetId is currently in another slot, unequip it from that slot first
+				for other = 1, maxSlots do
+					if other ~= s and curSlot[other] == targetId and equippedCount > 1 then
+						local okU, resU = Net.Invoke(setSlot, other, nil)
+						if okU and resU ~= false then
+							curSlot[other] = nil
+							equippedCount -= 1
+							task.wait(0.08)
+						end
+						break
+					end
+				end
+				local okE, resE = Net.Invoke(setSlot, s, targetId)
+				if okE and resE ~= false then
+					if curSlot[s] == nil then equippedCount += 1 end
+					curSlot[s] = targetId
+					changed = true
+					task.wait(0.08)
+				end
+			end
+		end
+
+		-- Step 3: Unequip any leftover maxed unit beyond #desired
+		for s = #desired + 1, maxSlots do
+			if curSlot[s] and not desiredSet[curSlot[s]] and equippedCount > 1 then
+				local okU, resU = Net.Invoke(setSlot, s, nil)
+				if okU and resU ~= false then
+					curSlot[s] = nil
+					equippedCount -= 1
+					changed = true
+					task.wait(0.08)
+				end
+			end
+		end
+
+		local reqInv = Net.Remote("RequestInventory")
+		if reqInv and reqInv:IsA("RemoteEvent") then
+			pcall(function() reqInv:FireServer() end)
+		end
+
+		if changed then
+			local names = {}
+			for s = 1, #desired do
+				table.insert(names, string.format("%s(Lv.%d)", desired[s].name, desired[s].level))
+			end
+			logAction("STORY", string.format("เปลี่ยนตัวละครที่ยังไม่ตันแล้ว (%d ตัว): %s", #desired, table.concat(names, ", ")), true)
+		end
+		return changed
 	end
 
 	function Helpers.GetConfig()
@@ -1518,7 +1726,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, _storyQueueIdx = 1, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastSellAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, lastSwapAt = 0, lastSwapWarnAt = 0, _lastStory = nil, _storyQueueIdx = 1, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastSellAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1912,7 +2120,41 @@ local function main()
 		local pg = LocalPlayer:FindFirstChild("PlayerGui")
 		local results = pg and pg:FindFirstChild("Results")
 		local endScreen = results and results:FindFirstChild("EndScreen")
-		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
+		local endVisible = endScreen and endScreen:IsA("GuiObject") and endScreen.Visible
+
+		if Core.Flags.AutoSwapMaxUnits and type(Helpers.Inventory) == "table" then
+			local hasMax, maxName, canReplace = Helpers.HasMaxLevelTeamUnit(Helpers.Inventory)
+			if hasMax then
+				if not canReplace then
+					if os.clock() - Loops.lastSwapWarnAt >= 30 then
+						Loops.lastSwapWarnAt = os.clock()
+						logAction("STORY", string.format("ตัวละครเวลตัน (%s) แต่ไม่มีตัวที่ยังไม่ตันเหลือในคลัง (คงทีมเดิม)", tostring(maxName)), false)
+					end
+				elseif endVisible then
+					Loops.lastStoryAt = os.clock()
+					local okQ, resQ = Net.Invoke(battleReq, "Quit")
+					if okQ and resQ ~= false then
+						Helpers.CloseResultsUI()
+						logAction("STORY", string.format("พบตัวละครเวลตัน (%s) -> ออกจากด่านเพื่อเปลี่ยนตัว", tostring(maxName)), true)
+					end
+					return
+				elseif LocalPlayer:GetAttribute("InBattle") == true and LocalPlayer:GetAttribute("BattleKind") == "Story" then
+					Loops.lastStoryAt = os.clock()
+					local okQ, resQ = Net.Invoke(battleReq, "Quit")
+					if okQ and resQ ~= false then
+						logAction("STORY", string.format("พบตัวละครเวลตัน (%s) -> หยุดลงด่านเพื่อออกมาเปลี่ยนตัว", tostring(maxName)), true)
+					end
+					return
+				elseif LocalPlayer:GetAttribute("InBattle") ~= true and os.clock() - Loops.lastSwapAt >= 2 then
+					Loops.lastSwapAt = os.clock()
+					Loops.lastStoryAt = os.clock()
+					Helpers.SwapMaxLevelTeamUnits()
+					return
+				end
+			end
+		end
+
+		if endVisible then
 			Loops.lastStoryAt = os.clock()
 			local titleLbl = endScreen:FindFirstChild("Title", true)
 			local isVictory = titleLbl and titleLbl:IsA("TextLabel") and titleLbl.Text == "VICTORY!"
@@ -5119,6 +5361,9 @@ local function main()
 	UI.Toggle("เปิด Auto ลงด่านเนื้อเรื่อง (Auto Story)", "AutoStory", function(on)
 		logAction("CFG", "Auto Story: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoStory() end
+	end)
+	UI.Toggle("เปลี่ยนตัวละครอัตโนมัติเมื่อเวลตัน (เรียงพลังสูงสุด)", "AutoSwapMaxUnits", function(on)
+		logAction("CFG", "Auto Swap Max Units: " .. (on and "ON" or "OFF"), on)
 	end)
 	UI.MultiDropdown("🌍 โลก (Worlds): ", "StoryWorlds", Helpers.GetStoryWorlds, "เลือกโลกเนื้อเรื่อง: ", "RebuildStoryWorlds", function()
 		Loops._storyQueueIdx = 1
