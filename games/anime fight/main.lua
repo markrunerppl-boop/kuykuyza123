@@ -1460,23 +1460,25 @@ local function main()
 		if chestLimit and chestCount and chestCount >= chestLimit then return false end
 
 		local tierNum = tonumber(chest:GetAttribute("Tier"))
-		local plot = Helpers.GetPlot()
-		if plot then
-			if chestLimit then
-				local placedFolder = plot:FindFirstChild("PlacedChests")
-				if placedFolder then
-					local placedCount = 0
-					for _, ch in ipairs(placedFolder:GetChildren()) do
-						if ch:IsA("Model") and not ch:GetAttribute("Opening") then
-							placedCount += 1
+		if Core.Flags.AutoPlaceChest then
+			local plot = Helpers.GetPlot()
+			if plot then
+				if chestLimit then
+					local placedFolder = plot:FindFirstChild("PlacedChests")
+					if placedFolder then
+						local placedCount = 0
+						for _, ch in ipairs(placedFolder:GetChildren()) do
+							if ch:IsA("Model") and not ch:GetAttribute("Opening") then
+								placedCount += 1
+							end
 						end
+						if placedCount >= chestLimit then return false end
 					end
-					if placedCount >= chestLimit then return false end
 				end
-			end
-			if tierNum then
-				local lx, lz = Helpers.FindFreeSpot(plot, tierNum)
-				if not (lx and lz) then return false end
+				if tierNum then
+					local lx, lz = Helpers.FindFreeSpot(plot, tierNum)
+					if not (lx and lz) then return false end
+				end
 			end
 		end
 
