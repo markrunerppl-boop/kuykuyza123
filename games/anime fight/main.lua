@@ -165,6 +165,7 @@ local function main()
 			SellUnitMaxRarity = "Epic",
 			AutoClaimBattlePass = false,
 			AutoClaimWeekly = false,
+			AntiAfk = true,
 			FpsBoost = false,
 			FpsBoost3DOff = true,
 			FpsBoostCap = "0",
@@ -3244,6 +3245,26 @@ local function main()
 		end
 	end
 
+	function Loops.InitAntiAfk()
+		if Loops._antiAfkInit then return end
+		Loops._antiAfkInit = true
+		Core:Connect(LocalPlayer.Idled, function()
+			if not Core.Flags.AntiAfk then return end
+			local ok = pcall(function()
+				local vu = game:GetService("VirtualUser")
+				vu:CaptureController()
+				vu:ClickButton2(Vector2.new(0, 0))
+			end)
+			if ok then
+				local now = os.clock()
+				if now - (Loops._lastAntiAfkLogAt or 0) >= 300 then
+					Loops._lastAntiAfkLogAt = now
+					logAction("SYS", "Anti-AFK ทำงาน (รีเซ็ตเวลา Idle)", true)
+				end
+			end
+		end)
+	end
+
 	function Loops.AutoBuyTick()
 		if Core.Busy or os.clock() < Loops.backoffUntil or Helpers.IsRaidPlace() or Helpers.IsBossPlace() then return end
 		if not Helpers.IsAlive() then return end
@@ -4817,6 +4838,9 @@ local function main()
 
 	UI.CreateTab("PvP", "⚡ PvP/อื่นๆ")
 	UI.Section("🚀 Ultimate FPS Boost (บูส FPS + โชว์สถิติฟาร์ม)")
+	UI.Toggle("กันหลุด AFK อัตโนมัติ (Anti-AFK 20 นาที)", "AntiAfk", function(on)
+		logAction("CFG", "Anti-AFK: " .. (on and "ON" or "OFF"), on)
+	end)
 	UI.Toggle("เปิด Ultimate FPS Boost + โชว์สถิติ", "FpsBoost", function(on)
 		if on then FpsBoost.Enable() else FpsBoost.Disable() end
 	end)
@@ -5094,6 +5118,7 @@ local function main()
 	Loops.StartAutoPvp()
 	Loops.StartAutoBuyPvpShop()
 	Loops.StartAutoUpgradeSkill()
+	Loops.InitAntiAfk()
 	if Core.Flags.FpsBoost then FpsBoost.Enable() end
 	logAction("SYS", "โหลดสคริปต์สำเร็จ | Config: " .. Config.File, true)
 end
