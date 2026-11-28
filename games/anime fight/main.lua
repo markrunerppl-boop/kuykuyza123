@@ -3955,8 +3955,13 @@ local function main()
 						Helpers._skillSynced = true
 					end
 					Core._pendingShopRebuild = true
+					Core._pendingTeamRebuild = true
 				end
 			end)
+			local reqInvInit = ev:FindFirstChild("RequestInventory")
+			if reqInvInit and reqInvInit:IsA("RemoteEvent") then
+				pcall(function() reqInvInit:FireServer() end)
+			end
 		end
 		local function bindShopChanged(sc)
 			if not (sc and sc:IsA("RemoteEvent")) then return end
@@ -5103,6 +5108,7 @@ local function main()
 
 			local isOpen = false
 			local entries = {}
+			local rebuild
 
 			local function ensureTbl()
 				if type(Core.Flags[key]) ~= "table" then Core.Flags[key] = {} end
@@ -5140,7 +5146,11 @@ local function main()
 
 			Core:Connect(headerBtn.MouseButton1Click, function()
 				isOpen = not isOpen
-				updateHeader()
+				if isOpen then
+					rebuild()
+				else
+					updateHeader()
+				end
 			end)
 
 			Core:Connect(btnClear.MouseButton1Click, function()
@@ -5162,7 +5172,7 @@ local function main()
 				if onChange then onChange() end
 			end)
 
-			local function rebuild()
+			rebuild = function()
 				table.clear(entries)
 				for _, ch in ipairs(gridHolder:GetChildren()) do
 					if ch:IsA("TextButton") then ch:Destroy() end
@@ -5250,6 +5260,7 @@ local function main()
 
 			local isOpen = false
 			local renderMap = {}
+			local rebuild
 
 			local function updateHeader()
 				if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
@@ -5277,7 +5288,11 @@ local function main()
 
 			Core:Connect(headerBtn.MouseButton1Click, function()
 				isOpen = not isOpen
-				updateHeader()
+				if isOpen then
+					rebuild()
+				else
+					updateHeader()
+				end
 			end)
 
 			Core:Connect(btnClear.MouseButton1Click, function()
@@ -5299,7 +5314,7 @@ local function main()
 				logAction("CFG", string.format("เลือกกล่องทุกระดับ (%d ระดับ)", #Helpers.ChestRarityList), true)
 			end)
 
-			local function rebuild()
+			rebuild = function()
 				table.clear(renderMap)
 				for _, ch in ipairs(gridHolder:GetChildren()) do
 					if ch:IsA("TextButton") then ch:Destroy() end
@@ -5840,13 +5855,28 @@ local function main()
 	end)
 
 	task.spawn(function()
+		local lastInvReqAt = 0
 		while Core._alive do
+			if Helpers.Inventory == nil and os.clock() - lastInvReqAt >= 3 then
+				lastInvReqAt = os.clock()
+				local reqInv = Net.Remote("RequestInventory")
+				if reqInv and reqInv:IsA("RemoteEvent") then
+					pcall(function() reqInv:FireServer() end)
+				end
+			end
 			local syncReason = Core._pendingSyncReason
 			Core._pendingSyncReason = nil
 			if Core._pendingShopRebuild then
 				Core._pendingShopRebuild = false
 				if Helpers.RefreshShop() and Core._rebuildShopUI then
 					pcall(Core._rebuildShopUI)
+				end
+			end
+			if Core._pendingTeamRebuild then
+				Core._pendingTeamRebuild = false
+				Helpers.RefreshTeamLockOptions()
+				if UI.RebuildLockedUnits then
+					pcall(UI.RebuildLockedUnits)
 				end
 			end
 			syncMapData((syncReason and syncReason ~= "") and syncReason or nil)
