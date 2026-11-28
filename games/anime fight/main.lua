@@ -123,7 +123,7 @@ local function main()
 			AutoNextStage = false,
 			AutoStory = false,
 			AutoSwapMaxUnits = false,
-			SwapMaxUnitsCount = 0,
+			LockedTeamUnits = {},
 			StoryWorld = "World_1",
 			StoryAct = 1,
 			StoryWorlds = { World_1 = true },
@@ -274,6 +274,8 @@ local function main()
 		StoryActsByWorld = {},
 		StoryDifficulties = {},
 		_storySig = "",
+		TeamLockOptions = {},
+		_teamSig = "",
 		TierList = { "Normal" },
 		ChestRarityList = {},
 		RaidDifficulties = {},
@@ -760,12 +762,47 @@ local function main()
 		return math.max(1, math.min(unlocked, maxCap))
 	end
 
-	function Helpers.GetSwapQuota(inv): (number, number, number)
-		local maxSlots = Helpers.GetTeamSlotCount(inv)
-		local raw = math.floor(tonumber(Core.Flags.SwapMaxUnitsCount) or 0)
-		local swapCount = (raw <= 0 or raw >= maxSlots) and maxSlots or math.clamp(raw, 1, maxSlots)
-		local keepCarry = math.max(0, maxSlots - swapCount)
-		return maxSlots, swapCount, keepCarry
+	function Helpers.RefreshTeamLockOptions(): boolean
+		local inv = Helpers.Inventory
+		local list = {}
+		local sigParts = {}
+		if type(inv) == "table" then
+			local unitById = {}
+			if type(inv.units) == "table" then
+				for _, u in pairs(inv.units) do
+					if type(u) == "table" and u.id and u.name then
+						unitById[tostring(u.id)] = u
+					end
+				end
+			end
+			local maxSlots = Helpers.GetTeamSlotCount(inv)
+			local team = type(inv.team) == "table" and inv.team or {}
+			for s = 1, maxSlots do
+				local entry = team[tostring(s)] or team[s]
+				if entry ~= nil then
+					local uid = tostring(type(entry) == "table" and entry.id or entry)
+					local u = unitById[uid] or (type(entry) == "table" and entry or nil)
+					local uName = (type(u) == "table" and u.name) and tostring(u.name) or uid
+					local lv = (type(u) == "table" and tonumber(u.level)) or 1
+					table.insert(list, {
+						id = uid,
+						name = string.format("[S%d] %s Lv.%d", s, uName, lv),
+						shortName = uName,
+					})
+					table.insert(sigParts, string.format("%d:%s:%s:%d", s, uid, uName, lv))
+				end
+			end
+		end
+		local sig = table.concat(sigParts, "|")
+		local changed = (sig ~= Helpers._teamSig) or (#list ~= #Helpers.TeamLockOptions)
+		Helpers.TeamLockOptions = list
+		Helpers._teamSig = sig
+		return changed
+	end
+
+	function Helpers.GetEquippedTeamOptions()
+		Helpers.RefreshTeamLockOptions()
+		return Helpers.TeamLockOptions
 	end
 
 	function Helpers.HasMaxLevelTeamUnit(inv): (boolean, string?, boolean)
@@ -779,10 +816,12 @@ local function main()
 			end
 		end
 
-		local maxSlots, _, keepCarry = Helpers.GetSwapQuota(inv)
+		local locked = type(Core.Flags.LockedTeamUnits) == "table" and Core.Flags.LockedTeamUnits or {}
+		local maxSlots = Helpers.GetTeamSlotCount(inv)
 		local team = type(inv.team) == "table" and inv.team or {}
 		local equipped = {}
 		local equippedSet = {}
+		local carrySet = {}
 		for s = 1, maxSlots do
 			local entry = team[tostring(s)] or team[s]
 			if entry ~= nil then
@@ -790,26 +829,18 @@ local function main()
 				local u = unitById[uid] or (type(entry) == "table" and entry or nil)
 				if type(u) == "table" and u.name then
 					equippedSet[uid] = true
+					if locked[uid] == true then
+						carrySet[uid] = true
+					end
 					table.insert(equipped, {
 						slot = s,
 						id = uid,
 						name = tostring(u.name),
 						level = tonumber(u.level) or 1,
 						cap = Helpers.GetUnitLevelCap(tostring(u.name)),
-						power = Helpers.GetUnitPower(u, inv),
 					})
 				end
 			end
-		end
-
-		table.sort(equipped, function(a, b)
-			if a.power ~= b.power then return a.power > b.power end
-			return a.level > b.level
-		end)
-
-		local carrySet = {}
-		for i = 1, math.min(keepCarry, #equipped) do
-			carrySet[equipped[i].id] = true
 		end
 
 		local maxedName = nil
@@ -849,44 +880,38 @@ local function main()
 			end
 		end
 
-		local maxSlots, swapCount, keepCarry = Helpers.GetSwapQuota(inv)
+		local locked = type(Core.Flags.LockedTeamUnits) == "table" and Core.Flags.LockedTeamUnits or {}
+		local maxSlots = Helpers.GetTeamSlotCount(inv)
 		local team = type(inv.team) == "table" and inv.team or {}
 		local curSlot = {}
-		local equipped = {}
 		local equippedCount = 0
+		local desired = {}
+		local desiredSet = {}
+		local carrySet = {}
+
 		for s = 1, maxSlots do
 			local entry = team[tostring(s)] or team[s]
 			if entry ~= nil then
 				local uid = tostring(type(entry) == "table" and entry.id or entry)
 				curSlot[s] = uid
 				equippedCount += 1
-				local u = unitById[uid] or (type(entry) == "table" and entry or nil)
-				if type(u) == "table" and u.name then
-					table.insert(equipped, {
-						id = uid,
-						name = tostring(u.name),
-						level = tonumber(u.level) or 1,
-						power = Helpers.GetUnitPower(u, inv),
-					})
+				if locked[uid] == true then
+					local u = unitById[uid] or (type(entry) == "table" and entry or nil)
+					if type(u) == "table" and u.name then
+						carrySet[uid] = true
+						desiredSet[uid] = true
+						table.insert(desired, {
+							id = uid,
+							name = tostring(u.name),
+							level = tonumber(u.level) or 1,
+							power = Helpers.GetUnitPower(u, inv),
+						})
+					end
 				end
 			end
 		end
 
-		table.sort(equipped, function(a, b)
-			if a.power ~= b.power then return a.power > b.power end
-			return a.level > b.level
-		end)
-
-		local desired = {}
-		local desiredSet = {}
-		local carrySet = {}
-		for i = 1, math.min(keepCarry, #equipped) do
-			local c = equipped[i]
-			carrySet[c.id] = true
-			desiredSet[c.id] = true
-			table.insert(desired, c)
-		end
-
+		local lockedCount = #desired
 		local candidates = {}
 		for uid, u in pairs(unitById) do
 			if not carrySet[uid] then
@@ -914,7 +939,7 @@ local function main()
 
 		local farmAdded = 0
 		for _, cand in ipairs(candidates) do
-			if #desired >= maxSlots or farmAdded >= swapCount then break end
+			if #desired >= maxSlots then break end
 			desiredSet[cand.id] = true
 			table.insert(desired, cand)
 			farmAdded += 1
@@ -983,10 +1008,10 @@ local function main()
 		if changed then
 			local names = {}
 			for s = 1, #desired do
-				local tag = carrySet[desired[s].id] and "★" or ""
+				local tag = carrySet[desired[s].id] and "🔒" or ""
 				table.insert(names, string.format("%s%s(Lv.%d)", tag, desired[s].name, desired[s].level))
 			end
-			logAction("STORY", string.format("จัดทีมใหม่ (เก็บแบก %d / ฟาร์มเวล %d): %s", math.min(keepCarry, #equipped), farmAdded, table.concat(names, ", ")), true)
+			logAction("STORY", string.format("จัดทีมใหม่ (ล็อก %d / ฟาร์มเวล %d): %s", lockedCount, farmAdded, table.concat(names, ", ")), true)
 		end
 		return changed
 	end
@@ -5145,7 +5170,7 @@ local function main()
 				local opts = getOptionsFn()
 				for i, opt in ipairs(opts) do
 					local oid = tostring(opt.id)
-					local shortName = tostring(opt.name):match("^([^:]+)") or tostring(opt.name)
+					local shortName = opt.shortName or tostring(opt.name):match("^([^:]+)") or tostring(opt.name)
 					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = "", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, gridHolder)
 					corner(b, 4)
 					table.insert(entries, { id = oid, name = tostring(opt.name), shortName = shortName, btn = b })
@@ -5414,6 +5439,7 @@ local function main()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
 	if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
 	if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
+	if type(Core.Flags.LockedTeamUnits) ~= "table" then Core.Flags.LockedTeamUnits = {} end
 	if type(Core.Flags.StoryWorlds) ~= "table" or next(Core.Flags.StoryWorlds) == nil then
 		Core.Flags.StoryWorlds = { [tostring(Core.Flags.StoryWorld or "World_1")] = true }
 	end
@@ -5480,7 +5506,7 @@ local function main()
 		logAction("CFG", "Auto Swap Max Units: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoSwapMaxUnits() end
 	end)
-	UI.NumberInput("จำนวนตัวที่เปลี่ยนออก (0 = ทั้งหมด)", "SwapMaxUnitsCount", 0)
+	UI.MultiDropdown("🔒 ตัวที่ไม่เปลี่ยน (ล็อกไว้): ", "LockedTeamUnits", Helpers.GetEquippedTeamOptions, "ล็อกตัวละคร: ", "RebuildLockedUnits")
 	UI.MultiDropdown("🌍 โลก (Worlds): ", "StoryWorlds", Helpers.GetStoryWorlds, "เลือกโลกเนื้อเรื่อง: ", "RebuildStoryWorlds", function()
 		Loops._storyQueueIdx = 1
 	end)
@@ -5661,6 +5687,9 @@ local function main()
 			if UI.RebuildStoryActs then pcall(UI.RebuildStoryActs) end
 			if UI.RebuildStoryDiffs then pcall(UI.RebuildStoryDiffs) end
 			logAction("MAP", reason or string.format("อัปเดตด่านเนื้อเรื่องตามแมพ (%d โลก | %d ระดับ)", #Helpers.StoryWorlds, #Helpers.StoryDifficulties), true)
+		end
+		if Helpers.RefreshTeamLockOptions() and UI.RebuildLockedUnits then
+			pcall(UI.RebuildLockedUnits)
 		end
 		if Helpers.RefreshDungeons() and UI.RebuildDungeons then
 			pcall(UI.RebuildDungeons)
@@ -5848,6 +5877,12 @@ local function main()
 	Loops.StartAutoOpen()
 	Loops.StartAutoStory()
 	Loops.StartAutoSwapMaxUnits()
+	if Helpers.Inventory == nil then
+		local reqInv = Net.Remote("RequestInventory")
+		if reqInv and reqInv:IsA("RemoteEvent") then
+			pcall(function() reqInv:FireServer() end)
+		end
+	end
 	Loops.StartAutoReplay()
 	Loops.StartAutoNextStage()
 	Loops.StartAutoDungeon()
