@@ -124,6 +124,8 @@ local function main()
 			AutoStory = false,
 			StoryWorld = "World_1",
 			StoryAct = 1,
+			StoryWorlds = { World_1 = true },
+			StoryActs = { ["1"] = true },
 			StoryDifficulty = "Easy",
 			AutoUpgradeSkill = false,
 			AutoDungeon = false,
@@ -514,6 +516,60 @@ local function main()
 	function Helpers.GetStoryDifficulties()
 		if #Helpers.StoryDifficulties == 0 then Helpers.RefreshStory() end
 		return Helpers.StoryDifficulties
+	end
+
+	function Helpers.GetAllStoryActOptions()
+		local worlds = Helpers.GetStoryWorlds()
+		local maxAct = 8
+		for _, w in ipairs(worlds) do
+			local acts = Helpers.GetStoryActs(w.id)
+			if #acts > maxAct then maxAct = #acts end
+		end
+		local list = {}
+		for i = 1, maxAct do
+			local label = (i == maxAct) and string.format("Act %d (Boss)", i) or ("Act " .. tostring(i))
+			table.insert(list, { id = tostring(i), num = i, name = label })
+		end
+		return list
+	end
+
+	function Helpers.BuildStoryQueue()
+		local worlds = Helpers.GetStoryWorlds()
+		local selW = type(Core.Flags.StoryWorlds) == "table" and Core.Flags.StoryWorlds or {}
+		local selA = type(Core.Flags.StoryActs) == "table" and Core.Flags.StoryActs or {}
+		local diffId = tostring(Core.Flags.StoryDifficulty or "Easy")
+
+		local hasW, hasA = false, false
+		for _, on in pairs(selW) do if on == true then hasW = true; break end end
+		for _, on in pairs(selA) do if on == true then hasA = true; break end end
+
+		local queue = {}
+		for _, w in ipairs(worlds) do
+			local wMatch = hasW and (selW[w.id] == true) or (not hasW and w.id == tostring(Core.Flags.StoryWorld or "World_1"))
+			if wMatch then
+				for _, act in ipairs(Helpers.GetStoryActs(w.id)) do
+					local aKey = tostring(act.num)
+					local aMatch = hasA and (selA[aKey] == true or selA[act.num] == true)
+						or (not hasA and act.num == math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1)))
+					if aMatch then
+						table.insert(queue, {
+							world = w.id,
+							level = act.num,
+							difficulty = diffId,
+						})
+					end
+				end
+			end
+		end
+
+		if #queue == 0 then
+			table.insert(queue, {
+				world = tostring(Core.Flags.StoryWorld or "World_1"),
+				level = math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1)),
+				difficulty = diffId,
+			})
+		end
+		return queue
 	end
 
 	function Helpers.ResolveStoryTarget(worldId: string, actNum: number, diffId: string)
@@ -1428,7 +1484,7 @@ local function main()
 	-- =================================================================
 	-- 6. LOOPS
 	-- =================================================================
-	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastSellAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
+	local Loops = { attempts = setmetatable({}, { __mode = "k" }), backoffUntil = 0, lastBuyAt = 0, lastReplayAt = 0, lastNextAt = 0, lastStoryAt = 0, lastStoryWarnAt = 0, _lastStory = nil, _storyQueueIdx = 1, lastDungeonAt = 0, lastRaidAt = 0, lastRaidQuitAt = 0, raidBattleStartedAt = 0, raidTargetWaveAt = 0, raidWaveArmed = false, raidQuitTriggered = false, lastRaidShopAt = 0, raidSetupBusy = false, raidQueueState = nil, raidQueueStateAt = 0, raidStartSentAt = 0, raidEndScreenAt = 0, raidRevealAt = 0, raidReplayMine = false, raidReplayState = nil, raidReplaySentAt = 0, raidReplayTries = 0, lastBossAt = 0, lastBossShopAt = 0, bossSetupBusy = false, bossQueueState = nil, bossQueueStateAt = 0, bossStartSentAt = 0, bossEndScreenAt = 0, bossRevealAt = 0, bossReplayMine = false, bossReplayState = nil, bossReplaySentAt = 0, bossReplayTries = 0, lastAscendAt = 0, lastSellAt = 0, lastBpAt = 0, lastBpResetAt = 0, bpBusy = false, lastWeeklyAt = 0, lastPvpAt = 0, lastPvpShopAt = 0, lastShopAt = 0, lastTravelAt = 0 }
 
 	function Loops.SelectTargets()
 		local plot = Helpers.GetPlot()
@@ -1809,13 +1865,13 @@ local function main()
 			end
 		end
 
-		local worldId = tostring(Core.Flags.StoryWorld or "World_1")
-		local acts = Helpers.GetStoryActs(worldId)
-		local actNum = math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1))
-		if #acts > 0 and actNum > #acts then
-			actNum = #acts
-		end
-		local diffId = tostring(Core.Flags.StoryDifficulty or "Easy")
+		local queue = Helpers.BuildStoryQueue()
+		local qIdx = math.clamp(math.floor(tonumber(Loops._storyQueueIdx) or 1), 1, #queue)
+		Loops._storyQueueIdx = qIdx
+		local curStage = queue[qIdx]
+		local worldId = curStage.world
+		local actNum = curStage.level
+		local diffId = curStage.difficulty
 
 		local target = Helpers.ResolveStoryTarget(worldId, actNum, diffId)
 
@@ -1824,6 +1880,59 @@ local function main()
 		local endScreen = results and results:FindFirstChild("EndScreen")
 		if endScreen and endScreen:IsA("GuiObject") and endScreen.Visible then
 			Loops.lastStoryAt = os.clock()
+			local titleLbl = endScreen:FindFirstChild("Title", true)
+			local isVictory = titleLbl and titleLbl:IsA("TextLabel") and titleLbl.Text == "VICTORY!"
+			local lastWasUnlock = type(Loops._lastStory) == "table" and Loops._lastStory.autoUnlock == true
+
+			if Core.Flags.AutoNextStage and isVictory and not lastWasUnlock and not target.autoUnlock then
+				local nextIdx = qIdx + 1
+				if nextIdx <= #queue then
+					Loops._storyQueueIdx = nextIdx
+					local nextStage = queue[nextIdx]
+					local left = endScreen:FindFirstChild("Left")
+					local buttons = left and left:FindFirstChild("Buttons")
+					local nextBtn = buttons and buttons:FindFirstChild("Next")
+					local canFastNext = nextBtn and nextBtn:IsA("GuiObject") and nextBtn.Visible
+						and nextStage.world == curStage.world
+						and nextStage.level == (curStage.level + 1)
+						and nextStage.difficulty == curStage.difficulty
+					if canFastNext then
+						local ok, res, err = Net.Invoke(battleReq, "NextAct")
+						if ok and res ~= false then
+							Helpers.CloseResultsUI()
+							Loops._lastStory = { world = nextStage.world, level = nextStage.level, difficulty = nextStage.difficulty, autoUnlock = false }
+							logAction("STORY", string.format("ด่านถัดไป (%d/%d): %s Act %d (%s)", nextIdx, #queue, nextStage.world, nextStage.level, nextStage.difficulty), true)
+							Loops.GoHome("STORY")
+						else
+							logAction("STORY", "ไปด่านถัดไปไม่สำเร็จ: " .. tostring(err or res), false)
+						end
+					else
+						local ok, res, err = Net.Invoke(battleReq, "Quit")
+						if ok and res ~= false then
+							Helpers.CloseResultsUI()
+							logAction("STORY", string.format("เปลี่ยนไปด่านถัดไป (%d/%d): %s Act %d (%s)", nextIdx, #queue, nextStage.world, nextStage.level, nextStage.difficulty), true)
+						else
+							logAction("STORY", "ออกจากหน้าสรุปผลไม่สำเร็จ: " .. tostring(err or res), false)
+						end
+					end
+				else
+					local ok, res, err = Net.Invoke(battleReq, "Quit")
+					if ok and res ~= false then
+						Helpers.CloseResultsUI()
+					end
+					if Core.Flags.AutoReplay then
+						Loops._storyQueueIdx = 1
+						logAction("STORY", string.format("ลงครบ %d ด่านแล้ว -> วนกลับด่านแรกใหม่", #queue), true)
+					else
+						Loops._storyQueueIdx = 1
+						Config.Set("AutoStory", false)
+						if Core._syncToggle then pcall(Core._syncToggle, "AutoStory") end
+						logAction("STORY", string.format("ลงครบทุกด่านในคิวแล้ว (%d ด่าน) -> หยุด Auto Story", #queue), true)
+					end
+				end
+				return
+			end
+
 			local sameStage = LocalPlayer:GetAttribute("BattleKind") == "Story"
 				and type(Loops._lastStory) == "table"
 				and not Loops._lastStory.autoUnlock
@@ -1835,7 +1944,7 @@ local function main()
 				local ok, res, err = Net.Invoke(battleReq, "Replay")
 				if ok and res ~= false then
 					Helpers.CloseResultsUI()
-					logAction("STORY", string.format("เล่นซ้ำ %s Act %d (%s)", target.world, target.level, target.difficulty), true)
+					logAction("STORY", string.format("เล่นซ้ำ (%d/%d) %s Act %d (%s)", qIdx, #queue, target.world, target.level, target.difficulty), true)
 					Loops.GoHome("STORY")
 				else
 					logAction("STORY", "เล่นซ้ำด่านเนื้อเรื่องไม่สำเร็จ: " .. tostring(err or res), false)
@@ -1877,7 +1986,7 @@ local function main()
 			if target.autoUnlock and target.reason then
 				logAction("STORY", target.reason, true)
 			else
-				logAction("STORY", string.format("เริ่มด่าน %s Act %d (%s)", payload.world, payload.level, payload.difficulty), true)
+				logAction("STORY", string.format("เริ่มด่าน (%d/%d) %s Act %d (%s)", qIdx, #queue, payload.world, payload.level, payload.difficulty), true)
 			end
 			Loops.GoHome("STORY")
 		else
@@ -1887,6 +1996,7 @@ local function main()
 
 	function Loops.StartAutoStory()
 		if Core.Flags.AutoStory then
+			Loops._storyQueueIdx = 1
 			Core:Loop("AutoStory", "AutoStory", 0.8, Loops.AutoStoryTick)
 		end
 	end
@@ -4353,6 +4463,9 @@ local function main()
 				knob.BackgroundColor3 = on and C_ACC or C_SUB
 			end
 			UI._toggleRenderers[key] = render
+			Core._syncToggle = function(k)
+				if UI._toggleRenderers[k] then UI._toggleRenderers[k]() end
+			end
 			render()
 			Core:Connect(row.MouseButton1Click, function()
 				Config.Set(key, not (Core.Flags[key] == true))
@@ -4527,6 +4640,119 @@ local function main()
 					local fallbackId = tostring(opts[1].id)
 					local val = isNumber and (tonumber(fallbackId) or defaultVal) or fallbackId
 					Core.Flags[key] = val
+				end
+				renderAll()
+			end
+
+			UI[setterName] = rebuild
+			rebuild()
+		end
+
+		function UI.MultiDropdown(titlePrefix, key, getOptionsFn, logPrefix, setterName, onChange)
+			local wrap = mk("Frame", { LayoutOrder = nextOrder(), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0 }, body)
+			mk("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, wrap)
+
+			local headerBtn = mk("TextButton", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C_PANEL, Text = "", AutoButtonColor = false }, wrap)
+			corner(headerBtn, 6)
+			local headerLbl = mk("TextLabel", { Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Text = "", TextColor3 = C_TXT, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, headerBtn)
+			local arrowLbl = mk("TextLabel", { Size = UDim2.fromOffset(22, 30), Position = UDim2.new(1, -24, 0, 0), BackgroundTransparency = 1, Text = "▼", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11 }, headerBtn)
+
+			local dropPanel = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C_PANEL, BorderSizePixel = 0, Visible = false }, wrap)
+			corner(dropPanel, 6)
+			mk("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, dropPanel)
+			mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, dropPanel)
+
+			local actionsRow = mk("Frame", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1 }, dropPanel)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 1, 0), CellPadding = UDim2.fromOffset(6, 0), SortOrder = Enum.SortOrder.LayoutOrder }, actionsRow)
+			local btnClear = mk("TextButton", { LayoutOrder = 1, BackgroundColor3 = C_BG, Text = "ล้างทั้งหมด", TextColor3 = C_SUB, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, actionsRow)
+			corner(btnClear, 4)
+			local btnSelectAll = mk("TextButton", { LayoutOrder = 2, BackgroundColor3 = C_BG, Text = "เลือกทั้งหมด", TextColor3 = C_ACC, Font = Enum.Font.GothamBold, TextSize = 11, AutoButtonColor = false }, actionsRow)
+			corner(btnSelectAll, 4)
+
+			local gridHolder = mk("Frame", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, dropPanel)
+			mk("UIGridLayout", { CellSize = UDim2.new(0.5, -3, 0, 26), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, gridHolder)
+
+			local isOpen = false
+			local entries = {}
+
+			local function ensureTbl()
+				if type(Core.Flags[key]) ~= "table" then Core.Flags[key] = {} end
+				return Core.Flags[key]
+			end
+
+			local function updateHeader()
+				local tbl = ensureTbl()
+				local names = {}
+				for _, e in ipairs(entries) do
+					if tbl[e.id] == true then
+						table.insert(names, e.shortName)
+					end
+				end
+				if #names == 0 then
+					headerLbl.Text = titlePrefix .. "ยังไม่เลือก (ใช้ค่าเริ่มต้น)"
+				elseif #names <= 3 then
+					headerLbl.Text = string.format("%s(%d) %s", titlePrefix, #names, table.concat(names, ", "))
+				else
+					headerLbl.Text = string.format("%sเลือก %d รายการ (%s...)", titlePrefix, #names, table.concat({ names[1], names[2] }, ", "))
+				end
+				arrowLbl.Text = isOpen and "▲" or "▼"
+				dropPanel.Visible = isOpen
+			end
+
+			local function renderAll()
+				local tbl = ensureTbl()
+				for _, e in ipairs(entries) do
+					local on = tbl[e.id] == true
+					e.btn.Text = (on and "☑ " or "☐ ") .. e.name
+					e.btn.BackgroundColor3 = on and Color3.fromRGB(90, 55, 25) or C_BG
+				end
+				updateHeader()
+			end
+
+			Core:Connect(headerBtn.MouseButton1Click, function()
+				isOpen = not isOpen
+				updateHeader()
+			end)
+
+			Core:Connect(btnClear.MouseButton1Click, function()
+				Core.Flags[key] = {}
+				Config.Save()
+				renderAll()
+				logAction("CFG", logPrefix .. "ล้างทั้งหมด", true)
+				if onChange then onChange() end
+			end)
+
+			Core:Connect(btnSelectAll.MouseButton1Click, function()
+				local tbl = ensureTbl()
+				for _, e in ipairs(entries) do
+					tbl[e.id] = true
+				end
+				Config.Save()
+				renderAll()
+				logAction("CFG", string.format("%sเลือกทั้งหมด (%d รายการ)", logPrefix, #entries), true)
+				if onChange then onChange() end
+			end)
+
+			local function rebuild()
+				table.clear(entries)
+				for _, ch in ipairs(gridHolder:GetChildren()) do
+					if ch:IsA("TextButton") then ch:Destroy() end
+				end
+				local opts = getOptionsFn()
+				for i, opt in ipairs(opts) do
+					local oid = tostring(opt.id)
+					local shortName = tostring(opt.name):match("^([^:]+)") or tostring(opt.name)
+					local b = mk("TextButton", { LayoutOrder = i, BackgroundColor3 = C_BG, Text = "", AutoButtonColor = false, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C_TXT, TextTruncate = Enum.TextTruncate.AtEnd }, gridHolder)
+					corner(b, 4)
+					table.insert(entries, { id = oid, name = tostring(opt.name), shortName = shortName, btn = b })
+					b.MouseButton1Click:Connect(function()
+						local tbl = ensureTbl()
+						local nextVal = not (tbl[oid] == true)
+						tbl[oid] = nextVal and true or nil
+						Config.Save()
+						renderAll()
+						if onChange then onChange() end
+					end)
 				end
 				renderAll()
 			end
@@ -4784,6 +5010,12 @@ local function main()
 	if type(Core.Flags.Tiers) ~= "table" then Core.Flags.Tiers = { Normal = true } end
 	if type(Core.Flags.ChestRarities) ~= "table" then Core.Flags.ChestRarities = {} end
 	if type(Core.Flags.ShopTargets) ~= "table" then Core.Flags.ShopTargets = {} end
+	if type(Core.Flags.StoryWorlds) ~= "table" or next(Core.Flags.StoryWorlds) == nil then
+		Core.Flags.StoryWorlds = { [tostring(Core.Flags.StoryWorld or "World_1")] = true }
+	end
+	if type(Core.Flags.StoryActs) ~= "table" or next(Core.Flags.StoryActs) == nil then
+		Core.Flags.StoryActs = { [tostring(math.max(1, math.floor(tonumber(Core.Flags.StoryAct) or 1)))] = true }
+	end
 	Helpers.RefreshTiers()
 	Helpers.RefreshChestRarities()
 	Helpers.RefreshStory()
@@ -4840,12 +5072,12 @@ local function main()
 		logAction("CFG", "Auto Story: " .. (on and "ON" or "OFF"), on)
 		if on then Loops.StartAutoStory() end
 	end)
-	UI.SingleDropdown("🌍 โลก (World): ", "StoryWorld", "World_1", Helpers.GetStoryWorlds, "เลือกโลก: ", "RebuildStoryWorlds", function()
-		if UI.RebuildStoryActs then UI.RebuildStoryActs() end
-	end, false)
-	UI.SingleDropdown("📍 ด่าน (Act): ", "StoryAct", 1, function()
-		return Helpers.GetStoryActs(Core.Flags.StoryWorld)
-	end, "เลือกด่าน: ", "RebuildStoryActs", nil, true)
+	UI.MultiDropdown("🌍 โลก (Worlds): ", "StoryWorlds", Helpers.GetStoryWorlds, "เลือกโลกเนื้อเรื่อง: ", "RebuildStoryWorlds", function()
+		Loops._storyQueueIdx = 1
+	end)
+	UI.MultiDropdown("📍 ด่าน (Acts): ", "StoryActs", Helpers.GetAllStoryActOptions, "เลือกด่านเนื้อเรื่อง: ", "RebuildStoryActs", function()
+		Loops._storyQueueIdx = 1
+	end)
 	UI.Section("🔥 ระดับความยาก (Difficulty)")
 	UI.OptionSelect("StoryDifficulty", "Easy", Helpers.GetStoryDifficulties, "ระดับความยากเนื้อเรื่อง: ", "RebuildStoryDiffs")
 	UI.Section("⚔️ ควบคุมหลังจบด่าน (Auto Replay / Next)")
